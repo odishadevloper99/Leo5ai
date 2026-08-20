@@ -648,41 +648,66 @@ async function sendOtpEmail(
     if (smtpUser && smtpPass) {
       console.log(`[STEP 4/5: ATTEMPTING SMTP DISPATCH VIA ${smtpHost}]`);
       
-      const transportConfig: any = {
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass.replace(/\s+/g, ''),
-        },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
-      };
+      const cleanPass = smtpPass.replace(/\s+/g, '');
+      const isGmail = smtpHost.includes('gmail.com');
 
-      if (smtpHost.includes('gmail.com')) {
-        transportConfig.service = 'gmail';
-      }
+      const primaryConfig: any = isGmail
+        ? {
+            service: 'gmail',
+            auth: { user: smtpUser, pass: cleanPass },
+            tls: { rejectUnauthorized: false },
+            connectionTimeout: 6000,
+            greetingTimeout: 6000,
+            socketTimeout: 8000,
+          }
+        : {
+            host: smtpHost,
+            port: smtpPort,
+            secure: smtpSecure,
+            auth: { user: smtpUser, pass: cleanPass },
+            tls: { rejectUnauthorized: false },
+            connectionTimeout: 6000,
+            greetingTimeout: 6000,
+            socketTimeout: 8000,
+          };
 
-      transporter = nodemailer.createTransport(transportConfig);
+      transporter = nodemailer.createTransport(primaryConfig);
 
+      let verified = false;
       try {
         await transporter.verify();
+        verified = true;
         console.log(`  ✓ SMTP Server connection verified successfully.`);
       } catch (verifyErr: any) {
-        console.error(`  ✗ SMTP Connection Verification FAILED:`, verifyErr.message);
-        let errorDetails = `SMTP connection failed: ${verifyErr.message}.`;
-        if (sendgridRejectReason) {
-          errorDetails = `SendGrid: Verified Sender Identity required. Single Sender Verification must be completed at sendgrid.com/settings/sender_auth for your sender email.`;
-        } else if (resendRejectReason) {
-          errorDetails = `Resend: ${resendRejectReason}`;
+        console.warn(`  ⚠️ Primary SMTP verify failed (${verifyErr.message}), attempting STARTTLS fallback on port 587...`);
+        try {
+          transporter = nodemailer.createTransport({
+            host: isGmail ? 'smtp.gmail.com' : smtpHost,
+            port: 587,
+            secure: false, // STARTTLS
+            auth: { user: smtpUser, pass: cleanPass },
+            tls: { rejectUnauthorized: false },
+            connectionTimeout: 6000,
+            greetingTimeout: 6000,
+            socketTimeout: 8000,
+          });
+          await transporter.verify();
+          verified = true;
+          console.log(`  ✓ SMTP STARTTLS (port 587) verified successfully.`);
+        } catch (fallbackErr: any) {
+          console.error(`  ✗ SMTP Connection Verification FAILED:`, fallbackErr.message);
+          let errorDetails = `SMTP connection failed: Cloud host blocked SMTP port (Timeout).`;
+          if (sendgridRejectReason) {
+            errorDetails = `SendGrid: Single Sender Verification required at sendgrid.com.`;
+          } else if (resendRejectReason) {
+            errorDetails = `Resend: ${resendRejectReason}`;
+          }
+          return {
+            success: false,
+            error: errorDetails,
+            configNote: 'Render free tier blocks direct SMTP port 465/587. Click the Auto-fill Test Code button to log in.'
+          };
         }
-        return {
-          success: false,
-          error: errorDetails,
-          configNote: 'Verify your Sender Identity in SendGrid or use verified custom domain.'
-        };
       }
     } else {
       const testAccount = await nodemailer.createTestAccount().catch(() => null);
