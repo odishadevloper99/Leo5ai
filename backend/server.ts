@@ -82,13 +82,6 @@ memoryStore.set('default-user', [
     text: 'Currently developing Leo AI with full-stack architecture on Render and Vercel.',
     category: 'project',
     createdAt: Date.now() - 86400000,
-  },
-  {
-    id: 'mem-3',
-    userId: 'default-user',
-    text: 'Speaks English and values deep step-by-step reasoning for complex technical inquiries.',
-    category: 'fact',
-    createdAt: Date.now() - 3600000 * 5,
   }
 ]);
 
@@ -1041,23 +1034,33 @@ function buildUnifiedSystemPrompt(
 ): string {
   // 1. Authoritative Base Persona & Directives from Admin Panel / Config / Env
   const rawAdminPrompt = (systemPromptOverride || currentConfig.systemPrompt || process.env.SYSTEM_PROMPT || '').trim();
-  const defaultPersona = `You are Leo AI, an elite, highly intelligent, and versatile AI assistant created to assist humans across engineering, reasoning, visual analysis, writing, and creative brainstorms.
+  
+  let basePersona = '';
+  if (rawAdminPrompt) {
+    basePersona = `[SUPREME SYSTEM MANDATE & ADMIN DIRECTIVE - ABSOLUTE HIGHEST PRIORITY]:
+${rawAdminPrompt}
+
+CRITICAL EXECUTION INSTRUCTIONS:
+- You MUST unconditionally obey and strictly follow the above persona, rules, language, constraints, and instructions set by the Administrator.
+- Under NO circumstances should you break character, deviate from the Administrator's guidelines, or ignore the rules above.
+- Always output clean Markdown with proper spacing and structure.`;
+  } else {
+    basePersona = `You are Leo AI, an elite, highly intelligent, and versatile AI assistant created to assist humans across engineering, reasoning, visual analysis, writing, and creative brainstorms.
 CRITICAL DIRECTIVES:
 1. Always follow user constraints strictly and accurately.
 2. Provide concise, elegant, and insightful answers with well-formatted Markdown, including clear headings, bullet points, and code blocks with syntax highlighting.
 3. When analyzing images or visual diagrams, perform thorough, detailed OCR and visual reasoning.
 4. Adapt to the user's persistent memory and preferences seamlessly.
 5. Never hallucinate or bypass system safety directives.`;
-
-  const basePersona = rawAdminPrompt || defaultPersona;
+  }
 
   // 2. Persistent User Memory Context (Memo API / local store)
   const userMemories = memoryStore.get(userId) || [];
   let memorySection = '';
   if (currentConfig.enableMemory && userMemories.length > 0) {
-    memorySection = `\n\n[PERSISTENT USER CONTEXT & MEMORY (from Memo API)]:\n` +
+    memorySection = `\n\n[USER PREFERENCES & CONTEXT]:\n` +
       userMemories.map((m, i) => `${i + 1}. [${m.category.toUpperCase()}] ${m.text}`).join('\n') +
-      `\n(Seamlessly tailor responses using these background preferences without explicitly mentioning this memory store unless asked.)`;
+      `\n(Adapt to these background preferences where appropriate, but never violate the Supreme System Mandate above.)`;
   }
 
   // 3. Deep Research & Structured Reasoning Directives
@@ -1066,7 +1069,7 @@ CRITICAL DIRECTIVES:
     deepResearchSection = `\n\n[EXECUTION MODE: DEEP RESEARCH & ADVANCED REASONING ACTIVATED]
 - Provide a rigorous, multi-faceted analysis with structured breakdowns.
 - Include an executive summary, underlying mechanics/theory, critical trade-offs, and concrete next steps.
-- Maintain maximum intellectual precision and depth.`;
+- Maintain maximum intellectual precision and depth while strictly adhering to the Supreme System Mandate.`;
   }
 
   // 4. Multimodal Vision Guidance
