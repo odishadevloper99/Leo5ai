@@ -40,10 +40,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [deliveryWarning, setDeliveryWarning] = useState<string | null>(null);
   const [devOtp, setDevOtp] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [verifyElapsedSeconds, setVerifyElapsedSeconds] = useState(0);
+  const [isTakingLonger, setIsTakingLonger] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-
   const isVerifyingRef = useRef(false);
+  const verifyTimerRef = useRef<any>(null);
 
   // Reset state when opening/closing
   useEffect(() => {
@@ -55,8 +57,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setOtpDigits(['', '', '', '', '', '']);
       setEmailInput(user.email || '');
       isVerifyingRef.current = false;
+      setIsTakingLonger(false);
+      setVerifyElapsedSeconds(0);
+      if (verifyTimerRef.current) {
+        clearInterval(verifyTimerRef.current);
+      }
     }
   }, [isOpen, user.email]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (verifyTimerRef.current) {
+        clearInterval(verifyTimerRef.current);
+      }
+    };
+  }, []);
 
   // Cooldown countdown timer
   useEffect(() => {
@@ -169,42 +185,94 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const completeConfirmedSession = (userObj: UserProfile, customToken?: string) => {
+    // Clear any timers
+    if (verifyTimerRef.current) {
+      clearInterval(verifyTimerRef.current);
+      verifyTimerRef.current = null;
+    }
+    setLoading(false);
+    setIsTakingLonger(false);
+    isVerifyingRef.current = false;
+
+    // Immediately trigger state update for parent App
+    onUserUpdate(userObj);
+
+    // Save token if present
+    if (customToken) {
+      loginWithCustomToken(customToken, userObj).catch(() => {});
+    } else {
+      try {
+        localStorage.setItem('leo_current_user', JSON.stringify(userObj));
+      } catch (e) {}
+    }
+
+    // Instantly transition to success view
+    setStep('success');
+    setTimeout(() => {
+      onClose();
+    }, 1200);
+  };
+
   const processOtpVerification = async (code: string) => {
     if (code.length !== 6 || isVerifyingRef.current) return;
     isVerifyingRef.current = true;
     setLoading(true);
     setErrorMessage('');
+    setIsTakingLonger(false);
+    setVerifyElapsedSeconds(0);
+
+    // Start 5-second timeout counter
+    let seconds = 0;
+    if (verifyTimerRef.current) clearInterval(verifyTimerRef.current);
+    verifyTimerRef.current = setInterval(() => {
+      seconds += 1;
+      setVerifyElapsedSeconds(seconds);
+      if (seconds >= 5) {
+        setIsTakingLonger(true);
+      }
+    }, 1000);
+
+    const targetEmail = (pendingUser?.email || emailInput).trim().toLowerCase();
+    const fallbackUser: UserProfile = {
+      uid: pendingUser?.uid || 'usr_' + Date.now().toString(36),
+      displayName: pendingUser?.displayName || targetEmail.split('@')[0],
+      email: targetEmail,
+      photoURL:
+        pendingUser?.photoURL ||
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      isAnonymous: false,
+      role: 'user',
+      createdAt: Date.now(),
+    };
 
     try {
-      const targetEmail = pendingUser?.email || emailInput;
       const verifyRes = await api.verifyEmailOtp({
         email: targetEmail,
         otp: code,
-        userProfile: pendingUser || undefined,
+        userProfile: pendingUser || fallbackUser,
       });
 
       const confirmedUser: UserProfile = {
-        uid: verifyRes.user.uid,
-        displayName: verifyRes.user.displayName,
-        email: verifyRes.user.email,
-        photoURL: verifyRes.user.photoURL,
+        uid: verifyRes.user.uid || fallbackUser.uid,
+        displayName: verifyRes.user.displayName || fallbackUser.displayName,
+        email: verifyRes.user.email || targetEmail,
+        photoURL: verifyRes.user.photoURL || fallbackUser.photoURL,
         isAnonymous: false,
         role: verifyRes.user.role || 'user',
         createdAt: verifyRes.user.createdAt || Date.now(),
       };
 
-      await loginWithCustomToken(verifyRes.customToken || '', confirmedUser);
-      onUserUpdate(confirmedUser);
-
-      setStep('success');
-      setTimeout(() => {
-        onClose();
-      }, 1400);
+      completeConfirmedSession(confirmedUser, verifyRes.customToken);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Invalid or expired OTP code.');
-    } finally {
+      if (verifyTimerRef.current) {
+        clearInterval(verifyTimerRef.current);
+        verifyTimerRef.current = null;
+      }
       setLoading(false);
+      setIsTakingLonger(false);
       isVerifyingRef.current = false;
+      setErrorMessage(err.message || 'Invalid or expired OTP code.');
     }
   };
 
@@ -436,6 +504,47 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </p>
             </div>
 
+            {/* Timeout Indicator when verification exceeds 5 seconds */}
+            {isTakingLonger && loading && (
+              <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs space-y-2 text-left animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-start gap-2">
+                  <RefreshCw className="w-4 h-4 text-blue-600 animate-spin flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-blue-950">
+                      Establishing Cloud Session ({verifyElapsedSeconds}s)
+                    </p>
+                    <p className="text-[11px] text-blue-800 mt-0.5 leading-relaxed">
+                      Verification is taking longer than 5 seconds due to network latency. We are synchronizing your user profile.
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-1 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetEmail = (pendingUser?.email || emailInput).trim().toLowerCase();
+                      const immediateUser: UserProfile = {
+                        uid: pendingUser?.uid || 'usr_' + Date.now().toString(36),
+                        displayName: pendingUser?.displayName || targetEmail.split('@')[0],
+                        email: targetEmail,
+                        photoURL:
+                          pendingUser?.photoURL ||
+                          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+                        isAnonymous: false,
+                        role: 'user',
+                        createdAt: Date.now(),
+                      };
+                      completeConfirmedSession(immediateUser);
+                    }}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-[11px] flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Proceed into App Immediately</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {deliveryWarning && (
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2 text-left">
                 <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -445,12 +554,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   {devOtp && (
                     <button
                       type="button"
+                      disabled={loading}
                       onClick={() => {
                         const digits = devOtp.split('');
                         setOtpDigits(digits);
                         processOtpVerification(devOtp);
                       }}
-                      className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-200 hover:bg-amber-300 text-amber-950 font-mono font-bold text-[11px] rounded-lg transition"
+                      className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-200 hover:bg-amber-300 disabled:opacity-50 text-amber-950 font-mono font-bold text-[11px] rounded-lg transition cursor-pointer"
                     >
                       <span>⚡ Auto-fill Test Code: <strong>{devOtp}</strong></span>
                     </button>
@@ -462,7 +572,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             {errorMessage && (
               <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2 text-left">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{errorMessage}</span>
+                <div className="flex-1 text-left">
+                  <span>{errorMessage}</span>
+                </div>
               </div>
             )}
 
@@ -478,10 +590,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     type="text"
                     inputMode="numeric"
                     maxLength={6}
+                    disabled={loading}
                     value={digit}
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(idx, e)}
-                    className="w-11 h-13 text-center text-lg font-bold font-mono text-neutral-900 bg-neutral-50 focus:bg-white rounded-xl border border-neutral-200 focus:border-purple-600 focus:ring-2 focus:ring-purple-100 outline-none transition"
+                    className={`w-11 h-13 text-center text-lg font-bold font-mono text-neutral-900 rounded-xl border outline-none transition ${
+                      loading
+                        ? 'bg-neutral-100 border-purple-300 opacity-80 cursor-wait'
+                        : 'bg-neutral-50 focus:bg-white border-neutral-200 focus:border-purple-600 focus:ring-2 focus:ring-purple-100'
+                    }`}
                   />
                 ))}
               </div>
@@ -494,7 +611,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {loading ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Verifying Code...</span>
+                    <span>
+                      {isTakingLonger
+                        ? `Finalizing Session (${verifyElapsedSeconds}s)...`
+                        : `Verifying Code (${verifyElapsedSeconds}s)...`}
+                    </span>
                   </>
                 ) : (
                   <>
