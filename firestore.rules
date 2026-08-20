@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Connection test document
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // 1. User Profiles Collection
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false; // PII Isolation: No blanket listing of user profiles
+
+      allow create: if isOwner(userId) && isValidId(userId)
+        && incoming().userId == userId
+        && incoming().displayName is string && incoming().displayName.size() <= 100
+        && incoming().email is string && incoming().email.size() <= 200;
+
+      allow update: if isOwner(userId) && isValidId(userId)
+        && incoming().userId == userId
+        && (!('displayName' in incoming()) || (incoming().displayName is string && incoming().displayName.size() <= 100))
+        && (!('email' in incoming()) || (incoming().email is string && incoming().email.size() <= 200));
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+    }
+
+    // 2. Chat Sessions Collection
+    match /chat_sessions/{sessionId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn() && isValidId(sessionId)
+        && incoming().sessionId == sessionId
+        && incoming().userId == request.auth.uid
+        && incoming().title is string && incoming().title.size() <= 300;
+
+      allow update: if isSignedIn() && isValidId(sessionId)
+        && existing().userId == request.auth.uid
+        && incoming().userId == request.auth.uid
+        && (!('title' in incoming()) || (incoming().title is string && incoming().title.size() <= 300));
+
+      allow delete: if isSignedIn() && isValidId(sessionId)
+        && existing().userId == request.auth.uid;
+
+      // Messages Sub-collection inside a Chat Session
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && existing().userId == request.auth.uid;
+        allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+        allow create: if isSignedIn() && isValidId(messageId) && isValidId(sessionId)
+          && incoming().sessionId == sessionId
+          && incoming().userId == request.auth.uid
+          && incoming().content is string && incoming().content.size() <= 50000;
+
+        allow update: if isSignedIn() && isValidId(messageId)
+          && existing().userId == request.auth.uid
+          && incoming().userId == request.auth.uid;
+
+        allow delete: if isSignedIn() && isValidId(messageId)
+          && existing().userId == request.auth.uid;
+      }
+    }
+
+    // 3. User Memories Collection (AI Persistent Context)
+    match /user_memories/{memoryId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn() && isValidId(memoryId)
+        && incoming().userId == request.auth.uid
+        && incoming().text is string && incoming().text.size() <= 1000;
+
+      allow update: if isSignedIn() && isValidId(memoryId)
+        && existing().userId == request.auth.uid
+        && incoming().userId == request.auth.uid;
+
+      allow delete: if isSignedIn() && isValidId(memoryId)
+        && existing().userId == request.auth.uid;
+    }
+  }
+}

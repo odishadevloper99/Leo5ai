@@ -1,0 +1,166 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile document storing basic user metadata and settings.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique identifier of the user matching request.auth.uid."
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Public display name of the user."
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "User email address."
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "User avatar image URL."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when profile was last updated."
+        }
+      },
+      "required": ["userId", "displayName", "email", "createdAt", "updatedAt"]
+    },
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "Metadata for a conversation thread.",
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Unique ID of the chat session."
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Owner user ID."
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Title of the chat session."
+        },
+        "selectedModel": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Model or intelligence mode used for this conversation."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last modified timestamp."
+        }
+      },
+      "required": ["sessionId", "userId", "title", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Individual message inside a chat session.",
+      "type": "object",
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Unique message ID."
+        },
+        "sessionId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Parent session ID."
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Owner user ID."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "assistant", "system"],
+          "description": "Role of the message sender."
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 50000,
+          "description": "Text body of the message."
+        },
+        "isDeepResearch": {
+          "type": "boolean",
+          "description": "Whether this message was generated using deep research."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when message was added."
+        }
+      },
+      "required": ["messageId", "sessionId", "userId", "role", "content", "createdAt"]
+    },
+    "UserMemory": {
+      "title": "UserMemory",
+      "description": "Persistent memory item extracted by Leo AI across sessions.",
+      "type": "object",
+      "properties": {
+        "memoryId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Unique ID of the memory item."
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Owner user ID."
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "The learned fact or preference."
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Category e.g. preference, context, project."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp created."
+        }
+      },
+      "required": ["memoryId", "userId", "text", "category", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores user profile data."
+    },
+    "/chat_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/ChatSession" },
+      "description": "Stores user chat sessions."
+    },
+    "/chat_sessions/{sessionId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Stores messages within a chat session."
+    },
+    "/user_memories/{memoryId}": {
+      "schema": { "$ref": "#/entities/UserMemory" },
+      "description": "Stores persistent memories for users."
+    }
+  }
+}
