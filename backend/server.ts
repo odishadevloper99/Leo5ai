@@ -154,8 +154,11 @@ function getRtdbBaseUrl(): string {
   if (process.env.FIREBASE_DATABASE_URL && process.env.FIREBASE_DATABASE_URL.startsWith('http')) {
     return process.env.FIREBASE_DATABASE_URL.replace(/\/$/, '');
   }
-  const projectId = process.env.FIREBASE_PROJECT_ID || 'ai-studio-leoai-434fd984-e3fa-4bcf-9e8d-e03e334f487d';
-  return `https://${projectId}-default-rtdb.firebaseio.com`;
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  if (projectId) {
+    return `https://${projectId}-default-rtdb.firebaseio.com`;
+  }
+  return '';
 }
 
 async function setRtdbData(pathStr: string, data: any): Promise<boolean> {
