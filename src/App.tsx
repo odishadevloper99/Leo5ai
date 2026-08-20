@@ -110,6 +110,17 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Require a real (non-guest) login before the chat interface is shown.
+  const isLoggedIn = !user.isAnonymous;
+
+  // Auto-open the login modal the first time a guest lands on the app.
+  // (Kept above the /admin early-return below so hook order stays stable.)
+  useEffect(() => {
+    if (!isLoggedIn && currentRoute !== '/admin') {
+      setIsAuthOpen(true);
+    }
+  }, [isLoggedIn, currentRoute]);
+
   // If user navigated directly to /admin, render the dedicated Admin Portal
   if (currentRoute === '/admin') {
     return (
@@ -294,6 +305,35 @@ export default function App() {
           }
         }}
       />
+    );
+  }
+
+  // Gate: don't render the chat interface (or any of its data) until the
+  // user has actually logged in. Only the login modal is shown.
+  if (!isLoggedIn) {
+    return (
+      <div className="fixed inset-0 w-full h-full h-[100dvh] bg-[#dcd6eb] flex items-center justify-center overflow-hidden font-sans">
+        <div className="hidden md:block absolute top-[-10%] left-[-10%] w-[45vw] h-[45vw] rounded-full bg-purple-300/40 blur-[100px] pointer-events-none -z-10" />
+        <div className="hidden md:block absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] rounded-full bg-indigo-300/30 blur-[120px] pointer-events-none -z-10" />
+
+        <div className="text-center space-y-4 px-6">
+          <h1 className="font-display font-bold text-2xl text-neutral-800">Leo AI</h1>
+          <p className="text-sm text-neutral-500">Please sign in to start chatting.</p>
+          <button
+            onClick={() => setIsAuthOpen(true)}
+            className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold shadow-lg shadow-purple-500/20 transition"
+          >
+            Sign in
+          </button>
+        </div>
+
+        <AuthModal
+          isOpen={isAuthOpen}
+          onClose={() => setIsAuthOpen(false)}
+          user={user}
+          onUserUpdate={setUser}
+        />
+      </div>
     );
   }
 

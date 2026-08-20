@@ -1180,9 +1180,21 @@ app.post('/api/chat', async (req, res) => {
             isDeepResearch,
             hasVision: hasImages
           });
+        } else {
+          // IMPORTANT: previously a non-OK response here was silently ignored
+          // (no log, no error), so the request would quietly fall through to
+          // Gemini and then to the hard-coded canned "built-in" reply, which
+          // completely ignores the admin panel's system prompt. Log the real
+          // reason so failures (bad key, bad model name, etc.) are visible in
+          // the server logs instead of looking like "the AI is ignoring my
+          // system prompt" with no explanation.
+          const errBody = await aiResponse.text().catch(() => '');
+          console.error(
+            `[AICREDITS] Request failed with status ${aiResponse.status} for model "${selectedModel}": ${errBody.slice(0, 500)}`
+          );
         }
       } catch (aiCreditsErr) {
-        console.warn('AICredits request failed, falling back:', aiCreditsErr);
+        console.error('[AICREDITS] Request threw an error, falling back:', aiCreditsErr);
       }
     }
 
@@ -1352,16 +1364,20 @@ I have inspected the uploaded image in detail. Here is the structured visual bre
 *Note: Add your \`AICREDITS_API_KEY\` from [aicredits.in/dashboard](https://aicredits.in/dashboard) or \`GEMINI_API_KEY\` in your environment settings for real-time model inference.*`;
   }
 
-  return `### ⚡ Leo AI Intelligence Response
+  // Honest diagnostic message. Previously this pretended everything (including
+  // the admin system prompt) was "strictly enforced" even though this canned
+  // reply is generated locally and never actually reaches an AI model — which
+  // is exactly why the admin panel's system prompt appeared to be ignored:
+  // this reply doesn't use it at all.
+  return `### ⚠️ No AI Provider Connected
 
-Thank you for reaching out! I am **Leo AI**, your high-performance cognitive assistant.
+I couldn't reach a real AI model, so this is a canned local message — **your Admin Panel system prompt was NOT used to generate this reply.**
 
-- **System Prompt**: Strictly enforced for precision, reasoning, and clarity.
-- **Vision Models**: Configured for lightweight, cost-efficient image OCR and layout analysis.
-- **Persistent Memory**: Powered by Memo API to remember your project preferences across sessions.
-- **Full-Stack Separation**: Optimized for seamless Vercel (Frontend) and Render (Backend) hosting.
+To fix this:
+1. Set a valid \`AICREDITS_API_KEY\` (and check \`AICREDITS_BASE_URL\` / model name), **or**
+2. Set a valid \`GEMINI_API_KEY\`
 
-How would you like to proceed with your request? Feel free to upload an image, activate **Deeper Research**, or explore our curated prompt library!`;
+in your backend's environment variables, then check the server logs for \`[AICREDITS]\` or \`[GEMINI]\` error lines — they show the exact reason the request failed (invalid key, wrong model name, network error, etc.). Once a provider call succeeds, your admin panel system prompt will be applied normally.`;
 }
 
 // ----------------------------------------------------

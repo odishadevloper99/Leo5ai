@@ -79,19 +79,29 @@ export async function loginWithGoogle(): Promise<UserProfile> {
 
     return userProfile;
   } catch (err: any) {
-    console.warn('Google Sign-in popup note, fallback to local user profile:', err);
-    const mockUser: UserProfile = {
-      uid: 'google_usr_' + Math.random().toString(36).substring(2, 8),
-      displayName: 'Google Explorer',
-      email: 'explorer@gmail.com',
-      photoURL:
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      isAnonymous: false,
-      role: 'user',
-      createdAt: Date.now(),
-    };
-    localStorage.setItem('leo_current_user', JSON.stringify(mockUser));
-    return mockUser;
+    // IMPORTANT: do NOT silently fabricate a fake local account here.
+    // Previously this swallowed every popup error (blocked popup, unauthorized
+    // domain, wrong OAuth client, user closing the popup, etc.) and returned a
+    // fake "Google Explorer" user, which made it look like login "worked" even
+    // though no real Google account was ever signed in. Surface the real
+    // Firebase error instead so it can be seen and fixed (most common cause:
+    // your app's domain is not added under Firebase Console -> Authentication
+    // -> Settings -> Authorized domains).
+    console.error('Google Sign-In Error:', err?.code, err?.message);
+    let friendlyMessage = err?.message || 'Google sign-in failed.';
+    if (err?.code === 'auth/unauthorized-domain') {
+      friendlyMessage =
+        'This domain is not authorized for Google Sign-In. Add it under Firebase Console → Authentication → Settings → Authorized domains.';
+    } else if (err?.code === 'auth/popup-blocked') {
+      friendlyMessage = 'Your browser blocked the Google sign-in popup. Please allow popups for this site and try again.';
+    } else if (err?.code === 'auth/popup-closed-by-user') {
+      friendlyMessage = 'Google sign-in was cancelled before it finished.';
+    } else if (err?.code === 'auth/operation-not-allowed') {
+      friendlyMessage = 'Google sign-in is not enabled for this Firebase project. Enable it under Authentication → Sign-in method.';
+    }
+    const wrappedError = new Error(friendlyMessage);
+    (wrappedError as any).code = err?.code;
+    throw wrappedError;
   }
 }
 
@@ -155,16 +165,23 @@ export function getCurrentStoredUser(): UserProfile {
   const stored = localStorage.getItem('leo_current_user');
   if (stored) {
     try {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      // Only trust the stored profile if it's a real, non-anonymous session.
+      if (parsed && parsed.isAnonymous !== true && parsed.uid) {
+        return parsed;
+      }
     } catch (e) {}
   }
+  // IMPORTANT: no user is signed in yet. Previously this returned a fully
+  // formed fake "logged in" profile (Emerson Sterling), which meant the app
+  // always behaved as if someone had already logged in and the chat UI opened
+  // immediately without ever requiring login. Return a real guest/anonymous
+  // profile instead so the app can correctly gate access behind sign-in.
   return {
-    uid: 'default-user',
-    displayName: 'Emerson Sterling',
-    email: 'sterlingr@gmail.com',
-    photoURL:
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    isAnonymous: false,
+    uid: 'guest-' + Date.now(),
+    displayName: 'Guest',
+    email: '',
+    isAnonymous: true,
     role: 'user',
   };
 }
