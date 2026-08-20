@@ -164,44 +164,69 @@ function getRtdbBaseUrl(): string {
 }
 
 async function setRtdbData(pathStr: string, data: any): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2500);
   try {
     const baseUrl = getRtdbBaseUrl();
-    if (!baseUrl || !baseUrl.startsWith('http')) return false;
+    if (!baseUrl || !baseUrl.startsWith('http')) {
+      clearTimeout(timeoutId);
+      return false;
+    }
     const res = await fetch(`${baseUrl}/${pathStr}.json`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
     return res.ok;
   } catch (e: any) {
-    console.warn(`[RTDB PUT ${pathStr}] Error:`, e.message);
+    clearTimeout(timeoutId);
+    console.warn(`[RTDB PUT ${pathStr}] Notice:`, e.message);
     return false;
   }
 }
 
 async function getRtdbData(pathStr: string): Promise<any> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2500);
   try {
     const baseUrl = getRtdbBaseUrl();
-    if (!baseUrl || !baseUrl.startsWith('http')) return null;
-    const res = await fetch(`${baseUrl}/${pathStr}.json`);
+    if (!baseUrl || !baseUrl.startsWith('http')) {
+      clearTimeout(timeoutId);
+      return null;
+    }
+    const res = await fetch(`${baseUrl}/${pathStr}.json`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
     if (res.ok) {
       return await res.json();
     }
   } catch (e: any) {
-    console.warn(`[RTDB GET ${pathStr}] Error:`, e.message);
+    clearTimeout(timeoutId);
+    console.warn(`[RTDB GET ${pathStr}] Notice:`, e.message);
   }
   return null;
 }
 
 async function deleteRtdbData(pathStr: string): Promise<void> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2500);
   try {
     const baseUrl = getRtdbBaseUrl();
-    if (!baseUrl || !baseUrl.startsWith('http')) return;
+    if (!baseUrl || !baseUrl.startsWith('http')) {
+      clearTimeout(timeoutId);
+      return;
+    }
     await fetch(`${baseUrl}/${pathStr}.json`, {
       method: 'DELETE',
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
   } catch (e: any) {
-    console.warn(`[RTDB DELETE ${pathStr}] Error:`, e.message);
+    clearTimeout(timeoutId);
+    console.warn(`[RTDB DELETE ${pathStr}] Notice:`, e.message);
   }
 }
 
@@ -1079,6 +1104,53 @@ app.delete('/api/chats/:id', (req, res) => {
   res.json({ success: true, message: 'Chat deleted' });
 });
 
+// Helper to build the unified, authoritative system prompt context
+function buildUnifiedSystemPrompt(
+  userId: string,
+  systemPromptOverride?: string,
+  isDeepResearch: boolean = false,
+  hasImages: boolean = false
+): string {
+  // 1. Authoritative Base Persona & Directives from Admin Panel / Config / Env
+  const rawAdminPrompt = (systemPromptOverride || currentConfig.systemPrompt || process.env.SYSTEM_PROMPT || '').trim();
+  const defaultPersona = `You are Leo AI, an elite, highly intelligent, and versatile AI assistant created to assist humans across engineering, reasoning, visual analysis, writing, and creative brainstorms.
+CRITICAL DIRECTIVES:
+1. Always follow user constraints strictly and accurately.
+2. Provide concise, elegant, and insightful answers with well-formatted Markdown, including clear headings, bullet points, and code blocks with syntax highlighting.
+3. When analyzing images or visual diagrams, perform thorough, detailed OCR and visual reasoning.
+4. Adapt to the user's persistent memory and preferences seamlessly.
+5. Never hallucinate or bypass system safety directives.`;
+
+  const basePersona = rawAdminPrompt || defaultPersona;
+
+  // 2. Persistent User Memory Context (Memo API / local store)
+  const userMemories = memoryStore.get(userId) || [];
+  let memorySection = '';
+  if (currentConfig.enableMemory && userMemories.length > 0) {
+    memorySection = `\n\n[PERSISTENT USER CONTEXT & MEMORY (from Memo API)]:\n` +
+      userMemories.map((m, i) => `${i + 1}. [${m.category.toUpperCase()}] ${m.text}`).join('\n') +
+      `\n(Seamlessly tailor responses using these background preferences without explicitly mentioning this memory store unless asked.)`;
+  }
+
+  // 3. Deep Research & Structured Reasoning Directives
+  let deepResearchSection = '';
+  if (isDeepResearch) {
+    deepResearchSection = `\n\n[EXECUTION MODE: DEEP RESEARCH & ADVANCED REASONING ACTIVATED]
+- Provide a rigorous, multi-faceted analysis with structured breakdowns.
+- Include an executive summary, underlying mechanics/theory, critical trade-offs, and concrete next steps.
+- Maintain maximum intellectual precision and depth.`;
+  }
+
+  // 4. Multimodal Vision Guidance
+  let visionSection = '';
+  if (hasImages) {
+    visionSection = `\n\n[MULTIMODAL VISION REASONING ACTIVATED]
+- Thoroughly inspect all visual features, spatial layouts, extracted text (OCR), colors, and UI/architectural structures in the provided image(s).`;
+  }
+
+  return `${basePersona}${memorySection}${deepResearchSection}${visionSection}`.trim();
+}
+
 // ----------------------------------------------------
 // 5. AI Chat Completion & Vision Reasoning
 // ----------------------------------------------------
@@ -1097,29 +1169,16 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Messages array is required' });
     }
 
-    // Retrieve user memory from Memo API store
-    const userMemories = memoryStore.get(userId) || [];
-    let memoryContext = '';
-    if (currentConfig.enableMemory && userMemories.length > 0) {
-      memoryContext = `\n\n[PERSISTENT USER MEMORY (from Memo API)]:\n` +
-        userMemories.map((m, i) => `${i + 1}. [${m.category.toUpperCase()}] ${m.text}`).join('\n') +
-        `\n(Use this background memory to tailor answers seamlessly without being repetitive.)`;
-    }
-
-    // Deep research instructions if toggled
-    let deepResearchPrompt = '';
-    if (isDeepResearch) {
-      deepResearchPrompt = `\n\n[MODE: DEEP RESEARCH & REASONING ACTIVATED]
-Provide an in-depth, structured, and comprehensive analysis. 
-Begin with an executive summary, elaborate on key mechanisms or principles, weigh trade-offs, and provide actionable takeaways.`;
-    }
-
-    // Base system instruction
-    const baseSystem = (systemPromptOverride || currentConfig.systemPrompt || process.env.SYSTEM_PROMPT || '').trim();
-    const finalSystemPrompt = `${baseSystem}${memoryContext}${deepResearchPrompt}`;
-
     const latestUserMessage = messages[messages.length - 1];
     const hasImages = Array.isArray(images) && images.length > 0;
+
+    // Construct the authoritative system prompt containing the defined persona
+    const finalSystemPrompt = buildUnifiedSystemPrompt(
+      userId,
+      systemPromptOverride,
+      Boolean(isDeepResearch),
+      hasImages
+    );
 
     if (hasImages) {
       globalStats.totalVisionQueries++;
@@ -1136,14 +1195,15 @@ Begin with an executive summary, elaborate on key mechanisms or principles, weig
       try {
         const selectedModel = targetModel;
         
-        // Format messages for OpenAI / aicredits endpoint
+        // Consistently inject the authoritative system prompt as the top-level 'system' message
         const formattedMessages: any[] = [
           { role: 'system', content: finalSystemPrompt }
         ];
 
-        // Add history
+        // Append past user and assistant messages, strictly excluding rogue client system messages
         for (let i = 0; i < messages.length - 1; i++) {
           const m = messages[i];
+          if (m.role === 'system') continue;
           formattedMessages.push({
             role: m.role === 'assistant' ? 'assistant' : 'user',
             content: m.content
@@ -1213,11 +1273,12 @@ Begin with an executive summary, elaborate on key mechanisms or principles, weig
         },
       });
       
-      // Build content parts
+      // Build content turns (Gemini uses 'user' and 'model' turns)
       const contents: any[] = [];
 
-      // History
+      // Add conversation history
       for (const m of messages.slice(0, -1)) {
+        if (m.role === 'system') continue;
         contents.push({
           role: m.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: m.content }]
@@ -1229,7 +1290,6 @@ Begin with an executive summary, elaborate on key mechanisms or principles, weig
 
       if (hasImages) {
         for (const img of images) {
-          // Check if data URL
           const match = img.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
           if (match) {
             userParts.push({
@@ -1247,8 +1307,7 @@ Begin with an executive summary, elaborate on key mechanisms or principles, weig
         parts: userParts
       });
 
-      // Strict Model Enforcement:
-      // Always execute targetModel (the model configured in Render env vars / admin panel)
+      // Strict Model Enforcement with unified systemInstruction
       try {
         const response = await ai.models.generateContent({
           model: targetModel,
@@ -1274,7 +1333,7 @@ Begin with an executive summary, elaborate on key mechanisms or principles, weig
         });
       } catch (err: any) {
         console.warn(`[GEMINI] Execution failed with model "${targetModel}":`, err.message);
-        // If the specific model failed, attempt standard fallback only if not explicitly forced
+        // Fallback if specific model was unavailable
         if (!process.env.GEMINI_MODEL && targetModel !== 'gemini-2.5-flash') {
           try {
             const fallbackResponse = await ai.models.generateContent({
@@ -1302,7 +1361,7 @@ Begin with an executive summary, elaborate on key mechanisms or principles, weig
       }
     }
 
-    // 3. High quality built-in fallback when neither key is active or models are under high load
+    // 3. Built-in intelligent fallback acknowledging configured persona
     const simulatedReply = generateIntelligentFallback(latestUserMessage.content, hasImages, isDeepResearch);
     return res.json({
       content: simulatedReply,

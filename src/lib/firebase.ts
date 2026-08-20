@@ -99,26 +99,40 @@ export async function loginWithGoogle(): Promise<UserProfile> {
  * Sign in with Firebase Custom Token
  */
 export async function loginWithCustomToken(customToken: string, userProfile: UserProfile): Promise<UserProfile> {
+  // 1. Immediately save to localStorage to ensure instant session establishment
   try {
-    if (customToken) {
-      await signInWithCustomToken(auth, customToken).catch((err) => {
-        console.warn('Firebase custom token client sign-in notice (proceeding with verified session):', err);
-      });
-    }
+    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
   } catch (e) {
-    console.warn('Custom token auth caught:', e);
+    console.warn('LocalStorage save notice:', e);
   }
 
-  localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+  // 2. Attempt Firebase client custom token authentication with a safety timeout (non-blocking)
+  if (customToken) {
+    const authPromise = signInWithCustomToken(auth, customToken).catch((err) => {
+      console.warn('Firebase custom token notice (proceeding with verified session):', err.message || err);
+    });
+    // Race with 2.5s timeout so UI never hangs
+    await Promise.race([
+      authPromise,
+      new Promise((resolve) => setTimeout(resolve, 2500))
+    ]);
+  }
 
-  // Sync user profile to Realtime Database
+  // 3. Asynchronously sync user profile to Realtime Database without blocking UI
   try {
-    await set(ref(database, `users/${userProfile.uid}`), {
+    const syncPromise = set(ref(database, `users/${userProfile.uid}`), {
       ...userProfile,
       updatedAt: Date.now(),
+    }).catch((err) => {
+      console.warn('Realtime Database user profile sync note:', err.message || err);
     });
+    // Non-blocking wait with quick timeout
+    Promise.race([
+      syncPromise,
+      new Promise((resolve) => setTimeout(resolve, 1500))
+    ]).catch(() => {});
   } catch (e) {
-    console.warn('Realtime Database user profile sync note:', e);
+    console.warn('Realtime Database user profile sync caught:', e);
   }
 
   return userProfile;

@@ -43,6 +43,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  const isVerifyingRef = useRef(false);
+
   // Reset state when opening/closing
   useEffect(() => {
     if (isOpen) {
@@ -52,6 +54,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setDevOtp(null);
       setOtpDigits(['', '', '', '', '', '']);
       setEmailInput(user.email || '');
+      isVerifyingRef.current = false;
     }
   }, [isOpen, user.email]);
 
@@ -166,8 +169,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const autoVerifyCode = async (code: string) => {
-    if (code.length !== 6) return;
+  const processOtpVerification = async (code: string) => {
+    if (code.length !== 6 || isVerifyingRef.current) return;
+    isVerifyingRef.current = true;
     setLoading(true);
     setErrorMessage('');
 
@@ -195,11 +199,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setStep('success');
       setTimeout(() => {
         onClose();
-      }, 1800);
+      }, 1400);
     } catch (err: any) {
       setErrorMessage(err.message || 'Invalid or expired OTP code.');
     } finally {
       setLoading(false);
+      isVerifyingRef.current = false;
     }
   };
 
@@ -217,7 +222,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       inputRefs.current[nextFocus]?.focus();
 
       if (newDigits.join('').length === 6) {
-        autoVerifyCode(newDigits.join(''));
+        processOtpVerification(newDigits.join(''));
       }
       return;
     }
@@ -233,7 +238,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
 
     if (newDigits.join('').length === 6) {
-      autoVerifyCode(newDigits.join(''));
+      processOtpVerification(newDigits.join(''));
     }
   };
 
@@ -251,42 +256,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setErrorMessage('Please enter the complete 6-digit OTP code.');
       return;
     }
-
-    setLoading(true);
-    setErrorMessage('');
-
-    try {
-      const targetEmail = pendingUser?.email || emailInput;
-      const verifyRes = await api.verifyEmailOtp({
-        email: targetEmail,
-        otp: fullCode,
-        userProfile: pendingUser || undefined,
-      });
-
-      const confirmedUser: UserProfile = {
-        uid: verifyRes.user.uid,
-        displayName: verifyRes.user.displayName,
-        email: verifyRes.user.email,
-        photoURL: verifyRes.user.photoURL,
-        isAnonymous: false,
-        role: verifyRes.user.role || 'user',
-        createdAt: verifyRes.user.createdAt || Date.now(),
-      };
-
-      // Authenticate with Firebase using minted custom token & sync profile
-      await loginWithCustomToken(verifyRes.customToken || '', confirmedUser);
-      onUserUpdate(confirmedUser);
-
-      // Transition to Success state
-      setStep('success');
-      setTimeout(() => {
-        onClose();
-      }, 1800);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Invalid or expired OTP code.');
-    } finally {
-      setLoading(false);
-    }
+    await processOtpVerification(fullCode);
   };
 
   // Resend OTP
@@ -478,7 +448,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       onClick={() => {
                         const digits = devOtp.split('');
                         setOtpDigits(digits);
-                        autoVerifyCode(devOtp);
+                        processOtpVerification(devOtp);
                       }}
                       className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-200 hover:bg-amber-300 text-amber-950 font-mono font-bold text-[11px] rounded-lg transition"
                     >
