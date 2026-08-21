@@ -1856,3 +1856,10 @@ app.post('/api/chat', async (req, res) => {
     });
   }
 });
+
+const PORT = Number(process.env.PORT) || 10000;
+const HOST = '0.0.0.0';
+
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Leo AI backend running on ${HOST}:${PORT}`);
+});
