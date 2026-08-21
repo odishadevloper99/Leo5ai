@@ -165,7 +165,7 @@ VITE_FIREBASE_PROJECT_ID=leo-ai-production
 VITE_FIREBASE_STORAGE_BUCKET=leo-ai-production.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=507367657580
 VITE_FIREBASE_APP_ID=1:507367657580:web:abcd1234
-VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com`;
+VITE_FIREBASE_DATABASE_URL=https://gen-lang-client-0682444492-default-rtdb.firebaseio.com`;
 
     navigator.clipboard.writeText(envContent);
     setCopiedEnv(true);
