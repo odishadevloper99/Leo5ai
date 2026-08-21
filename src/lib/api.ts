@@ -1,42 +1,8 @@
-import { AIConfig, ChatSession, MemoMemoryItem, Message, SystemStats, UserProfile, PricingPlan, CashfreeConfig, PaymentOrder } from '../types';
+import { AIConfig, ChatSession, MemoMemoryItem, Message, SystemStats, UserProfile } from '../types';
 
 const API_BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
 
 let adminAuthToken = localStorage.getItem('leo_admin_token') || '';
-
-/**
- * Safely parse JSON from a fetch Response, preventing 'Unexpected token < in JSON at position 0' crashes
- * when HTML error pages (e.g., 404/500/502 from proxy or Vite SPA fallback) are returned.
- */
-async function safeFetchJson<T = any>(res: Response, defaultErrorMessage = 'Request failed'): Promise<T> {
-  const contentType = res.headers.get('content-type') || '';
-  const text = await res.text();
-
-  let data: any = null;
-  if (contentType.includes('application/json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = null;
-    }
-  }
-
-  if (!res.ok) {
-    const errorDetail = data?.error || data?.message || (res.status === 404 ? 'Endpoint not found (404)' : `Server error (${res.status} ${res.statusText || 'Error'})`);
-    throw new Error(errorDetail || defaultErrorMessage);
-  }
-
-  if (data !== null) {
-    return data as T;
-  }
-
-  // If status is 200 OK but body is HTML (e.g. Vite SPA index.html fallback during cold start)
-  if (text.toLowerCase().includes('<!doctype html') || text.toLowerCase().includes('<html')) {
-    throw new Error('API server returned an HTML page instead of JSON. Server is initializing.');
-  }
-
-  throw new Error(`Unexpected non-JSON response from server.`);
-}
 
 export const api = {
   setAdminToken(token: string) {
@@ -65,43 +31,16 @@ export const api = {
     isDeepResearch?: boolean;
     hasVision?: boolean;
   }> {
-    // Attempt request with 1 automatic retry on cold-start or HTML fallback
-    let lastError: any = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const res = await fetch(`${API_BASE}/api/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(params),
-        });
-        const result = await safeFetchJson(res, 'Failed to communicate with Leo AI engine');
-        if (result && result.content) {
-          return result;
-        }
-      } catch (err: any) {
-        lastError = err;
-        if (attempt === 0) {
-          // Wait 600ms before retrying
-          await new Promise((resolve) => setTimeout(resolve, 600));
-        }
-      }
+    const res = await fetch(`${API_BASE}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Chat request failed' }));
+      throw new Error(err.error || 'Failed to communicate with Leo AI');
     }
-
-    const latestUserMsg = params.messages[params.messages.length - 1]?.content || 'your query';
-    const hasImages = Boolean(params.images && params.images.length > 0);
-
-    // If server is warming up or temporarily returning HTML, provide an intelligent fallback
-    return {
-      content: `### Response from Leo AI\n\nI have received your request regarding: **"${latestUserMsg.slice(0, 80)}${latestUserMsg.length > 80 ? '...' : ''}"**\n\n${
-        hasImages ? '🖼️ **Visual inspection noted**: Image analyzed.\n\n' : ''
-      }${
-        params.isDeepResearch ? '🔍 **Deep Research Mode Active**: Multi-perspective analysis initiated.\n\n' : ''
-      }I am ready to assist you. If you are experiencing a brief connection warm-up, please try asking again or check your backend connection status.`,
-      model: 'gemini-3.7-flash',
-      provider: 'Leo AI Engine',
-      isDeepResearch: params.isDeepResearch,
-      hasVision: hasImages,
-    };
+    return res.json();
   },
 
   async adminLogin(password: string): Promise<{ success: boolean; token: string; message: string }> {
@@ -110,9 +49,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
     });
-    const data = await safeFetchJson<{ success: boolean; token: string; message: string }>(res, 'Invalid admin password');
-    if (!data.success) {
-      throw new Error(data.message || 'Invalid admin credentials');
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Invalid admin password');
     }
     this.setAdminToken(data.token);
     return data;
@@ -135,7 +74,8 @@ export const api = {
         Authorization: `Bearer ${adminAuthToken}`,
       },
     });
-    return safeFetchJson(res, 'Unauthorized or failed to load config');
+    if (!res.ok) throw new Error('Unauthorized or failed to load config');
+    return res.json();
   },
 
   async saveAdminConfig(config: Partial<AIConfig>): Promise<{ success: boolean; message: string }> {
@@ -147,7 +87,8 @@ export const api = {
       },
       body: JSON.stringify(config),
     });
-    return safeFetchJson(res, 'Failed to save configuration');
+    if (!res.ok) throw new Error('Failed to save configuration');
+    return res.json();
   },
 
   async getAdminStats(): Promise<SystemStats> {
@@ -156,7 +97,8 @@ export const api = {
         Authorization: `Bearer ${adminAuthToken}`,
       },
     });
-    return safeFetchJson(res, 'Failed to load stats');
+    if (!res.ok) throw new Error('Failed to load stats');
+    return res.json();
   },
 
   async getAdminUsers(): Promise<{ users: UserProfile[] }> {
@@ -165,31 +107,15 @@ export const api = {
         Authorization: `Bearer ${adminAuthToken}`,
       },
     });
-    return safeFetchJson(res, 'Failed to load users');
+    if (!res.ok) throw new Error('Failed to load users');
+    return res.json();
   },
 
   async getMemories(userId = 'default-user'): Promise<MemoMemoryItem[]> {
-    try {
-      const res = await fetch(`${API_BASE}/api/memory?userId=${encodeURIComponent(userId)}`);
-      const data = await safeFetchJson<{ memories: MemoMemoryItem[] }>(res);
-      return data.memories || [];
-    } catch {
-      return [];
-    }
-  },
-
-  async searchMemories(query: string, userId = 'default-user', limit = 5): Promise<MemoMemoryItem[]> {
-    try {
-      const res = await fetch(`${API_BASE}/api/memory/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, userId, limit }),
-      });
-      const data = await safeFetchJson<{ memories: MemoMemoryItem[] }>(res);
-      return data.memories || [];
-    } catch {
-      return [];
-    }
+    const res = await fetch(`${API_BASE}/api/memory?userId=${encodeURIComponent(userId)}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.memories || [];
   },
 
   async addMemory(memory: { userId?: string; text: string; category?: string }): Promise<MemoMemoryItem> {
@@ -198,39 +124,22 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(memory),
     });
-    const data = await safeFetchJson<{ success: boolean; memory: MemoMemoryItem }>(res, 'Failed to save memory');
+    if (!res.ok) throw new Error('Failed to save memory');
+    const data = await res.json();
     return data.memory;
-  },
-
-  async updateMemory(id: string, text: string, userId = 'default-user'): Promise<void> {
-    const res = await fetch(`${API_BASE}/api/memory/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, userId }),
-    });
-    await safeFetchJson(res, 'Failed to update memory');
   },
 
   async deleteMemory(id: string, userId = 'default-user'): Promise<void> {
     await fetch(`${API_BASE}/api/memory/${encodeURIComponent(id)}?userId=${encodeURIComponent(userId)}`, {
       method: 'DELETE',
-    }).catch(() => {});
-  },
-
-  async clearAllMemories(userId = 'default-user'): Promise<void> {
-    await fetch(`${API_BASE}/api/memory?userId=${encodeURIComponent(userId)}`, {
-      method: 'DELETE',
-    }).catch(() => {});
+    });
   },
 
   async getChats(userId = 'default-user'): Promise<ChatSession[]> {
-    try {
-      const res = await fetch(`${API_BASE}/api/chats?userId=${encodeURIComponent(userId)}`);
-      const data = await safeFetchJson<{ chats: ChatSession[] }>(res);
-      return data.chats || [];
-    } catch {
-      return [];
-    }
+    const res = await fetch(`${API_BASE}/api/chats?userId=${encodeURIComponent(userId)}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.chats || [];
   },
 
   async saveChat(chat: Partial<ChatSession> & { id: string }): Promise<void> {
@@ -238,13 +147,13 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(chat),
-    }).catch(() => {});
+    });
   },
 
   async deleteChat(id: string): Promise<void> {
     await fetch(`${API_BASE}/api/chats/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-    }).catch(() => {});
+    });
   },
 
   async sendEmailOtp(params: {
@@ -272,7 +181,11 @@ export const api = {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
-      return await safeFetchJson(res, 'Failed to send OTP to email');
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to send OTP to email');
+      }
+      return data;
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
@@ -298,10 +211,15 @@ export const api = {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
-      return await safeFetchJson(res, 'Invalid or expired OTP');
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Invalid or expired OTP');
+      }
+      return data;
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
+        // Fallback for verified user if server timed out
         const normalizedEmail = params.email.trim().toLowerCase();
         const fallbackUid = params.userProfile?.uid || 'usr_' + Date.now().toString(36);
         return {
@@ -322,147 +240,8 @@ export const api = {
     }
   },
 
-  async loginWithGoogle(params: {
-    credential?: string;
-    idToken?: string;
-    accessToken?: string;
-    code?: string;
-    redirectUri?: string;
-  }): Promise<{
-    success: boolean;
-    message: string;
-    user: UserProfile;
-    token: string;
-    isNewUser?: boolean;
-  }> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
-
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/google`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      return await safeFetchJson(res, 'Google authentication failed');
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        throw new Error('Backend server is taking longer to respond. Please try again.');
-      }
-      throw err;
-    }
-  },
-
-  async getGoogleAuthUrl(redirectUri?: string, state?: string): Promise<{ success: boolean; url: string }> {
-    const query = new URLSearchParams();
-    if (redirectUri) query.set('redirect_uri', redirectUri);
-    if (state) query.set('state', state);
-
-    const res = await fetch(`${API_BASE}/api/auth/google/url?${query.toString()}`);
-    return safeFetchJson(res, 'Failed to generate Google OAuth URL');
-  },
-
-  async getOAuthConfig(): Promise<{
-    googleClientId: string;
-    googleConfigured: boolean;
-    defaultCredits: number;
-    firebaseConfigured: boolean;
-  }> {
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/oauth-config`);
-      return await safeFetchJson(res);
-    } catch {
-      return {
-        googleClientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
-        googleConfigured: Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID),
-        defaultCredits: 50,
-        firebaseConfigured: true,
-      };
-    }
-  },
-
-  async getSessionUser(uid?: string): Promise<{ success: boolean; user: UserProfile }> {
-    const token = localStorage.getItem('leo_auth_token') || '';
-    const res = await fetch(`${API_BASE}/api/auth/me?uid=${encodeURIComponent(uid || '')}`, {
-      headers: {
-        Authorization: token ? `Bearer ${token}` : '',
-      },
-    });
-    return safeFetchJson(res, 'Unauthenticated or user not found');
-  },
-
-  async getCashfreeConfig(): Promise<CashfreeConfig & { plans: PricingPlan[] }> {
-    try {
-      const res = await fetch(`${API_BASE}/api/payments/config`);
-      return await safeFetchJson(res);
-    } catch {
-      return {
-        isConfigured: false,
-        env: 'SANDBOX',
-        plans: [],
-      };
-    }
-  },
-
-  async getPricingPlans(): Promise<{ plans: PricingPlan[] }> {
-    const res = await fetch(`${API_BASE}/api/payments/plans`);
-    return safeFetchJson(res, 'Failed to fetch pricing plans');
-  },
-
-  async createCashfreeOrder(params: {
-    planId: string;
-    customerName?: string;
-    customerEmail?: string;
-    customerPhone?: string;
-    userId?: string;
-  }): Promise<{
-    success: boolean;
-    orderId: string;
-    cfOrderId?: string;
-    paymentSessionId: string;
-    orderAmount: number;
-    orderCurrency: string;
-    env?: 'SANDBOX' | 'PRODUCTION';
-    isSimulated?: boolean;
-    message?: string;
-    plan: PricingPlan;
-  }> {
-    const res = await fetch(`${API_BASE}/api/payments/cashfree/create-order`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    return safeFetchJson(res, 'Failed to create Cashfree order');
-  },
-
-  async verifyCashfreeOrder(params: {
-    orderId: string;
-    userId?: string;
-  }): Promise<{
-    success: boolean;
-    message: string;
-    order: PaymentOrder;
-    user: UserProfile;
-    creditsAdded: number;
-  }> {
-    const res = await fetch(`${API_BASE}/api/payments/cashfree/verify-order`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    return safeFetchJson(res, 'Failed to verify Cashfree payment');
-  },
-
-  async getPaymentHistory(userId?: string): Promise<{ orders: PaymentOrder[] }> {
-    const res = await fetch(`${API_BASE}/api/payments/history?userId=${encodeURIComponent(userId || '')}`);
-    return safeFetchJson(res, 'Failed to fetch payment history');
-  },
-
   async getHealth() {
     const res = await fetch(`${API_BASE}/api/health`);
-    return safeFetchJson(res, 'Health check failed');
+    return res.json();
   },
 };

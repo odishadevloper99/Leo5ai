@@ -12,7 +12,6 @@ import {
   Crown
 } from 'lucide-react';
 import { ChatSession } from '../types';
-import { LeoLogoMark } from './LeoLogo';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -22,8 +21,6 @@ interface HeaderProps {
   onShare: () => void;
   selectedModel: string;
   onSelectModel: (m: string) => void;
-  onOpenUpgrade?: () => void;
-  userPlan?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -33,9 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenExport,
   onShare,
   selectedModel,
-  onSelectModel,
-  onOpenUpgrade,
-  userPlan
+  onSelectModel
 }) => {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -104,7 +99,9 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
             className="flex items-center gap-2 px-3 py-1.5 bg-neutral-50 hover:bg-neutral-100/80 border border-neutral-200/70 rounded-xl text-xs font-medium text-neutral-800 transition"
           >
-            <LeoLogoMark className="w-5 h-5 rounded-md" />
+            <div className="w-5 h-5 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white text-[10px]">
+              <Sparkles className="w-3 h-3" />
+            </div>
             <span className="font-semibold text-neutral-900">Leo AI</span>
             <span className="text-[11px] text-neutral-400 hidden sm:inline">
               ({currentMode.name.replace('Leo AI ', '')})
@@ -219,18 +216,16 @@ export const Header: React.FC<HeaderProps> = ({
           <span>Export chat</span>
         </button>
 
-        {/* Upgrade Pill Button */}
+        {/* Upgrade Pill Button strictly matching the user's mockup design */}
         <button
           id="header-upgrade-btn"
-          onClick={onOpenUpgrade}
-          className={`${
-            userPlan === 'pro' || userPlan === 'ultra'
-              ? 'bg-gradient-to-r from-purple-900 to-neutral-950 border border-purple-400/40 text-white'
-              : 'bg-neutral-950 hover:bg-black text-white'
-          } text-xs font-medium px-4 py-1.5 rounded-xl shadow-xs hover:shadow transition flex items-center gap-1.5`}
+          onClick={() => {
+            alert('🌟 Leo AI Pro: Unlimited high-speed vision inference and persistent memory enabled for your workspace!');
+          }}
+          className="bg-neutral-950 hover:bg-black text-white text-xs font-medium px-4 py-1.5 rounded-xl shadow-xs hover:shadow transition flex items-center gap-1.5"
         >
           <Crown className="w-3.5 h-3.5 text-amber-400" />
-          <span>{userPlan === 'pro' || userPlan === 'ultra' ? 'Pro Member' : 'Upgrade'}</span>
+          <span>Upgrade</span>
         </button>
       </div>
     </header>

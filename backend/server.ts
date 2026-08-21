@@ -1,24 +1,12 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
-import fs from 'fs';
 import nodemailer from 'nodemailer';
 import { GoogleGenAI } from '@google/genai';
-import { memoService } from './services/memoService';
 
 dotenv.config();
 
-// Load Firebase configuration fallback from firebase-applet-config.json
-let appletConfig: any = {};
-try {
-  const cfgPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  if (fs.existsSync(cfgPath)) {
-    appletConfig = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-  }
-} catch (e) {}
-
 const app = express();
-app.set('trust proxy', true);
 
 // Enable CORS for Vercel Frontend <-> Render Backend communication
 app.use((req, res, next) => {
@@ -56,20 +44,14 @@ interface StoredChat {
 
 interface UserRecord {
   uid: string;
-  googleId?: string;
   displayName: string;
   email: string;
   photoURL?: string;
   isAnonymous: boolean;
   role: 'admin' | 'user';
-  credits: number;
   createdAt: number;
-  lastLoginAt: number;
   lastActive: number;
   chatCount: number;
-  plan?: string;
-  subscriptionActive?: boolean;
-  subscriptionExpiresAt?: number;
 }
 
 const memoryStore: Map<string, MemoryRecord[]> = new Map();
@@ -118,16 +100,7 @@ let globalStats = {
 let currentConfig = {
   aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
   aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
-  visionModel: (
-    process.env.MODEL_ID ||
-    process.env.GEMINI_MODEL_ID ||
-    process.env.GEMINI_MODEL ||
-    process.env.MODEL ||
-    process.env.AI_MODEL ||
-    process.env.AICREDITS_VISION_MODEL ||
-    process.env.VISION_MODEL ||
-    'gemini-3.7-flash'
-  ).replace(/^["']|["']$/g, '').trim(),
+  visionModel: process.env.AICREDITS_VISION_MODEL || process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || 'gemini-2.5-flash',
   temperature: 0.7,
   maxTokens: 4096,
   systemPrompt: process.env.SYSTEM_PROMPT || `You are Leo AI, an elite, highly intelligent, and versatile AI assistant created to assist humans across engineering, reasoning, visual analysis, writing, and creative brainstorms.
@@ -149,22 +122,14 @@ CRITICAL DIRECTIVES:
 
 // Helper to determine the EXACT model to use based on Render Environment Variables & Admin Config
 function getTargetAiModel(): string {
-  const envModel =
-    process.env.MODEL_ID ||
-    process.env.GEMINI_MODEL_ID ||
-    process.env.GEMINI_MODEL ||
-    process.env.MODEL ||
-    process.env.AI_MODEL ||
-    process.env.AICREDITS_VISION_MODEL ||
-    process.env.VISION_MODEL;
-
+  const envModel = process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || process.env.VISION_MODEL;
   if (envModel && envModel.trim().length > 0) {
-    return envModel.replace(/^["']|["']$/g, '').trim();
+    return envModel.trim();
   }
   if (currentConfig.visionModel && currentConfig.visionModel.trim().length > 0) {
-    return currentConfig.visionModel.replace(/^["']|["']$/g, '').trim();
+    return currentConfig.visionModel.trim();
   }
-  return 'gemini-3.7-flash';
+  return 'gemini-2.5-flash';
 }
 
 // ----------------------------------------------------
@@ -268,11 +233,6 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
         aiCreditsApiKey: process.env.AICREDITS_API_KEY || savedConfig.aiCreditsApiKey || currentConfig.aiCreditsApiKey,
         visionModel: process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || savedConfig.visionModel || currentConfig.visionModel
       };
-      memoService.updateConfig({
-        apiKey: currentConfig.memoApiKey,
-        apiUrl: currentConfig.memoApiUrl,
-        isEnabled: currentConfig.enableMemory
-      });
       console.log('✓ [CONFIG] Synced system prompt & model config from Firebase Realtime DB');
     }
   } catch (e: any) {
@@ -439,9 +399,7 @@ app.get('/api/admin/users', (req, res) => {
       photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       isAnonymous: false,
       role: 'user',
-      credits: 50,
       createdAt: Date.now() - 86400000 * 7,
-      lastLoginAt: Date.now(),
       lastActive: Date.now(),
       chatCount: 14
     });
@@ -808,425 +766,6 @@ async function sendOtpEmail(
   }
 }
 
-// ----------------------------------------------------
-// Google OAuth 2.0 & Token Verification Helpers
-// ----------------------------------------------------
-const DEFAULT_USER_CREDITS = parseInt(process.env.DEFAULT_AI_CREDITS || '50', 10) || 50;
-
-async function findOrCreateGoogleUser(googleData: {
-  sub: string;
-  email: string;
-  name?: string;
-  picture?: string;
-}): Promise<{ user: UserRecord; isNewUser: boolean }> {
-  const normalizedEmail = googleData.email.trim().toLowerCase();
-  const sanitizedEmail = sanitizeEmailForRtdb(normalizedEmail);
-  const defaultCredits = DEFAULT_USER_CREDITS;
-
-  // 1. Search in local userStore by UID, googleId or email
-  let existingUser: UserRecord | undefined;
-  if (googleData.sub && userStore.has(googleData.sub)) {
-    existingUser = userStore.get(googleData.sub);
-  }
-  if (!existingUser) {
-    for (const usr of userStore.values()) {
-      if (
-        (usr.googleId && usr.googleId === googleData.sub) ||
-        (usr.email && usr.email.toLowerCase() === normalizedEmail)
-      ) {
-        existingUser = usr;
-        break;
-      }
-    }
-  }
-
-  // 2. Search in Realtime Database /users if not in local cache
-  if (!existingUser && googleData.sub) {
-    const directUser = await getRtdbData(`users/${googleData.sub}`);
-    if (directUser && (directUser.uid || directUser.email)) {
-      existingUser = directUser;
-    }
-  }
-  if (!existingUser) {
-    const rtdbEmailIndex = await getRtdbData(`users_by_email/${sanitizedEmail}`);
-    if (rtdbEmailIndex && rtdbEmailIndex.uid) {
-      const remoteUser = await getRtdbData(`users/${rtdbEmailIndex.uid}`);
-      if (remoteUser && remoteUser.uid) {
-        existingUser = remoteUser;
-      }
-    }
-  }
-
-  if (existingUser) {
-    const updatedUser: UserRecord = {
-      ...existingUser,
-      uid: existingUser.uid || googleData.sub,
-      googleId: existingUser.googleId || googleData.sub,
-      displayName: existingUser.displayName || googleData.name || normalizedEmail.split('@')[0],
-      photoURL: existingUser.photoURL || googleData.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      credits: typeof existingUser.credits === 'number' ? existingUser.credits : defaultCredits,
-      lastLoginAt: Date.now(),
-      lastActive: Date.now(),
-    };
-    userStore.set(updatedUser.uid, updatedUser);
-
-    // Save to RTDB
-    await setRtdbData(`users/${updatedUser.uid}`, { ...updatedUser, updatedAt: Date.now() });
-    await setRtdbData(`users_by_email/${sanitizedEmail}`, { uid: updatedUser.uid });
-
-    return { user: updatedUser, isNewUser: false };
-  }
-
-  // 3. New User Registration:
-  // Using verified Firebase UID (googleData.sub) ensures 1:1 match with Firebase Auth
-  const newUid = googleData.sub || ('usr_g_' + Math.random().toString(36).substring(2, 10));
-  const isInitialAdmin = Boolean(
-    process.env.ADMIN_EMAIL && normalizedEmail === process.env.ADMIN_EMAIL.trim().toLowerCase()
-  );
-
-  const newUser: UserRecord = {
-    uid: newUid,
-    googleId: googleData.sub,
-    displayName: googleData.name || normalizedEmail.split('@')[0] || 'Leo Explorer',
-    email: normalizedEmail,
-    photoURL: googleData.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    isAnonymous: false,
-    role: isInitialAdmin ? 'admin' : 'user',
-    credits: defaultCredits,
-    createdAt: Date.now(),
-    lastLoginAt: Date.now(),
-    lastActive: Date.now(),
-    chatCount: 0,
-  };
-
-  userStore.set(newUid, newUser);
-
-  // Persist to RTDB
-  await setRtdbData(`users/${newUid}`, { ...newUser, updatedAt: Date.now() });
-  await setRtdbData(`users_by_email/${sanitizedEmail}`, { uid: newUid });
-
-  return { user: newUser, isNewUser: true };
-}
-
-async function verifyGoogleTokenPayload(params: {
-  credential?: string;
-  idToken?: string;
-  accessToken?: string;
-}): Promise<{ sub: string; email: string; name?: string; picture?: string } | null> {
-  const tokenToVerify = params.idToken || params.credential;
-
-  // 1. Google OAuth2 ID Token Verification via tokeninfo
-  if (tokenToVerify) {
-    try {
-      const tokenInfoRes = await fetch(
-        `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenToVerify)}`
-      );
-      if (tokenInfoRes.ok) {
-        const payload: any = await tokenInfoRes.json();
-        if (payload.sub && payload.email) {
-          return {
-            sub: payload.sub,
-            email: payload.email,
-            name: payload.name || payload.given_name,
-            picture: payload.picture,
-          };
-        }
-      }
-    } catch (err: any) {
-      console.warn('[Google Tokeninfo Notice]:', err.message);
-    }
-
-    // 2. Fallback: Firebase Auth ID Token verification via Google Identity Toolkit
-    const firebaseKey = process.env.FIREBASE_API_KEY || appletConfig.apiKey;
-    if (firebaseKey) {
-      try {
-        const fbRes = await fetch(
-          `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idToken: tokenToVerify }),
-          }
-        );
-        if (fbRes.ok) {
-          const fbData: any = await fbRes.json();
-          const user = fbData.users?.[0];
-          if (user && user.email) {
-            return {
-              sub: user.localId || user.rawId || 'fb_' + Date.now(),
-              email: user.email,
-              name: user.displayName,
-              picture: user.photoUrl,
-            };
-          }
-        }
-      } catch (fbErr: any) {
-        console.warn('[Firebase Token Verification Notice]:', fbErr.message);
-      }
-    }
-  }
-
-  // 3. Google Access Token Verification via userinfo
-  if (params.accessToken) {
-    try {
-      const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${params.accessToken}` },
-      });
-      if (userinfoRes.ok) {
-        const info: any = await userinfoRes.json();
-        if (info.sub && info.email) {
-          return {
-            sub: info.sub,
-            email: info.email,
-            name: info.name || info.given_name,
-            picture: info.picture,
-          };
-        }
-      }
-    } catch (accessErr: any) {
-      console.warn('[Google Userinfo Notice]:', accessErr.message);
-    }
-  }
-
-  return null;
-}
-
-/**
- * Public OAuth Configuration (Safe - never exposes client secrets)
- */
-app.get('/api/auth/oauth-config', (req, res) => {
-  const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '';
-  res.json({
-    googleClientId,
-    googleConfigured: Boolean(googleClientId),
-    defaultCredits: DEFAULT_USER_CREDITS,
-    firebaseConfigured: Boolean(process.env.FIREBASE_API_KEY || process.env.FIREBASE_PROJECT_ID),
-  });
-});
-
-/**
- * POST /api/auth/google
- * Universal Google Authentication endpoint:
- * Accepts Google ID Token, Credential, Access Token, or OAuth code.
- * Cryptographically verifies token with Google, creates or finds user, and returns session token.
- */
-app.post('/api/auth/google', async (req, res) => {
-  try {
-    const { credential, idToken, accessToken, code, redirectUri } = req.body;
-
-    let verifiedPayload: { sub: string; email: string; name?: string; picture?: string } | null = null;
-
-    // A. Handle Authorization Code Exchange (if code provided)
-    if (code) {
-      const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
-      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-      if (!clientId || !clientSecret) {
-        return res.status(500).json({
-          success: false,
-          message: 'Google OAuth is missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET in backend configuration.'
-        });
-      }
-
-      const tokenParams = new URLSearchParams({
-        code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri || `${req.protocol}://${req.get('host')}/api/auth/google/callback`,
-        grant_type: 'authorization_code',
-      });
-
-      const tokenExchangeRes = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: tokenParams.toString(),
-      });
-
-      if (!tokenExchangeRes.ok) {
-        const errJson: any = await tokenExchangeRes.json().catch(() => ({}));
-        return res.status(400).json({
-          success: false,
-          message: errJson.error_description || 'Google OAuth code exchange failed'
-        });
-      }
-
-      const tokenData: any = await tokenExchangeRes.json();
-      verifiedPayload = await verifyGoogleTokenPayload({
-        idToken: tokenData.id_token,
-        accessToken: tokenData.access_token
-      });
-    } else {
-      // B. Verify Token / Credential / AccessToken directly with Google
-      verifiedPayload = await verifyGoogleTokenPayload({ credential, idToken, accessToken });
-    }
-
-    if (!verifiedPayload || !verifiedPayload.email) {
-      return res.status(401).json({
-        success: false,
-        message: 'Google authentication verification failed. Invalid or expired token.'
-      });
-    }
-
-    // C. Find or create user in database
-    const { user, isNewUser } = await findOrCreateGoogleUser(verifiedPayload);
-
-    // D. Mint session token
-    const sessionToken = 'leo_gauth_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-
-    console.log(`[Google Auth Success] ${isNewUser ? 'Created new user' : 'Logged in existing user'}: ${user.email} (Credits: ${user.credits})`);
-
-    // Set secure cookie if possible
-    res.cookie('leo_auth_session', sessionToken, {
-      httpOnly: true,
-      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
-      sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-    });
-
-    return res.json({
-      success: true,
-      message: isNewUser ? 'Welcome to Leo AI! Your account was created.' : 'Welcome back to Leo AI!',
-      user,
-      token: sessionToken,
-      isNewUser,
-    });
-  } catch (err: any) {
-    console.error('[POST /api/auth/google Error]:', err);
-    return res.status(500).json({
-      success: false,
-      message: err.message || 'Internal server error during Google authentication.'
-    });
-  }
-});
-
-/**
- * GET /api/auth/google/url
- * Generates official Google OAuth 2.0 authorization URL for redirect flows
- */
-app.get('/api/auth/google/url', (req, res) => {
-  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
-  if (!clientId) {
-    return res.status(500).json({
-      success: false,
-      message: 'GOOGLE_CLIENT_ID is not configured in backend environment variables.'
-    });
-  }
-
-  const redirectUri = (req.query.redirect_uri as string) || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
-  const state = (req.query.state as string) || '/';
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: 'openid email profile',
-    access_type: 'offline',
-    prompt: 'select_account',
-    state,
-  });
-
-  res.json({
-    success: true,
-    url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
-  });
-});
-
-/**
- * GET /api/auth/google/callback
- * Handles OAuth 2.0 redirect code from Google and redirects user back to app
- */
-app.get('/api/auth/google/callback', async (req, res) => {
-  const { code, state, error } = req.query;
-
-  if (error) {
-    return res.redirect(`/?auth_error=${encodeURIComponent(String(error))}`);
-  }
-
-  if (!code) {
-    return res.redirect('/?auth_error=no_code_provided');
-  }
-
-  try {
-    const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
-
-    if (!clientId || !clientSecret) {
-      return res.redirect('/?auth_error=google_oauth_not_configured_on_backend');
-    }
-
-    const tokenParams = new URLSearchParams({
-      code: String(code),
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-      grant_type: 'authorization_code',
-    });
-
-    const tokenExchangeRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: tokenParams.toString(),
-    });
-
-    if (!tokenExchangeRes.ok) {
-      return res.redirect('/?auth_error=token_exchange_failed');
-    }
-
-    const tokenData: any = await tokenExchangeRes.json();
-    const verifiedPayload = await verifyGoogleTokenPayload({
-      idToken: tokenData.id_token,
-      accessToken: tokenData.access_token
-    });
-
-    if (!verifiedPayload || !verifiedPayload.email) {
-      return res.redirect('/?auth_error=verification_failed');
-    }
-
-    const { user } = await findOrCreateGoogleUser(verifiedPayload);
-    const sessionToken = 'leo_gauth_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-
-    const userParam = encodeURIComponent(JSON.stringify(user));
-    const targetState = (state && String(state).startsWith('/')) ? String(state) : '/';
-
-    return res.redirect(`${targetState}#auth_token=${sessionToken}&user=${userParam}`);
-  } catch (err: any) {
-    console.error('[Google OAuth Callback Error]:', err);
-    return res.redirect(`/?auth_error=${encodeURIComponent(err.message || 'callback_failed')}`);
-  }
-});
-
-/**
- * GET /api/auth/me or /api/auth/session
- * Returns current authenticated user and updated AI credits
- */
-app.get(['/api/auth/me', '/api/auth/session'], (req, res) => {
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim() || (req.query.token as string);
-  const uid = (req.query.uid as string) || (req.headers['x-user-id'] as string);
-
-  if (!token && !uid) {
-    return res.status(401).json({ success: false, message: 'Unauthenticated' });
-  }
-
-  let user: UserRecord | undefined;
-  if (uid && userStore.has(uid)) {
-    user = userStore.get(uid);
-  } else {
-    for (const u of userStore.values()) {
-      if (u.uid === uid) {
-        user = u;
-        break;
-      }
-    }
-  }
-
-  if (!user) {
-    return res.status(404).json({ success: false, message: 'User not found' });
-  }
-
-  res.json({ success: true, user });
-});
-
 app.post('/api/auth/send-otp', async (req, res) => {
   const { email, uid, displayName, photoURL } = req.body;
   if (!email || !email.includes('@')) {
@@ -1379,7 +918,6 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   otpStore.delete(normalizedEmail);
 
   const finalUid = userProfile?.uid || rtdbRecord?.uid || memRecord?.userProfile?.uid || 'usr_' + Date.now().toString(36);
-  const existingCached = userStore.get(finalUid);
   const finalUser: UserRecord = {
     uid: finalUid,
     displayName: userProfile?.displayName || rtdbRecord?.displayName || memRecord?.userProfile?.displayName || normalizedEmail.split('@')[0],
@@ -1387,11 +925,9 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     photoURL: userProfile?.photoURL || rtdbRecord?.photoURL || memRecord?.userProfile?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     isAnonymous: false,
     role: 'user',
-    credits: existingCached && typeof existingCached.credits === 'number' ? existingCached.credits : DEFAULT_USER_CREDITS,
-    createdAt: existingCached?.createdAt || Date.now(),
-    lastLoginAt: Date.now(),
+    createdAt: Date.now(),
     lastActive: Date.now(),
-    chatCount: existingCached?.chatCount || 0
+    chatCount: 1
   };
 
   await setRtdbData(`users/${finalUid}`, {
@@ -1413,80 +949,42 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 3. Memo API & Long-Term User Memory Management
+// 3. Memo API & User Memory Management
 // ----------------------------------------------------
-app.get('/api/memory', async (req, res) => {
-  try {
-    const userId = (req.query.userId as string) || 'default-user';
-    const memories = await memoService.getMemories(userId);
-    res.json({ memories });
-  } catch (err: any) {
-    console.warn('[API /api/memory GET error]:', err.message);
-    res.json({ memories: [] });
-  }
+app.get('/api/memory', (req, res) => {
+  const userId = (req.query.userId as string) || 'default-user';
+  const memories = memoryStore.get(userId) || [];
+  res.json({ memories });
 });
 
-app.post('/api/memory/search', async (req, res) => {
-  try {
-    const { userId = 'default-user', query = '', limit = 5 } = req.body;
-    const memories = await memoService.searchRelevantMemories(userId, query, Number(limit) || 5);
-    res.json({ memories });
-  } catch (err: any) {
-    console.warn('[API /api/memory/search POST error]:', err.message);
-    res.json({ memories: [] });
-  }
+app.post('/api/memory', (req, res) => {
+  const { userId = 'default-user', text, category = 'general' } = req.body;
+  if (!text) return res.status(400).json({ error: 'Memory text is required' });
+
+  const newMemory: MemoryRecord = {
+    id: 'mem_' + Math.random().toString(36).substring(2, 9),
+    userId,
+    text,
+    category,
+    createdAt: Date.now()
+  };
+
+  const existing = memoryStore.get(userId) || [];
+  existing.unshift(newMemory);
+  memoryStore.set(userId, existing);
+  globalStats.totalMemories++;
+
+  res.json({ success: true, memory: newMemory });
 });
 
-app.post('/api/memory', async (req, res) => {
-  try {
-    const { userId = 'default-user', text, category = 'general' } = req.body;
-    if (!text) return res.status(400).json({ error: 'Memory text is required' });
+app.delete('/api/memory/:id', (req, res) => {
+  const { id } = req.params;
+  const userId = (req.query.userId as string) || 'default-user';
+  const existing = memoryStore.get(userId) || [];
+  const filtered = existing.filter(m => m.id !== id);
+  memoryStore.set(userId, filtered);
 
-    const newMemory = await memoService.addMemory(userId, text, category);
-    globalStats.totalMemories++;
-
-    res.json({ success: true, memory: newMemory });
-  } catch (err: any) {
-    console.error('[API /api/memory POST error]:', err.message);
-    res.status(400).json({ error: err.message || 'Failed to save memory' });
-  }
-});
-
-app.put('/api/memory/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { text, userId = 'default-user' } = req.body;
-    if (!text) return res.status(400).json({ error: 'Memory text is required' });
-
-    const ok = await memoService.updateMemory(id, text, userId);
-    res.json({ success: ok, message: ok ? 'Memory updated' : 'Memory not found' });
-  } catch (err: any) {
-    console.error('[API /api/memory/:id PUT error]:', err.message);
-    res.status(400).json({ error: err.message || 'Failed to update memory' });
-  }
-});
-
-app.delete('/api/memory/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = (req.query.userId as string) || (req.body?.userId as string) || 'default-user';
-    await memoService.deleteMemory(id, userId);
-    res.json({ success: true, message: 'Memory deleted' });
-  } catch (err: any) {
-    console.warn('[API /api/memory/:id DELETE error]:', err.message);
-    res.json({ success: true, message: 'Memory deleted' });
-  }
-});
-
-app.delete('/api/memory', async (req, res) => {
-  try {
-    const userId = (req.query.userId as string) || (req.body?.userId as string) || 'default-user';
-    await memoService.deleteAllMemories(userId);
-    res.json({ success: true, message: 'All memories cleared' });
-  } catch (err: any) {
-    console.warn('[API /api/memory DELETE error]:', err.message);
-    res.json({ success: true, message: 'All memories cleared' });
-  }
+  res.json({ success: true, message: 'Memory deleted' });
 });
 
 // ----------------------------------------------------
@@ -1527,14 +1025,13 @@ app.delete('/api/chats/:id', (req, res) => {
   res.json({ success: true, message: 'Chat deleted' });
 });
 
-// Helper to build the unified, authoritative system prompt context with Memo long-term memories
-async function buildUnifiedSystemPrompt(
+// Helper to build the unified, authoritative system prompt context
+function buildUnifiedSystemPrompt(
   userId: string,
-  latestMessageText: string = '',
   systemPromptOverride?: string,
   isDeepResearch: boolean = false,
   hasImages: boolean = false
-): Promise<string> {
+): string {
   // 1. Authoritative Base Persona & Directives from Admin Panel / Config / Env
   const rawAdminPrompt = (systemPromptOverride || currentConfig.systemPrompt || process.env.SYSTEM_PROMPT || '').trim();
   
@@ -1557,14 +1054,13 @@ CRITICAL DIRECTIVES:
 5. Never hallucinate or bypass system safety directives.`;
   }
 
-  // 2. Persistent User Memory Context (Memo API / Long-term service)
+  // 2. Persistent User Memory Context (Memo API / local store)
+  const userMemories = memoryStore.get(userId) || [];
   let memorySection = '';
-  if (currentConfig.enableMemory) {
-    try {
-      memorySection = await memoService.buildMemoryPromptContext(userId, latestMessageText);
-    } catch (memErr: any) {
-      console.warn('[Memory Context Warn]:', memErr.message);
-    }
+  if (currentConfig.enableMemory && userMemories.length > 0) {
+    memorySection = `\n\n[USER PREFERENCES & CONTEXT]:\n` +
+      userMemories.map((m, i) => `${i + 1}. [${m.category.toUpperCase()}] ${m.text}`).join('\n') +
+      `\n(Adapt to these background preferences where appropriate, but never violate the Supreme System Mandate above.)`;
   }
 
   // 3. Deep Research & Structured Reasoning Directives
@@ -1607,9 +1103,8 @@ app.post('/api/chat', async (req, res) => {
     const hasImages = Array.isArray(images) && images.length > 0;
 
     // Construct the authoritative system prompt containing the defined persona
-    const finalSystemPrompt = await buildUnifiedSystemPrompt(
+    const finalSystemPrompt = buildUnifiedSystemPrompt(
       userId,
-      latestUserMessage.content || '',
       systemPromptOverride,
       Boolean(isDeepResearch),
       hasImages
@@ -1676,7 +1171,7 @@ app.post('/api/chat', async (req, res) => {
         if (aiResponse.ok) {
           const data = await aiResponse.json();
           const reply = data.choices?.[0]?.message?.content || 'No response received from AI model.';
-          memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
+          extractAndSaveMemoryAsync(userId, latestUserMessage.content, reply);
 
           return res.json({
             content: reply,
@@ -1760,7 +1255,7 @@ app.post('/api/chat', async (req, res) => {
         });
 
         const reply = response.text || 'I have analyzed your request.';
-        memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
+        extractAndSaveMemoryAsync(userId, latestUserMessage.content, reply);
 
         return res.json({
           content: reply,
@@ -1772,10 +1267,10 @@ app.post('/api/chat', async (req, res) => {
       } catch (err: any) {
         console.warn(`[GEMINI] Execution failed with model "${targetModel}":`, err.message);
         // If the specific model failed, attempt standard fallback only if not explicitly forced
-        if (!process.env.GEMINI_MODEL && targetModel !== 'gemini-3.7-flash') {
+        if (!process.env.GEMINI_MODEL && targetModel !== 'gemini-2.5-flash') {
           try {
             const fallbackResponse = await ai.models.generateContent({
-              model: 'gemini-3.7-flash',
+              model: 'gemini-2.5-flash',
               contents,
               config: {
                 systemInstruction: finalSystemPrompt,
@@ -1784,10 +1279,10 @@ app.post('/api/chat', async (req, res) => {
               }
             });
             const reply = fallbackResponse.text || 'I have analyzed your request.';
-            memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
+            extractAndSaveMemoryAsync(userId, latestUserMessage.content, reply);
             return res.json({
               content: reply,
-              model: 'gemini-3.7-flash',
+              model: 'gemini-2.5-flash',
               provider: 'gemini',
               isDeepResearch,
               hasVision: hasImages
@@ -1816,6 +1311,35 @@ app.post('/api/chat', async (req, res) => {
     });
   }
 });
+
+function extractAndSaveMemoryAsync(userId: string, userMsg: string, aiReply: string) {
+  if (!currentConfig.enableMemory || !userMsg) return;
+  
+  const preferencePatterns = [
+    /(?:my name is|i am|call me)\s+([A-Za-z]+)/i,
+    /(?:i prefer|i like|i love|my favorite)\s+([^.,\n]+)/i,
+    /(?:i am working on|i'm building|my project is)\s+([^.,\n]+)/i
+  ];
+
+  for (const pat of preferencePatterns) {
+    const match = userMsg.match(pat);
+    if (match && match[0]) {
+      const existing = memoryStore.get(userId) || [];
+      const duplicate = existing.some(m => m.text.toLowerCase() === match[0].toLowerCase());
+      if (!duplicate) {
+        existing.push({
+          id: 'mem_' + Math.random().toString(36).substring(2, 9),
+          userId,
+          text: `User stated: "${match[0]}"`,
+          category: 'preference',
+          createdAt: Date.now()
+        });
+        memoryStore.set(userId, existing);
+      }
+      break;
+    }
+  }
+}
 
 function generateIntelligentFallback(prompt: string, hasVision: boolean, isDeepResearch: boolean): string {
   const p = prompt.toLowerCase();
@@ -1855,491 +1379,6 @@ To fix this:
 
 in your backend's environment variables, then check the server logs for \`[AICREDITS]\` or \`[GEMINI]\` error lines — they show the exact reason the request failed (invalid key, wrong model name, network error, etc.). Once a provider call succeeds, your admin panel system prompt will be applied normally.`;
 }
-
-// ----------------------------------------------------
-// 5.5 Cashfree Payment Gateway Integration
-// ----------------------------------------------------
-const PRICING_PLANS = [
-  {
-    id: 'starter_free',
-    name: 'Starter Explorer',
-    tagline: 'Ideal for getting started and casual queries',
-    price: 0,
-    period: 'month',
-    creditsGranted: 50,
-    features: [
-      '50 Daily AI Intelligence credits',
-      'Standard chat reasoning & memory',
-      'Community prompt library access',
-      'Export chat transcripts',
-    ],
-    popular: false,
-    type: 'subscription',
-  },
-  {
-    id: 'pro_monthly',
-    name: 'Leo AI Pro',
-    tagline: 'For creators, developers, and power researchers',
-    price: 199,
-    originalPrice: 499,
-    period: 'month',
-    creditsGranted: 500,
-    features: [
-      '500 Monthly High-Speed Credits',
-      'Ultra-fast Vision & OCR image analysis',
-      'Deep Cognitive Reasoner mode',
-      'Multi-document analysis & file chat',
-      'Persistent cross-session memory',
-      'Priority fast-lane response latency',
-    ],
-    popular: true,
-    badge: 'Most Popular',
-    type: 'subscription',
-  },
-  {
-    id: 'ultra_yearly',
-    name: 'Leo AI Ultra (Yearly)',
-    tagline: 'Maximum power & limitless intelligence',
-    price: 1499,
-    originalPrice: 2999,
-    period: 'year',
-    creditsGranted: 5000,
-    features: [
-      '5,000 Annual AI Intelligence Credits',
-      'Unlimited standard conversations',
-      'Full multimodal capabilities (Audio, Vision, Code)',
-      'Autonomous Deep Research mode',
-      'Early access to next-gen Gemini models',
-      'Dedicated developer API access & export',
-      'Save 60% with annual billing',
-    ],
-    popular: false,
-    badge: 'Best Value',
-    type: 'subscription',
-  },
-  {
-    id: 'credit_pack_200',
-    name: '200 Extra Credits Pack',
-    tagline: 'Instant top-up for heavy reasoning & vision runs',
-    price: 99,
-    period: 'one-time',
-    creditsGranted: 200,
-    features: [
-      '200 Non-expiring AI Credits',
-      'Valid for Vision and Deep Research',
-      'No monthly recurring commitment',
-      'Instant balance credit',
-    ],
-    popular: false,
-    type: 'credit_pack',
-  },
-];
-
-interface PaymentRecord {
-  orderId: string;
-  cfOrderId?: string;
-  orderAmount: number;
-  orderCurrency: string;
-  orderStatus: 'ACTIVE' | 'PAID' | 'FAILED' | 'CANCELLED';
-  paymentSessionId?: string;
-  planId: string;
-  planName: string;
-  creditsGranted: number;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  userId: string;
-  createdAt: number;
-  paidAt?: number;
-  cfPaymentId?: string;
-  paymentMethod?: string;
-  isSimulated?: boolean;
-}
-
-const paymentOrdersStore = new Map<string, PaymentRecord>();
-
-function getCashfreeConfig() {
-  const appId = (process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID || '').trim();
-  const secretKey = (process.env.CASHFREE_SECRET_KEY || process.env.CASHFREE_CLIENT_SECRET || '').trim();
-  const env = ((process.env.CASHFREE_ENV || process.env.CASHFREE_ENVIRONMENT || 'SANDBOX').toUpperCase() === 'PRODUCTION')
-    ? 'PRODUCTION'
-    : 'SANDBOX';
-  const apiVersion = process.env.CASHFREE_API_VERSION || '2023-08-01';
-  const baseUrl = env === 'PRODUCTION'
-    ? 'https://api.cashfree.com/pg'
-    : 'https://sandbox.cashfree.com/pg';
-
-  return {
-    isConfigured: Boolean(appId && secretKey),
-    appId,
-    secretKey,
-    env,
-    apiVersion,
-    baseUrl,
-  };
-}
-
-// 1. Get Cashfree Config and Available Plans
-app.get('/api/payments/config', (req, res) => {
-  const config = getCashfreeConfig();
-  res.json({
-    isConfigured: config.isConfigured,
-    env: config.env,
-    appId: config.appId ? `${config.appId.slice(0, 6)}...` : '',
-    plans: PRICING_PLANS,
-  });
-});
-
-app.get('/api/payments/plans', (req, res) => {
-  res.json({ plans: PRICING_PLANS });
-});
-
-// 2. Create Cashfree Order
-app.post('/api/payments/cashfree/create-order', async (req, res) => {
-  try {
-    const {
-      planId,
-      customerName,
-      customerEmail,
-      customerPhone,
-      userId
-    } = req.body || {};
-
-    const selectedPlan = PRICING_PLANS.find((p) => p.id === planId);
-    if (!selectedPlan) {
-      return res.status(400).json({ error: 'Invalid plan selected' });
-    }
-
-    if (selectedPlan.price === 0) {
-      return res.status(400).json({ error: 'Free plan does not require checkout' });
-    }
-
-    const orderId = `order_leo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const effectiveUserId = userId || 'usr_guest';
-    const effectiveEmail = (customerEmail || 'user@example.com').trim().toLowerCase();
-    const effectivePhone = (customerPhone || '9876543210').replace(/\D/g, '').slice(-10) || '9876543210';
-    const effectiveName = customerName || effectiveEmail.split('@')[0] || 'Leo User';
-
-    const config = getCashfreeConfig();
-
-    if (config.isConfigured) {
-      const host = req.get('x-forwarded-host') || req.get('host') || '';
-      const rawProto = req.get('x-forwarded-proto') || req.protocol || 'http';
-      const proto = rawProto.split(',')[0].trim();
-
-      const origin = req.headers.origin || (host ? `${proto}://${host}` : 'http://localhost:3000');
-
-      const orderMeta: { return_url?: string; notify_url?: string } = {
-        return_url: `${origin}/?order_id={order_id}`,
-      };
-
-      // Cashfree strictly requires notify_url to start with https://
-      const envNotifyUrl = process.env.CASHFREE_NOTIFY_URL;
-      if (envNotifyUrl && envNotifyUrl.startsWith('https://')) {
-        orderMeta.notify_url = envNotifyUrl;
-      } else if (proto === 'https' && host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
-        orderMeta.notify_url = `https://${host}/api/payments/cashfree/webhook`;
-      }
-
-      const orderPayload = {
-        order_id: orderId,
-        order_amount: selectedPlan.price,
-        order_currency: 'INR',
-        customer_details: {
-          customer_id: effectiveUserId.replace(/[^a-zA-Z0-9_-]/g, '_'),
-          customer_email: effectiveEmail,
-          customer_phone: effectivePhone,
-          customer_name: effectiveName,
-        },
-        order_meta: orderMeta,
-        order_note: `Leo AI: ${selectedPlan.name} (${selectedPlan.tagline})`,
-      };
-
-      const cfRes = await fetch(`${config.baseUrl}/orders`, {
-        method: 'POST',
-        headers: {
-          'x-client-id': config.appId,
-          'x-client-secret': config.secretKey,
-          'x-api-version': config.apiVersion,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderPayload),
-      });
-
-      const cfData = await cfRes.json();
-
-      if (!cfRes.ok) {
-        console.error('[CASHFREE CREATE ORDER ERROR]:', cfData);
-        return res.status(cfRes.status).json({
-          error: cfData.message || 'Failed to create order on Cashfree',
-          details: cfData,
-        });
-      }
-
-      const paymentRecord: PaymentRecord = {
-        orderId,
-        cfOrderId: cfData.cf_order_id,
-        orderAmount: selectedPlan.price,
-        orderCurrency: 'INR',
-        orderStatus: 'ACTIVE',
-        paymentSessionId: cfData.payment_session_id,
-        planId: selectedPlan.id,
-        planName: selectedPlan.name,
-        creditsGranted: selectedPlan.creditsGranted,
-        customerName: effectiveName,
-        customerEmail: effectiveEmail,
-        customerPhone: effectivePhone,
-        userId: effectiveUserId,
-        createdAt: Date.now(),
-        isSimulated: false,
-      };
-
-      paymentOrdersStore.set(orderId, paymentRecord);
-      setRtdbData(`orders/${orderId}`, paymentRecord).catch(() => {});
-
-      return res.json({
-        success: true,
-        orderId,
-        cfOrderId: cfData.cf_order_id,
-        paymentSessionId: cfData.payment_session_id,
-        orderAmount: selectedPlan.price,
-        orderCurrency: 'INR',
-        env: config.env,
-        plan: selectedPlan,
-      });
-    }
-
-    // Test simulation mode
-    const simSessionId = `session_sim_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const simPaymentRecord: PaymentRecord = {
-      orderId,
-      cfOrderId: `cf_sim_${Date.now()}`,
-      orderAmount: selectedPlan.price,
-      orderCurrency: 'INR',
-      orderStatus: 'ACTIVE',
-      paymentSessionId: simSessionId,
-      planId: selectedPlan.id,
-      planName: selectedPlan.name,
-      creditsGranted: selectedPlan.creditsGranted,
-      customerName: effectiveName,
-      customerEmail: effectiveEmail,
-      customerPhone: effectivePhone,
-      userId: effectiveUserId,
-      createdAt: Date.now(),
-      isSimulated: true,
-    };
-
-    paymentOrdersStore.set(orderId, simPaymentRecord);
-    setRtdbData(`orders/${orderId}`, simPaymentRecord).catch(() => {});
-
-    return res.json({
-      success: true,
-      orderId,
-      paymentSessionId: simSessionId,
-      orderAmount: selectedPlan.price,
-      orderCurrency: 'INR',
-      isSimulated: true,
-      message: 'Cashfree test mode active. Add CASHFREE_APP_ID and CASHFREE_SECRET_KEY in Render secrets for live payments.',
-      plan: selectedPlan,
-    });
-  } catch (err: any) {
-    console.error('Cashfree create-order exception:', err);
-    res.status(500).json({ error: 'Server error creating Cashfree order: ' + err.message });
-  }
-});
-
-// 3. Verify Cashfree Payment Order
-app.post('/api/payments/cashfree/verify-order', async (req, res) => {
-  try {
-    const { orderId, userId } = req.body || {};
-    if (!orderId) {
-      return res.status(400).json({ error: 'Order ID is required' });
-    }
-
-    let record = paymentOrdersStore.get(orderId);
-    if (!record) {
-      const rtdbRecord = await getRtdbData(`orders/${orderId}`);
-      if (rtdbRecord) {
-        record = rtdbRecord;
-        paymentOrdersStore.set(orderId, record!);
-      }
-    }
-
-    const config = getCashfreeConfig();
-    let isPaid = false;
-    let paymentDetails: any = null;
-
-    if (config.isConfigured && record && !record.isSimulated) {
-      const cfRes = await fetch(`${config.baseUrl}/orders/${orderId}`, {
-        headers: {
-          'x-client-id': config.appId,
-          'x-client-secret': config.secretKey,
-          'x-api-version': config.apiVersion,
-        },
-      });
-
-      const cfData = await cfRes.json();
-      if (cfRes.ok && cfData.order_status === 'PAID') {
-        isPaid = true;
-        paymentDetails = cfData;
-      }
-    } else {
-      isPaid = true;
-    }
-
-    if (!isPaid) {
-      return res.status(400).json({
-        success: false,
-        error: 'Payment not completed or still processing.',
-        orderStatus: record?.orderStatus || 'PENDING',
-      });
-    }
-
-    const now = Date.now();
-    const updatedRecord: PaymentRecord = {
-      ...(record || {
-        orderId,
-        orderAmount: 199,
-        orderCurrency: 'INR',
-        orderStatus: 'PAID',
-        planId: 'pro_monthly',
-        planName: 'Leo AI Pro',
-        creditsGranted: 500,
-        customerName: 'Leo User',
-        customerEmail: 'user@example.com',
-        customerPhone: '9876543210',
-        userId: userId || 'usr_guest',
-        createdAt: now,
-      }),
-      orderStatus: 'PAID',
-      paidAt: now,
-      cfPaymentId: paymentDetails?.cf_order_id || `cf_pay_${Date.now()}`,
-      paymentMethod: paymentDetails?.payment_method || 'UPI / Card (Cashfree)',
-    };
-
-    paymentOrdersStore.set(orderId, updatedRecord);
-    setRtdbData(`orders/${orderId}`, updatedRecord).catch(() => {});
-
-    const targetUserId = userId || updatedRecord.userId;
-    let existingUser = userStore.get(targetUserId);
-
-    if (!existingUser && targetUserId) {
-      const sanitized = sanitizeEmailForRtdb(targetUserId);
-      existingUser = await getRtdbData(`users/${sanitized}`);
-    }
-
-    const planType = updatedRecord.planId.includes('ultra')
-      ? 'ultra'
-      : updatedRecord.planId.includes('pro')
-      ? 'pro'
-      : 'free';
-
-    const isSubscription = updatedRecord.planId.includes('monthly') || updatedRecord.planId.includes('yearly');
-    const expiryDuration = updatedRecord.planId.includes('yearly')
-      ? 365 * 24 * 60 * 60 * 1000
-      : 30 * 24 * 60 * 60 * 1000;
-
-    const currentCredits = existingUser?.credits || 50;
-    const newCredits = currentCredits + updatedRecord.creditsGranted;
-
-    const updatedUser: UserRecord = {
-      uid: targetUserId,
-      displayName: existingUser?.displayName || updatedRecord.customerName,
-      email: existingUser?.email || updatedRecord.customerEmail,
-      photoURL: existingUser?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      isAnonymous: existingUser?.isAnonymous || false,
-      role: existingUser?.role || 'user',
-      credits: newCredits,
-      createdAt: existingUser?.createdAt || now,
-      lastLoginAt: existingUser?.lastLoginAt || now,
-      lastActive: now,
-      chatCount: existingUser?.chatCount || 0,
-      plan: planType,
-      subscriptionActive: isSubscription ? true : existingUser?.subscriptionActive,
-      subscriptionExpiresAt: isSubscription ? (now + expiryDuration) : existingUser?.subscriptionExpiresAt,
-    };
-
-    userStore.set(targetUserId, updatedUser);
-    setRtdbData(`users/${sanitizeEmailForRtdb(targetUserId)}`, updatedUser).catch(() => {});
-
-    return res.json({
-      success: true,
-      message: `Payment verified! Successfully activated ${updatedRecord.planName}.`,
-      order: updatedRecord,
-      user: updatedUser,
-      creditsAdded: updatedRecord.creditsGranted,
-    });
-  } catch (err: any) {
-    console.error('Cashfree verify-order exception:', err);
-    res.status(500).json({ error: 'Server error verifying payment: ' + err.message });
-  }
-});
-
-// 4. Cashfree Webhook Listener
-app.post('/api/payments/cashfree/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  try {
-    let payload = req.body;
-    if (Buffer.isBuffer(payload)) {
-      try {
-        payload = JSON.parse(payload.toString('utf-8'));
-      } catch (e) {
-        payload = {};
-      }
-    }
-
-    const orderId = payload?.data?.order?.order_id || payload?.orderId;
-    const paymentStatus = payload?.data?.payment?.payment_status || payload?.type;
-
-    if (orderId && (paymentStatus === 'SUCCESS' || paymentStatus === 'PAYMENT_SUCCESS_WEBHOOK')) {
-      let record = paymentOrdersStore.get(orderId);
-      if (!record) {
-        record = await getRtdbData(`orders/${orderId}`);
-      }
-
-      if (record && record.orderStatus !== 'PAID') {
-        const now = Date.now();
-        record.orderStatus = 'PAID';
-        record.paidAt = now;
-        paymentOrdersStore.set(orderId, record);
-        setRtdbData(`orders/${orderId}`, record).catch(() => {});
-
-        if (record.userId) {
-          const user = userStore.get(record.userId) || await getRtdbData(`users/${sanitizeEmailForRtdb(record.userId)}`);
-          if (user) {
-            user.credits = (user.credits || 0) + record.creditsGranted;
-            user.plan = record.planId.includes('ultra') ? 'ultra' : 'pro';
-            user.subscriptionActive = true;
-            userStore.set(record.userId, user);
-            setRtdbData(`users/${sanitizeEmailForRtdb(record.userId)}`, user).catch(() => {});
-          }
-        }
-      }
-    }
-
-    res.json({ status: 'OK' });
-  } catch (err: any) {
-    res.status(200).json({ status: 'RECEIVED_WITH_NOTICE' });
-  }
-});
-
-// 5. Payment History
-app.get('/api/payments/history', async (req, res) => {
-  try {
-    const userId = (req.query.userId as string) || '';
-    const userOrders: PaymentRecord[] = [];
-
-    paymentOrdersStore.forEach((order) => {
-      if (!userId || order.userId === userId || order.customerEmail === userId) {
-        userOrders.push(order);
-      }
-    });
-
-    userOrders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    res.json({ orders: userOrders });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Failed to fetch payment history' });
-  }
-});
 
 // ----------------------------------------------------
 // 6. Server Initialization

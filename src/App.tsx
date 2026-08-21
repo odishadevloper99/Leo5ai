@@ -10,21 +10,15 @@ import { ExportModal } from './components/ExportModal';
 import { ExploreModal } from './components/ExploreModal';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { HelpModal } from './components/HelpModal';
-import { UpgradePricingModal } from './components/UpgradePricingModal';
 import { INITIAL_CHAT_SESSIONS } from './lib/prompts';
 import {
-  auth,
-  database,
   getCurrentStoredUser,
   saveChatToRealtimeDB,
   loadChatsFromRealtimeDB,
   deleteChatFromRealtimeDB
 } from './lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { ref, get, set } from 'firebase/database';
 import { api } from './lib/api';
 import { ChatSession, Message, UserProfile } from './types';
-import { LeoLogo, LeoLogoMark } from './components/LeoLogo';
 
 export default function App() {
   // Routing: Detect /admin or #admin
@@ -81,152 +75,14 @@ export default function App() {
   const [isExploreOpen, setIsExploreOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
-
-  // Check for Cashfree order return in URL
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const orderId = params.get('order_id');
-    if (orderId) {
-      api.verifyCashfreeOrder({ orderId, userId: user.uid })
-        .then((res) => {
-          if (res.success && res.user) {
-            setUser(res.user);
-            setIsUpgradeOpen(true);
-          }
-        })
-        .catch((err) => {
-          console.warn('Cashfree return verification notice:', err.message);
-        })
-        .finally(() => {
-          // Clean URL params without reloading
-          const newUrl = window.location.pathname + window.location.hash;
-          window.history.replaceState({}, document.title, newUrl);
-        });
-    }
-  }, []);
 
   // Sync sessions to localStorage
   useEffect(() => {
     localStorage.setItem('leo_chat_sessions', JSON.stringify(sessions));
   }, [sessions]);
 
-  // Reactive Firebase Auth State Listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser) {
-        try {
-          const idToken = await fbUser.getIdToken().catch(() => '');
-          let userProfile: UserProfile = {
-            uid: fbUser.uid,
-            googleId: fbUser.providerData?.[0]?.uid || fbUser.uid,
-            displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Leo Explorer',
-            email: fbUser.email || '',
-            photoURL:
-              fbUser.photoURL ||
-              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-            isAnonymous: false,
-            role: 'user',
-            credits: 50,
-            createdAt: Date.now(),
-            lastLoginAt: Date.now(),
-            lastActive: Date.now(),
-            chatCount: 0,
-          };
-
-          // 1. Sync with backend API to preserve credits & chat history
-          try {
-            if (idToken) {
-              const backendRes = await api.loginWithGoogle({
-                idToken,
-                credential: idToken,
-              });
-              if (backendRes.success && backendRes.user) {
-                userProfile = {
-                  ...backendRes.user,
-                  uid: fbUser.uid,
-                  displayName: fbUser.displayName || backendRes.user.displayName,
-                  email: fbUser.email || backendRes.user.email,
-                  photoURL: fbUser.photoURL || backendRes.user.photoURL,
-                };
-                if (backendRes.token) {
-                  localStorage.setItem('leo_auth_token', backendRes.token);
-                }
-              }
-            }
-          } catch (e) {}
-
-          // 2. Sync with Realtime Database
-          try {
-            const userRef = ref(database, `users/${fbUser.uid}`);
-            const snap = await get(userRef);
-            if (snap.exists()) {
-              const data = snap.val();
-              userProfile = {
-                ...userProfile,
-                credits: typeof data.credits === 'number' ? data.credits : userProfile.credits,
-                createdAt: data.createdAt || userProfile.createdAt,
-                chatCount: typeof data.chatCount === 'number' ? data.chatCount : userProfile.chatCount,
-                role: data.role || userProfile.role,
-              };
-            } else {
-              await set(userRef, { ...userProfile, updatedAt: Date.now() });
-            }
-          } catch (e) {}
-
-          localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
-          setUser(userProfile);
-        } catch (err) {
-          console.warn('[Firebase Auth State Sync Notice]:', err);
-        }
-      } else {
-        const stored = localStorage.getItem('leo_current_user');
-        if (!stored) {
-          setUser({
-            uid: 'guest-' + Date.now(),
-            displayName: 'Guest',
-            email: '',
-            isAnonymous: true,
-            role: 'user',
-          });
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
   // Load chats from Firebase Realtime Database and backend API on mount
   useEffect(() => {
-    // Check for Google OAuth callback params (#auth_token=...&user=... or ?auth_error=...)
-    try {
-      const hash = window.location.hash;
-      const search = window.location.search;
-
-      if (hash.includes('auth_token=')) {
-        const hashParams = new URLSearchParams(hash.replace(/^#\/?/, ''));
-        const authToken = hashParams.get('auth_token');
-        const userJson = hashParams.get('user');
-
-        if (authToken && userJson) {
-          const parsedUser = JSON.parse(decodeURIComponent(userJson));
-          localStorage.setItem('leo_auth_token', authToken);
-          localStorage.setItem('leo_current_user', JSON.stringify(parsedUser));
-          setUser(parsedUser);
-          setIsAuthOpen(false);
-          // Clean up URL hash cleanly without reloading
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }
-      } else if (search.includes('auth_error=')) {
-        const searchParams = new URLSearchParams(search);
-        const errorMsg = searchParams.get('auth_error');
-        console.warn('[Leo AI Auth] OAuth Error Notice:', errorMsg);
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    } catch (e) {
-      console.warn('[Leo AI Auth] OAuth URL parse note:', e);
-    }
-
     // 1. Try Firebase Realtime Database
     loadChatsFromRealtimeDB(user.uid).then((rtdbChats) => {
       if (rtdbChats && rtdbChats.length > 0) {
@@ -452,33 +308,23 @@ export default function App() {
     );
   }
 
-  // Gate: don't render the chat interface until the user has authenticated.
+  // Gate: don't render the chat interface (or any of its data) until the
+  // user has actually logged in. Only the login modal is shown.
   if (!isLoggedIn) {
     return (
-      <div className="fixed inset-0 w-full h-full h-[100dvh] bg-[#f8f7ff] md:bg-[#dcd6eb] flex items-center justify-center overflow-hidden font-sans p-4">
+      <div className="fixed inset-0 w-full h-full h-[100dvh] bg-[#dcd6eb] flex items-center justify-center overflow-hidden font-sans">
         <div className="hidden md:block absolute top-[-10%] left-[-10%] w-[45vw] h-[45vw] rounded-full bg-purple-300/40 blur-[100px] pointer-events-none -z-10" />
         <div className="hidden md:block absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] rounded-full bg-indigo-300/30 blur-[120px] pointer-events-none -z-10" />
 
-        <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-xl border border-purple-100/80 text-center space-y-6 animate-in fade-in zoom-in-95 duration-200">
-          <LeoLogoMark className="w-20 h-20 mx-auto drop-shadow-lg" />
-          
-          <div className="space-y-2">
-            <h1 className="font-display font-bold text-2xl text-neutral-900 tracking-tight">
-              Welcome to Leo AI
-            </h1>
-            <p className="text-xs text-neutral-500 max-w-xs mx-auto leading-relaxed">
-              Experience ultra-fast multimodal intelligence, persistent memory, and deep reasoning. Please sign in to continue.
-            </p>
-          </div>
-
-          <div className="space-y-3 pt-2">
-            <button
-              onClick={() => setIsAuthOpen(true)}
-              className="w-full py-3.5 px-4 bg-purple-600 hover:bg-purple-700 active:scale-[0.99] text-white rounded-2xl text-xs font-semibold shadow-lg shadow-purple-500/25 transition cursor-pointer"
-            >
-              Sign in / Create Account
-            </button>
-          </div>
+        <div className="text-center space-y-4 px-6">
+          <h1 className="font-display font-bold text-2xl text-neutral-800">Leo AI</h1>
+          <p className="text-sm text-neutral-500">Please sign in to start chatting.</p>
+          <button
+            onClick={() => setIsAuthOpen(true)}
+            className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold shadow-lg shadow-purple-500/20 transition"
+          >
+            Sign in
+          </button>
         </div>
 
         <AuthModal
@@ -520,7 +366,6 @@ export default function App() {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onOpenSearchModal={() => setIsCommandPaletteOpen(true)}
-          onOpenUpgrade={() => setIsUpgradeOpen(true)}
         />
 
         {/* Right Main Area */}
@@ -534,8 +379,6 @@ export default function App() {
             onShare={handleShare}
             selectedModel={selectedModel}
             onSelectModel={setSelectedModel}
-            onOpenUpgrade={() => setIsUpgradeOpen(true)}
-            userPlan={user.plan}
           />
 
           {/* Body Content: Welcome Hero OR Active Chat */}
@@ -607,13 +450,6 @@ export default function App() {
       <HelpModal
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
-      />
-
-      <UpgradePricingModal
-        isOpen={isUpgradeOpen}
-        onClose={() => setIsUpgradeOpen(false)}
-        user={user}
-        onUserUpdated={(u) => setUser(u)}
       />
     </div>
   );

@@ -24,7 +24,6 @@ import {
   Lightbulb
 } from 'lucide-react';
 import { Message, UserProfile } from '../types';
-import { LeoLogoMark } from './LeoLogo';
 
 interface ChatViewProps {
   messages: Message[];
@@ -207,7 +206,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   className="w-8 h-8 rounded-full object-cover ring-1 ring-purple-200 flex-shrink-0 mt-1"
                 />
               ) : (
-                <LeoLogoMark className="w-8 h-8 flex-shrink-0 mt-1 drop-shadow-xs" />
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white shadow-sm shadow-purple-500/20 flex-shrink-0 mt-1">
+                  <Sparkles className="w-4 h-4" />
+                </div>
               )}
 
               {/* Message Bubble Container */}
@@ -458,7 +459,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
         {/* Streaming / Loading State */}
         {isLoading && (
           <div className="flex items-start gap-3">
-            <LeoLogoMark className="w-8 h-8 flex-shrink-0 animate-pulse drop-shadow-xs" />
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white shadow-sm shadow-purple-500/20 flex-shrink-0 animate-pulse">
+              <Sparkles className="w-4 h-4" />
+            </div>
             <div className="bg-white border border-purple-100/80 rounded-2xl rounded-tl-xs p-4 shadow-xs flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-purple-600 animate-bounce" />
               <div className="w-2 h-2 rounded-full bg-purple-600 animate-bounce [animation-delay:0.2s]" />
