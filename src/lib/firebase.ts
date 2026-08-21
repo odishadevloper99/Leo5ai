@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithCustomToken,
   signOut,
   onAuthStateChanged,
@@ -20,17 +22,31 @@ import {
   Database
 } from 'firebase/database';
 import { ChatSession, UserProfile, Message, MemoMemoryItem } from '../types';
+import { api } from './api';
 import appletConfig from '../../firebase-applet-config.json';
 
 const metaEnv = (import.meta as any).env || {};
 
+// Configure Firebase Project Credentials
+const projectId = metaEnv.VITE_FIREBASE_PROJECT_ID || appletConfig.projectId || 'gen-lang-client-0682444492';
+const apiKey = metaEnv.VITE_FIREBASE_API_KEY || appletConfig.apiKey;
+const authDomain = metaEnv.VITE_FIREBASE_AUTH_DOMAIN || appletConfig.authDomain || `${projectId}.firebaseapp.com`;
+const storageBucket = metaEnv.VITE_FIREBASE_STORAGE_BUCKET || appletConfig.storageBucket || `${projectId}.firebasestorage.app`;
+const messagingSenderId = metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || appletConfig.messagingSenderId || '387156119079';
+const appId = metaEnv.VITE_FIREBASE_APP_ID || appletConfig.appId || '1:387156119079:web:e624ae1f226a56f590c802';
+
 // Configure Realtime Database URL
 const rtdbUrl =
   metaEnv.VITE_FIREBASE_DATABASE_URL ||
-  `https://${appletConfig.projectId}-default-rtdb.firebaseio.com`;
+  `https://${projectId}-default-rtdb.firebaseio.com`;
 
 const firebaseConfig = {
-  ...appletConfig,
+  apiKey,
+  authDomain,
+  projectId,
+  storageBucket,
+  messagingSenderId,
+  appId,
   databaseURL: rtdbUrl,
 };
 
@@ -43,65 +59,210 @@ if (!getApps().length) {
 
 export const auth: Auth = getAuth(app);
 export const database: Database = getDatabase(app, rtdbUrl);
-export const googleProvider = new GoogleAuthProvider();
 
-export const isFirebaseConfigured = true;
+// Configure Google Auth Provider
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account',
+});
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
+
+export const isFirebaseConfigured = Boolean(apiKey && projectId);
 
 /**
- * Sign in with Google Popup
+ * Sign in with Google Popup via Firebase Authentication
  */
 export async function loginWithGoogle(): Promise<UserProfile> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    const user = result.user;
-    const userProfile: UserProfile = {
-      uid: user.uid,
-      displayName: user.displayName || 'Google User',
-      email: user.email || 'user@gmail.com',
+    const fbUser = result.user;
+    const idToken = await fbUser.getIdToken();
+
+    // Default base profile from Firebase user data
+    let userProfile: UserProfile = {
+      uid: fbUser.uid,
+      googleId: fbUser.providerData?.[0]?.uid || fbUser.uid,
+      displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Leo Explorer',
+      email: fbUser.email || '',
       photoURL:
-        user.photoURL ||
+        fbUser.photoURL ||
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       isAnonymous: false,
       role: 'user',
+      credits: 50,
       createdAt: Date.now(),
+      lastLoginAt: Date.now(),
+      lastActive: Date.now(),
+      chatCount: 0,
     };
-    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
 
-    // Save user profile to Realtime Database
+    // 1. Verify ID token on backend and synchronize user record with AI credits
     try {
-      await set(ref(database, `users/${user.uid}`), {
+      const backendRes = await api.loginWithGoogle({
+        idToken: idToken || undefined,
+        credential: idToken || undefined,
+      });
+
+      if (backendRes.success && backendRes.user) {
+        userProfile = {
+          ...backendRes.user,
+          uid: fbUser.uid, // Strictly preserve authenticated Firebase UID
+          displayName: fbUser.displayName || backendRes.user.displayName,
+          email: fbUser.email || backendRes.user.email,
+          photoURL: fbUser.photoURL || backendRes.user.photoURL,
+        };
+        if (backendRes.token) {
+          localStorage.setItem('leo_auth_token', backendRes.token);
+        }
+      }
+    } catch (backendErr) {
+      console.warn('[Backend Google Auth Verify Note]:', backendErr);
+    }
+
+    // 2. Fetch existing profile from Realtime Database to preserve existing credits and chatCount
+    try {
+      const userRef = ref(database, `users/${fbUser.uid}`);
+      const snap = await get(userRef);
+      if (snap.exists()) {
+        const existingData = snap.val();
+        userProfile = {
+          ...userProfile,
+          credits: typeof existingData.credits === 'number' ? existingData.credits : userProfile.credits,
+          createdAt: existingData.createdAt || userProfile.createdAt,
+          chatCount: typeof existingData.chatCount === 'number' ? existingData.chatCount : userProfile.chatCount,
+          role: existingData.role || userProfile.role,
+        };
+      }
+
+      // Save updated login timestamp and active status
+      await set(userRef, {
         ...userProfile,
+        lastLoginAt: Date.now(),
+        lastActive: Date.now(),
         updatedAt: Date.now(),
       });
-    } catch (e) {
-      console.warn('Realtime Database user profile sync note:', e);
+    } catch (dbErr) {
+      console.warn('[Realtime Database User Sync Note]:', dbErr);
     }
+
+    // 3. Persist profile to LocalStorage
+    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
 
     return userProfile;
   } catch (err: any) {
-    // IMPORTANT: do NOT silently fabricate a fake local account here.
-    // Previously this swallowed every popup error (blocked popup, unauthorized
-    // domain, wrong OAuth client, user closing the popup, etc.) and returned a
-    // fake "Google Explorer" user, which made it look like login "worked" even
-    // though no real Google account was ever signed in. Surface the real
-    // Firebase error instead so it can be seen and fixed (most common cause:
-    // your app's domain is not added under Firebase Console -> Authentication
-    // -> Settings -> Authorized domains).
     console.error('Google Sign-In Error:', err?.code, err?.message);
-    let friendlyMessage = err?.message || 'Google sign-in failed.';
+    let friendlyMessage = err?.message || 'Google sign-in could not be completed.';
+    
     if (err?.code === 'auth/unauthorized-domain') {
       friendlyMessage =
-        'This domain is not authorized for Google Sign-In. Add it under Firebase Console → Authentication → Settings → Authorized domains.';
+        'This domain is not authorized for Google Sign-In in Firebase. Add this domain under Firebase Console → Authentication → Settings → Authorized domains.';
     } else if (err?.code === 'auth/popup-blocked') {
-      friendlyMessage = 'Your browser blocked the Google sign-in popup. Please allow popups for this site and try again.';
+      friendlyMessage = 'Your browser blocked the Google sign-in popup. Please allow popups for this website and try again.';
     } else if (err?.code === 'auth/popup-closed-by-user') {
-      friendlyMessage = 'Google sign-in was cancelled before it finished.';
+      friendlyMessage = 'Google sign-in was cancelled before completion.';
     } else if (err?.code === 'auth/operation-not-allowed') {
-      friendlyMessage = 'Google sign-in is not enabled for this Firebase project. Enable it under Authentication → Sign-in method.';
+      friendlyMessage = 'Google sign-in provider is disabled in Firebase. Enable it under Firebase Console → Authentication → Sign-in method → Google.';
+    } else if (err?.code === 'auth/account-exists-with-different-credential') {
+      friendlyMessage = 'An account already exists with the same email address using a different sign-in method.';
+    } else if (err?.code === 'auth/network-request-failed') {
+      friendlyMessage = 'Network connection failure. Please check your internet connection and try again.';
+    } else if (err?.code === 'auth/invalid-api-key') {
+      friendlyMessage = 'Invalid Firebase API key. Please check your Firebase configuration.';
+    } else if (err?.code === 'auth/user-disabled') {
+      friendlyMessage = 'This account has been disabled by the administrator.';
     }
+
     const wrappedError = new Error(friendlyMessage);
     (wrappedError as any).code = err?.code;
     throw wrappedError;
+  }
+}
+
+/**
+ * Sign in with Google Redirect (Fallback for blocked popups / strict sandbox iframe)
+ */
+export async function loginWithGoogleRedirect(): Promise<void> {
+  await signInWithRedirect(auth, googleProvider);
+}
+
+/**
+ * Check for pending redirect sign-in results on app load
+ */
+export async function checkRedirectResult(): Promise<UserProfile | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result || !result.user) return null;
+
+    const fbUser = result.user;
+    const idToken = await fbUser.getIdToken();
+
+    let userProfile: UserProfile = {
+      uid: fbUser.uid,
+      googleId: fbUser.providerData?.[0]?.uid || fbUser.uid,
+      displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Leo Explorer',
+      email: fbUser.email || '',
+      photoURL:
+        fbUser.photoURL ||
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      isAnonymous: false,
+      role: 'user',
+      credits: 50,
+      createdAt: Date.now(),
+      lastLoginAt: Date.now(),
+      lastActive: Date.now(),
+      chatCount: 0,
+    };
+
+    try {
+      const backendRes = await api.loginWithGoogle({
+        idToken: idToken || undefined,
+        credential: idToken || undefined,
+      });
+      if (backendRes.success && backendRes.user) {
+        userProfile = {
+          ...backendRes.user,
+          uid: fbUser.uid,
+          displayName: fbUser.displayName || backendRes.user.displayName,
+          email: fbUser.email || backendRes.user.email,
+          photoURL: fbUser.photoURL || backendRes.user.photoURL,
+        };
+        if (backendRes.token) {
+          localStorage.setItem('leo_auth_token', backendRes.token);
+        }
+      }
+    } catch (backendErr) {
+      console.warn('[Backend Google Auth Verify Note]:', backendErr);
+    }
+
+    try {
+      const userRef = ref(database, `users/${fbUser.uid}`);
+      const snap = await get(userRef);
+      if (snap.exists()) {
+        const existingData = snap.val();
+        userProfile = {
+          ...userProfile,
+          credits: typeof existingData.credits === 'number' ? existingData.credits : userProfile.credits,
+          createdAt: existingData.createdAt || userProfile.createdAt,
+          chatCount: typeof existingData.chatCount === 'number' ? existingData.chatCount : userProfile.chatCount,
+          role: existingData.role || userProfile.role,
+        };
+      }
+      await set(userRef, {
+        ...userProfile,
+        lastLoginAt: Date.now(),
+        lastActive: Date.now(),
+        updatedAt: Date.now(),
+      });
+    } catch (dbErr) {
+      console.warn('[Realtime Database User Sync Note]:', dbErr);
+    }
+
+    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    return userProfile;
+  } catch (err: any) {
+    console.warn('[Google Redirect Auth Check Notice]:', err?.message || err);
+    return null;
   }
 }
 

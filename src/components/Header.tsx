@@ -9,9 +9,9 @@ import {
   Zap,
   Menu,
   Check,
-  Crown
 } from 'lucide-react';
 import { ChatSession } from '../types';
+import { LeoLogoMark } from './LeoLogo';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenExport,
   onShare,
   selectedModel,
-  onSelectModel
+  onSelectModel,
 }) => {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -99,9 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
             className="flex items-center gap-2 px-3 py-1.5 bg-neutral-50 hover:bg-neutral-100/80 border border-neutral-200/70 rounded-xl text-xs font-medium text-neutral-800 transition"
           >
-            <div className="w-5 h-5 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white text-[10px]">
-              <Sparkles className="w-3 h-3" />
-            </div>
+            <LeoLogoMark className="w-5 h-5 rounded-md" />
             <span className="font-semibold text-neutral-900">Leo AI</span>
             <span className="text-[11px] text-neutral-400 hidden sm:inline">
               ({currentMode.name.replace('Leo AI ', '')})
@@ -216,17 +214,6 @@ export const Header: React.FC<HeaderProps> = ({
           <span>Export chat</span>
         </button>
 
-        {/* Upgrade Pill Button strictly matching the user's mockup design */}
-        <button
-          id="header-upgrade-btn"
-          onClick={() => {
-            alert('🌟 Leo AI Pro: Unlimited high-speed vision inference and persistent memory enabled for your workspace!');
-          }}
-          className="bg-neutral-950 hover:bg-black text-white text-xs font-medium px-4 py-1.5 rounded-xl shadow-xs hover:shadow transition flex items-center gap-1.5"
-        >
-          <Crown className="w-3.5 h-3.5 text-amber-400" />
-          <span>Upgrade</span>
-        </button>
       </div>
     </header>
   );

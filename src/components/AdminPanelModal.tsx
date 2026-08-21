@@ -411,54 +411,38 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                         </span>
                       )}
                     </div>
+                    <div className="p-3 rounded-xl bg-purple-50 border border-purple-100">
+                      <div className="text-xs font-semibold text-purple-900">AICredits.in — Active Provider</div>
+                      <p className="text-[10px] text-purple-700 mt-1">API key, endpoint, and model are controlled only by Render Environment Variables.</p>
+                    </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                        AICredits.in API Key (from https://aicredits.in/dashboard)
-                      </label>
-                      <input
-                        type="password"
-                        placeholder="sk-aicredits-..."
-                        value={config.aiCreditsApiKey}
-                        onChange={(e) => setConfig({ ...config, aiCreditsApiKey: e.target.value })}
-                        className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-xs font-mono"
-                      />
-                      <p className="text-[10px] text-neutral-400 mt-1">
-                        Requests proxy through your secure backend to aicredits.in API without exposing keys to the browser.
-                      </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-700 mb-1">AICredits Base URL (Render)</label>
+                        <input type="text" value={config.aiCreditsBaseUrl} readOnly className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500 outline-none text-xs font-mono" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-700 mb-1">AICredits Model (Render)</label>
+                        <input type="text" value={(config as any).aiCreditsModel || config.visionModel || 'Not configured'} readOnly className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500 outline-none text-xs font-mono" />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                          AICredits Base URL
+                          Daily Message Limit (0 = Unlimited)
                         </label>
                         <input
-                          type="text"
-                          value={config.aiCreditsBaseUrl}
-                          onChange={(e) => setConfig({ ...config, aiCreditsBaseUrl: e.target.value })}
-                          className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono"
+                          type="number"
+                          min="0"
+                          value={config.dailyMessageLimit ?? 50}
+                          onChange={(e) =>
+                            setConfig({ ...config, dailyMessageLimit: Math.max(0, parseInt(e.target.value, 10) || 0) })
+                          }
+                          className="w-full px-3 py-1.5 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs"
                         />
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                          Vision Model (Cheapest Vision-Capable)
-                        </label>
-                        <select
-                          value={config.visionModel}
-                          onChange={(e) => setConfig({ ...config, visionModel: e.target.value })}
-                          className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs bg-white"
-                        >
-                          <option value="gemini-1.5-flash">gemini-1.5-flash (Cheapest Vision Model)</option>
-                          <option value="gpt-4o-mini">gpt-4o-mini (Cost-Efficient OpenAI Vision)</option>
-                          <option value="gemini-2.0-flash">gemini-2.0-flash (Ultra-Fast Multimodal)</option>
-                          <option value="claude-3-haiku-20240307">claude-3-haiku (Anthropic Vision)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-neutral-700 mb-1">
                           Temperature: {config.temperature}
@@ -508,15 +492,6 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                         <span>Enable Deeper Research & Step-by-Step Thinking</span>
                       </label>
 
-                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-neutral-800">
-                        <input
-                          type="checkbox"
-                          checked={config.fallbackToGemini}
-                          onChange={(e) => setConfig({ ...config, fallbackToGemini: e.target.checked })}
-                          className="rounded accent-purple-600"
-                        />
-                        <span>Fallback to Server-Side Gemini API if AICredits key is unset</span>
-                      </label>
                     </div>
 
                     <button
@@ -745,7 +720,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                         </span>
                         <button
                           onClick={() => {
-                            const envString = `NODE_ENV=production\nPORT=3000\nADMIN_PASSWORD=your_super_secret_admin_pass\nAICREDITS_API_KEY=your_aicredits_api_key\nAICREDITS_BASE_URL=https://api.aicredits.in/v1\nAICREDITS_VISION_MODEL=gemini-1.5-flash\nMEMO_API_KEY=your_memo_api_key\nMONGODB_URI=mongodb+srv://...\nGEMINI_API_KEY=your_gemini_key`;
+                            const envString = `NODE_ENV=production\nPORT=3000\nADMIN_PASSWORD=your_super_secret_admin_pass\nAICREDITS_API_KEY=your_aicredits_api_key\nAICREDITS_BASE_URL=https://api.aicredits.in/v1\nAICREDITS_MODEL=your_model_name\nMEMO_API_KEY=your_memo_api_key\nMONGODB_URI=mongodb+srv://...`;
                             navigator.clipboard.writeText(envString);
                             setCopiedEnv(true);
                             setTimeout(() => setCopiedEnv(false), 2000);
@@ -762,10 +737,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
 ADMIN_PASSWORD=your_super_secret_admin_pass
 AICREDITS_API_KEY=your_aicredits_api_key
 AICREDITS_BASE_URL=https://api.aicredits.in/v1
-AICREDITS_VISION_MODEL=gemini-1.5-flash
+AICREDITS_MODEL=your_model_name
 MEMO_API_KEY=your_memo_api_key
 MONGODB_URI=mongodb+srv://...
-GEMINI_API_KEY=your_gemini_key
 
 # 2. Vercel Frontend Environment Secrets:
 VITE_API_BASE_URL=https://your-render-backend.onrender.com

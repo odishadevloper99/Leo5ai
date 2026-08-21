@@ -151,7 +151,8 @@ PORT=3000
 NODE_ENV=production
 ADMIN_PASSWORD=your_secure_admin_password_here
 AICREDITS_API_KEY=your_aicredits_api_key_here
-AICREDITS_BASE_URL=https://aicredits.in/api/v1
+AICREDITS_MODEL=your_model_name
+AICREDITS_BASE_URL=https://api.aicredits.in/v1
 MEMO_API_KEY=your_memo_api_key_here
 MEMO_BASE_URL=https://api.memo.dev/v1
 MONGODB_URI=mongodb+srv://admin:pass@cluster.mongodb.net/leoai
@@ -399,7 +400,7 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                     <div className="p-3.5 sm:p-4 rounded-2xl bg-neutral-950 border border-neutral-800">
                       <p className="text-[10px] sm:text-[11px] text-neutral-400">Active Mode</p>
                       <p className="text-sm sm:text-base font-bold text-emerald-400 mt-1 truncate">
-                        {config?.aiCreditsApiKey ? 'AICredits.in' : 'Gemini / Cloud'}
+                        {'AICredits.in'}
                       </p>
                     </div>
                   </div>
@@ -419,25 +420,40 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                        AICredits API Base URL
+                        AICredits API Base URL (Render)
                       </label>
                       <input
                         type="text"
                         value={config.aiCreditsBaseUrl}
-                        onChange={(e) => setConfig({ ...config, aiCreditsBaseUrl: e.target.value })}
+                        readOnly
                         className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm sm:text-xs text-white outline-none focus:border-purple-500 font-mono"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                        Cheapest Vision Model (Multimodal & OCR)
+                        AICredits Model (Render)
                       </label>
                       <input
                         type="text"
-                        value={config.visionModel}
-                        onChange={(e) => setConfig({ ...config, visionModel: e.target.value })}
+                        value={config.visionModel || (config as any).aiCreditsModel || 'Not configured'}
+                        readOnly
                         className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm sm:text-xs text-white outline-none focus:border-purple-500 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                        Daily Message Limit (0 = Unlimited)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={config.dailyMessageLimit ?? 50}
+                        onChange={(e) =>
+                          setConfig({ ...config, dailyMessageLimit: Math.max(0, parseInt(e.target.value, 10) || 0) })
+                        }
+                        className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm sm:text-xs text-white outline-none focus:border-purple-500"
                       />
                     </div>
 

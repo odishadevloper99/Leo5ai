@@ -25,12 +25,21 @@ export interface ChatSession {
 
 export interface UserProfile {
   uid: string;
+  googleId?: string;
   displayName: string;
   email: string;
   photoURL?: string;
   isAnonymous?: boolean;
   role?: 'admin' | 'user';
+  credits?: number;
+  plan?: 'free' | 'pro' | 'ultra';
+  subscriptionActive?: boolean;
+  subscriptionExpiresAt?: number;
+  phone?: string;
   createdAt?: number;
+  lastLoginAt?: number;
+  lastActive?: number;
+  chatCount?: number;
 }
 
 export interface MemoMemoryItem {
@@ -55,6 +64,7 @@ export interface AIConfig {
   enableVision: boolean;
   enableMemory: boolean;
   fallbackToGemini: boolean;
+  dailyMessageLimit?: number;
   mongoDbConfigured: boolean;
   firebaseConfigured: boolean;
 }

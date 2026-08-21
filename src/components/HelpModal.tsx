@@ -37,7 +37,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
               <span>Core Architecture Capabilities</span>
             </div>
             <ul className="list-disc pl-4 space-y-1 text-purple-900/80 text-[11px]">
-              <li><strong>Vision Models</strong>: Cheapest vision-capable inference via aicredits.in or Gemini 2.5 Flash.</li>
+              <li><strong>Vision Models</strong>: Vision-capable inference through your configured AICredits model.</li>
               <li><strong>Persistent Memory</strong>: Memo API integration remembers user facts across sessions.</li>
               <li><strong>Admin Panel</strong>: Secure password validated via backend environment secret.</li>
               <li><strong>Cloud Separation</strong>: Ready for frontend hosting on Vercel and backend hosting on Render.</li>

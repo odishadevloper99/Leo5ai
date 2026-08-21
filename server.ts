@@ -1,13 +1,23 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import nodemailer from 'nodemailer';
-import { GoogleGenAI } from '@google/genai';
-
+import { memoService } from './backend/services/memoService';
 
 dotenv.config();
 
+// Load Firebase configuration fallback from firebase-applet-config.json
+let appletConfig: any = {};
+try {
+  const cfgPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(cfgPath)) {
+    appletConfig = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  }
+} catch (e) {}
+
 const app = express();
+app.set('trust proxy', true);
 
 // Enable CORS for Vercel Frontend <-> Render Backend communication
 app.use((req, res, next) => {
@@ -45,14 +55,22 @@ interface StoredChat {
 
 interface UserRecord {
   uid: string;
+  googleId?: string;
   displayName: string;
   email: string;
   photoURL?: string;
   isAnonymous: boolean;
   role: 'admin' | 'user';
+  credits: number;
   createdAt: number;
+  lastLoginAt: number;
   lastActive: number;
   chatCount: number;
+  plan?: string;
+  subscriptionActive?: boolean;
+  subscriptionExpiresAt?: number;
+  dailyMessagesUsed?: number;
+  dailyMessageDate?: string;
 }
 
 const memoryStore: Map<string, MemoryRecord[]> = new Map();
@@ -102,9 +120,10 @@ let globalStats = {
 let currentConfig = {
   aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
   aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
-  visionModel: process.env.AICREDITS_VISION_MODEL || process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || 'gemini-2.5-flash',
+  visionModel: (process.env.AICREDITS_MODEL || '').replace(/^['"]|['"]$/g, '').trim(),
   temperature: 0.7,
   maxTokens: 4096,
+  dailyMessageLimit: 50,
   systemPrompt: process.env.SYSTEM_PROMPT || `You are Leo AI, an elite, highly intelligent, and versatile AI assistant created to assist humans across engineering, reasoning, visual analysis, writing, and creative brainstorms.
 CRITICAL DIRECTIVES:
 1. Always follow user constraints strictly and accurately.
@@ -117,21 +136,14 @@ CRITICAL DIRECTIVES:
   enableDeepResearch: true,
   enableVision: true,
   enableMemory: true,
-  fallbackToGemini: true,
+  fallbackToGemini: false,
   mongoDbConfigured: Boolean(process.env.MONGODB_URI),
   firebaseConfigured: Boolean(process.env.FIREBASE_API_KEY || process.env.FIREBASE_PROJECT_ID)
 };
 
 // Helper to determine the EXACT model to use based on Render Environment Variables & Admin Config
 function getTargetAiModel(): string {
-  const envModel = process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || process.env.VISION_MODEL;
-  if (envModel && envModel.trim().length > 0) {
-    return envModel.trim();
-  }
-  if (currentConfig.visionModel && currentConfig.visionModel.trim().length > 0) {
-    return currentConfig.visionModel.trim();
-  }
-  return 'gemini-2.5-flash';
+  return (process.env.AICREDITS_MODEL || '').replace(/^['"]|['"]$/g, '').trim();
 }
 
 // ----------------------------------------------------
@@ -232,9 +244,16 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
         ...currentConfig,
         ...savedConfig,
         // Always preserve Render's explicit environment variable overrides if present
-        aiCreditsApiKey: process.env.AICREDITS_API_KEY || savedConfig.aiCreditsApiKey || currentConfig.aiCreditsApiKey,
-        visionModel: process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || savedConfig.visionModel || currentConfig.visionModel
+        aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
+        aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
+        visionModel: getTargetAiModel(),
+        fallbackToGemini: false
       };
+      memoService.updateConfig({
+        apiKey: currentConfig.memoApiKey,
+        apiUrl: currentConfig.memoApiUrl,
+        isEnabled: currentConfig.enableMemory
+      });
       console.log('✓ [CONFIG] Synced system prompt & model config from Firebase Realtime DB');
     }
   } catch (e: any) {
@@ -266,8 +285,8 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     uptime: Math.floor((Date.now() - globalStats.serverStartTime) / 1000),
     services: {
-      aiCredits: Boolean(currentConfig.aiCreditsApiKey),
-      geminiFallback: Boolean(process.env.GEMINI_API_KEY),
+      aiCredits: Boolean((process.env.AICREDITS_API_KEY || '').trim() && getTargetAiModel()),
+      aiCreditsModel: getTargetAiModel(),
       memoApi: Boolean(currentConfig.memoApiKey),
       mongoDb: currentConfig.mongoDbConfigured,
       firebase: currentConfig.firebaseConfigured
@@ -314,12 +333,15 @@ app.get('/api/admin/config', (req, res) => {
     return res.status(403).json({ error: 'Unauthorized. Admin privileges required.' });
   }
 
-  // Return safe config (mask sensitive keys if present)
+  // AICredits provider secrets/model are controlled only by Render.
   res.json({
     ...currentConfig,
-    hasAiCreditsKey: Boolean(currentConfig.aiCreditsApiKey),
+    aiCreditsApiKey: '',
+    aiCreditsBaseUrl: (process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1').trim(),
+    visionModel: getTargetAiModel(),
+    hasAiCreditsKey: Boolean((process.env.AICREDITS_API_KEY || '').trim()),
     hasMemoKey: Boolean(currentConfig.memoApiKey),
-    hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
+    aiCreditsModel: getTargetAiModel(),
     adminPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD)
   });
 });
@@ -335,6 +357,7 @@ app.post('/api/admin/config', async (req, res) => {
     visionModel,
     temperature,
     maxTokens,
+    dailyMessageLimit,
     systemPrompt,
     memoApiKey,
     memoApiUrl,
@@ -344,28 +367,45 @@ app.post('/api/admin/config', async (req, res) => {
     fallbackToGemini
   } = req.body;
 
-  if (aiCreditsApiKey !== undefined) currentConfig.aiCreditsApiKey = aiCreditsApiKey;
-  if (aiCreditsBaseUrl !== undefined) currentConfig.aiCreditsBaseUrl = aiCreditsBaseUrl;
-  if (visionModel !== undefined) currentConfig.visionModel = visionModel;
+  // AICredits provider settings are Render-only and cannot be overridden from the Admin Panel.
+  currentConfig.aiCreditsApiKey = process.env.AICREDITS_API_KEY || '';
+  currentConfig.aiCreditsBaseUrl = process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1';
+  currentConfig.visionModel = getTargetAiModel();
   if (temperature !== undefined) currentConfig.temperature = Number(temperature);
   if (maxTokens !== undefined) currentConfig.maxTokens = Number(maxTokens);
+  if (dailyMessageLimit !== undefined) currentConfig.dailyMessageLimit = Math.max(0, Number(dailyMessageLimit));
   if (systemPrompt !== undefined) currentConfig.systemPrompt = systemPrompt;
   if (memoApiKey !== undefined) currentConfig.memoApiKey = memoApiKey;
   if (memoApiUrl !== undefined) currentConfig.memoApiUrl = memoApiUrl;
   if (enableDeepResearch !== undefined) currentConfig.enableDeepResearch = Boolean(enableDeepResearch);
   if (enableVision !== undefined) currentConfig.enableVision = Boolean(enableVision);
   if (enableMemory !== undefined) currentConfig.enableMemory = Boolean(enableMemory);
-  if (fallbackToGemini !== undefined) currentConfig.fallbackToGemini = Boolean(fallbackToGemini);
+  // Provider fallback is disabled: AICredits is the only AI provider.
+  currentConfig.fallbackToGemini = false;
 
-  // Persist updated configuration permanently to Firebase Realtime Database
-  await setRtdbData('system/config', currentConfig);
+  memoService.updateConfig({
+    apiKey: currentConfig.memoApiKey,
+    apiUrl: currentConfig.memoApiUrl,
+    isEnabled: currentConfig.enableMemory
+  });
+
+  // Persist only non-provider settings. AICredits key/base URL/model remain Render-only.
+  const { aiCreditsApiKey: _savedKey, aiCreditsBaseUrl: _savedBaseUrl, visionModel: _savedModel, ...persistedConfig } = currentConfig;
+  await setRtdbData('system/config', persistedConfig);
 
   console.log('✓ [ADMIN] Saved and persisted system prompt and AI config to database');
 
   res.json({
     success: true,
     message: 'Leo AI configuration updated and persisted successfully across all instances.',
-    config: currentConfig
+    config: {
+      ...currentConfig,
+      aiCreditsApiKey: '',
+      aiCreditsBaseUrl: (process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1').trim(),
+      visionModel: getTargetAiModel(),
+      aiCreditsModel: getTargetAiModel(),
+      hasAiCreditsKey: Boolean((process.env.AICREDITS_API_KEY || '').trim())
+    }
   });
 });
 
@@ -402,7 +442,9 @@ app.get('/api/admin/users', (req, res) => {
       photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       isAnonymous: false,
       role: 'user',
+      credits: 50,
       createdAt: Date.now() - 86400000 * 7,
+      lastLoginAt: Date.now(),
       lastActive: Date.now(),
       chatCount: 14
     });
@@ -794,6 +836,426 @@ async function sendOtpEmail(
   }
 }
 
+// ----------------------------------------------------
+// Google OAuth 2.0 & Token Verification Helpers
+// ----------------------------------------------------
+const DEFAULT_USER_CREDITS = parseInt(process.env.DEFAULT_AI_CREDITS || '50', 10) || 50;
+
+async function findOrCreateGoogleUser(googleData: {
+  sub: string;
+  email: string;
+  name?: string;
+  picture?: string;
+}): Promise<{ user: UserRecord; isNewUser: boolean }> {
+  const normalizedEmail = googleData.email.trim().toLowerCase();
+  const sanitizedEmail = sanitizeEmailForRtdb(normalizedEmail);
+  const defaultCredits = DEFAULT_USER_CREDITS;
+
+  // 1. Search in local userStore by UID, googleId or email
+  let existingUser: UserRecord | undefined;
+  if (googleData.sub && userStore.has(googleData.sub)) {
+    existingUser = userStore.get(googleData.sub);
+  }
+  if (!existingUser) {
+    for (const usr of userStore.values()) {
+      if (
+        (usr.googleId && usr.googleId === googleData.sub) ||
+        (usr.email && usr.email.toLowerCase() === normalizedEmail)
+      ) {
+        existingUser = usr;
+        break;
+      }
+    }
+  }
+
+  // 2. Search in Realtime Database /users if not in local cache
+  if (!existingUser && googleData.sub) {
+    const directUser = await getRtdbData(`users/${googleData.sub}`);
+    if (directUser && (directUser.uid || directUser.email)) {
+      existingUser = directUser;
+    }
+  }
+  if (!existingUser) {
+    const rtdbEmailIndex = await getRtdbData(`users_by_email/${sanitizedEmail}`);
+    if (rtdbEmailIndex && rtdbEmailIndex.uid) {
+      const remoteUser = await getRtdbData(`users/${rtdbEmailIndex.uid}`);
+      if (remoteUser && remoteUser.uid) {
+        existingUser = remoteUser;
+      }
+    }
+  }
+
+  if (existingUser) {
+    const updatedUser: UserRecord = {
+      ...existingUser,
+      uid: existingUser.uid || googleData.sub,
+      googleId: existingUser.googleId || googleData.sub,
+      displayName: existingUser.displayName || googleData.name || normalizedEmail.split('@')[0],
+      photoURL: existingUser.photoURL || googleData.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      credits: typeof existingUser.credits === 'number' ? existingUser.credits : defaultCredits,
+      lastLoginAt: Date.now(),
+      lastActive: Date.now(),
+    };
+    userStore.set(updatedUser.uid, updatedUser);
+
+    // Save to RTDB
+    await setRtdbData(`users/${updatedUser.uid}`, { ...updatedUser, updatedAt: Date.now() });
+    await setRtdbData(`users_by_email/${sanitizedEmail}`, { uid: updatedUser.uid });
+
+    return { user: updatedUser, isNewUser: false };
+  }
+
+  // 3. New User Registration:
+  // Using verified Firebase UID (googleData.sub) ensures 1:1 match with Firebase Auth
+  const newUid = googleData.sub || ('usr_g_' + Math.random().toString(36).substring(2, 10));
+  const isInitialAdmin = Boolean(
+    process.env.ADMIN_EMAIL && normalizedEmail === process.env.ADMIN_EMAIL.trim().toLowerCase()
+  );
+
+  const newUser: UserRecord = {
+    uid: newUid,
+    googleId: googleData.sub,
+    displayName: googleData.name || normalizedEmail.split('@')[0] || 'Leo Explorer',
+    email: normalizedEmail,
+    photoURL: googleData.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    isAnonymous: false,
+    role: isInitialAdmin ? 'admin' : 'user',
+    credits: defaultCredits,
+    createdAt: Date.now(),
+    lastLoginAt: Date.now(),
+    lastActive: Date.now(),
+    chatCount: 0,
+  };
+
+  userStore.set(newUid, newUser);
+
+  // Persist to RTDB
+  await setRtdbData(`users/${newUid}`, { ...newUser, updatedAt: Date.now() });
+  await setRtdbData(`users_by_email/${sanitizedEmail}`, { uid: newUid });
+
+  return { user: newUser, isNewUser: true };
+}
+
+async function verifyGoogleTokenPayload(params: {
+  credential?: string;
+  idToken?: string;
+  accessToken?: string;
+}): Promise<{ sub: string; email: string; name?: string; picture?: string } | null> {
+  const tokenToVerify = params.idToken || params.credential;
+
+  // 1. Google OAuth2 ID Token Verification via tokeninfo
+  if (tokenToVerify) {
+    try {
+      const tokenInfoRes = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenToVerify)}`
+      );
+      if (tokenInfoRes.ok) {
+        const payload: any = await tokenInfoRes.json();
+        if (payload.sub && payload.email) {
+          return {
+            sub: payload.sub,
+            email: payload.email,
+            name: payload.name || payload.given_name,
+            picture: payload.picture,
+          };
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Google Tokeninfo Notice]:', err.message);
+    }
+
+    // 2. Fallback: Firebase Auth ID Token verification via Google Identity Toolkit
+    const firebaseKey = process.env.FIREBASE_API_KEY || appletConfig.apiKey;
+    if (firebaseKey) {
+      try {
+        const fbRes = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken: tokenToVerify }),
+          }
+        );
+        if (fbRes.ok) {
+          const fbData: any = await fbRes.json();
+          const user = fbData.users?.[0];
+          if (user && user.email) {
+            return {
+              sub: user.localId || user.rawId || 'fb_' + Date.now(),
+              email: user.email,
+              name: user.displayName,
+              picture: user.photoUrl,
+            };
+          }
+        }
+      } catch (fbErr: any) {
+        console.warn('[Firebase Token Verification Notice]:', fbErr.message);
+      }
+    }
+  }
+
+  // 3. Google Access Token Verification via userinfo
+  if (params.accessToken) {
+    try {
+      const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${params.accessToken}` },
+      });
+      if (userinfoRes.ok) {
+        const info: any = await userinfoRes.json();
+        if (info.sub && info.email) {
+          return {
+            sub: info.sub,
+            email: info.email,
+            name: info.name || info.given_name,
+            picture: info.picture,
+          };
+        }
+      }
+    } catch (accessErr: any) {
+      console.warn('[Google Userinfo Notice]:', accessErr.message);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Public OAuth Configuration (Safe - never exposes client secrets)
+ */
+app.get('/api/auth/oauth-config', (req, res) => {
+  const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '';
+  res.json({
+    googleClientId,
+    googleConfigured: Boolean(googleClientId),
+    defaultCredits: DEFAULT_USER_CREDITS,
+    firebaseConfigured: Boolean(process.env.FIREBASE_API_KEY || process.env.FIREBASE_PROJECT_ID),
+  });
+});
+
+/**
+ * POST /api/auth/google
+ * Universal Google Authentication endpoint:
+ * Accepts Google ID Token, Credential, Access Token, or OAuth code.
+ * Cryptographically verifies token with Google, creates or finds user, and returns session token.
+ */
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { credential, idToken, accessToken, code, redirectUri } = req.body;
+
+    let verifiedPayload: { sub: string; email: string; name?: string; picture?: string } | null = null;
+
+    // A. Handle Authorization Code Exchange (if code provided)
+    if (code) {
+      const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      if (!clientId || !clientSecret) {
+        return res.status(500).json({
+          success: false,
+          message: 'Google OAuth is missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET in backend configuration.'
+        });
+      }
+
+      const tokenParams = new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri || `${req.protocol}://${req.get('host')}/api/auth/google/callback`,
+        grant_type: 'authorization_code',
+      });
+
+      const tokenExchangeRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: tokenParams.toString(),
+      });
+
+      if (!tokenExchangeRes.ok) {
+        const errJson: any = await tokenExchangeRes.json().catch(() => ({}));
+        return res.status(400).json({
+          success: false,
+          message: errJson.error_description || 'Google OAuth code exchange failed'
+        });
+      }
+
+      const tokenData: any = await tokenExchangeRes.json();
+      verifiedPayload = await verifyGoogleTokenPayload({
+        idToken: tokenData.id_token,
+        accessToken: tokenData.access_token
+      });
+    } else {
+      // B. Verify Token / Credential / AccessToken directly with Google
+      verifiedPayload = await verifyGoogleTokenPayload({ credential, idToken, accessToken });
+    }
+
+    if (!verifiedPayload || !verifiedPayload.email) {
+      return res.status(401).json({
+        success: false,
+        message: 'Google authentication verification failed. Invalid or expired token.'
+      });
+    }
+
+    // C. Find or create user in database
+    const { user, isNewUser } = await findOrCreateGoogleUser(verifiedPayload);
+
+    // D. Mint session token
+    const sessionToken = 'leo_gauth_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+    console.log(`[Google Auth Success] ${isNewUser ? 'Created new user' : 'Logged in existing user'}: ${user.email} (Credits: ${user.credits})`);
+
+    // Set secure cookie if possible
+    res.cookie('leo_auth_session', sessionToken, {
+      httpOnly: true,
+      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    });
+
+    return res.json({
+      success: true,
+      message: isNewUser ? 'Welcome to Leo AI! Your account was created.' : 'Welcome back to Leo AI!',
+      user,
+      token: sessionToken,
+      isNewUser,
+    });
+  } catch (err: any) {
+    console.error('[POST /api/auth/google Error]:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Internal server error during Google authentication.'
+    });
+  }
+});
+
+/**
+ * GET /api/auth/google/url
+ * Generates official Google OAuth 2.0 authorization URL for redirect flows
+ */
+app.get('/api/auth/google/url', (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    return res.status(500).json({
+      success: false,
+      message: 'GOOGLE_CLIENT_ID is not configured in backend environment variables.'
+    });
+  }
+
+  const redirectUri = (req.query.redirect_uri as string) || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+  const state = (req.query.state as string) || '/';
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'offline',
+    prompt: 'select_account',
+    state,
+  });
+
+  res.json({
+    success: true,
+    url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+  });
+});
+
+/**
+ * GET /api/auth/google/callback
+ * Handles OAuth 2.0 redirect code from Google and redirects user back to app
+ */
+app.get('/api/auth/google/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+
+  if (error) {
+    return res.redirect(`/?auth_error=${encodeURIComponent(String(error))}`);
+  }
+
+  if (!code) {
+    return res.redirect('/?auth_error=no_code_provided');
+  }
+
+  try {
+    const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+
+    if (!clientId || !clientSecret) {
+      return res.redirect('/?auth_error=google_oauth_not_configured_on_backend');
+    }
+
+    const tokenParams = new URLSearchParams({
+      code: String(code),
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+    });
+
+    const tokenExchangeRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenParams.toString(),
+    });
+
+    if (!tokenExchangeRes.ok) {
+      return res.redirect('/?auth_error=token_exchange_failed');
+    }
+
+    const tokenData: any = await tokenExchangeRes.json();
+    const verifiedPayload = await verifyGoogleTokenPayload({
+      idToken: tokenData.id_token,
+      accessToken: tokenData.access_token
+    });
+
+    if (!verifiedPayload || !verifiedPayload.email) {
+      return res.redirect('/?auth_error=verification_failed');
+    }
+
+    const { user } = await findOrCreateGoogleUser(verifiedPayload);
+    const sessionToken = 'leo_gauth_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+    const userParam = encodeURIComponent(JSON.stringify(user));
+    const targetState = (state && String(state).startsWith('/')) ? String(state) : '/';
+
+    return res.redirect(`${targetState}#auth_token=${sessionToken}&user=${userParam}`);
+  } catch (err: any) {
+    console.error('[Google OAuth Callback Error]:', err);
+    return res.redirect(`/?auth_error=${encodeURIComponent(err.message || 'callback_failed')}`);
+  }
+});
+
+/**
+ * GET /api/auth/me or /api/auth/session
+ * Returns current authenticated user and updated AI credits
+ */
+app.get(['/api/auth/me', '/api/auth/session'], (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim() || (req.query.token as string);
+  const uid = (req.query.uid as string) || (req.headers['x-user-id'] as string);
+
+  if (!token && !uid) {
+    return res.status(401).json({ success: false, message: 'Unauthenticated' });
+  }
+
+  let user: UserRecord | undefined;
+  if (uid && userStore.has(uid)) {
+    user = userStore.get(uid);
+  } else {
+    // Search userStore
+    for (const u of userStore.values()) {
+      if (u.uid === uid) {
+        user = u;
+        break;
+      }
+    }
+  }
+
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  res.json({ success: true, user });
+});
+
 /**
  * Step 1: Generate OTP, invalidate old OTP, write to /otps/{sanitizedEmail} in RTDB, and send email
  */
@@ -983,6 +1445,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 
   // 3. Construct user profile & mint custom token
   const finalUid = userProfile?.uid || rtdbRecord?.uid || memRecord?.userProfile?.uid || 'usr_' + Date.now().toString(36);
+  const existingCached = userStore.get(finalUid);
   const finalUser: UserRecord = {
     uid: finalUid,
     displayName: userProfile?.displayName || rtdbRecord?.displayName || memRecord?.userProfile?.displayName || normalizedEmail.split('@')[0],
@@ -990,9 +1453,11 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     photoURL: userProfile?.photoURL || rtdbRecord?.photoURL || memRecord?.userProfile?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     isAnonymous: false,
     role: 'user',
-    createdAt: Date.now(),
+    credits: existingCached && typeof existingCached.credits === 'number' ? existingCached.credits : DEFAULT_USER_CREDITS,
+    createdAt: existingCached?.createdAt || Date.now(),
+    lastLoginAt: Date.now(),
     lastActive: Date.now(),
-    chatCount: 1
+    chatCount: existingCached?.chatCount || 0
   };
 
   // Sync user profile to Realtime Database /users/{uid}
@@ -1020,42 +1485,80 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 
 
 // ----------------------------------------------------
-// 3. Memo API & User Memory Management
+// 3. Memo API & Long-Term User Memory Management
 // ----------------------------------------------------
-app.get('/api/memory', (req, res) => {
-  const userId = (req.query.userId as string) || 'default-user';
-  const memories = memoryStore.get(userId) || [];
-  res.json({ memories });
+app.get('/api/memory', async (req, res) => {
+  try {
+    const userId = (req.query.userId as string) || 'default-user';
+    const memories = await memoService.getMemories(userId);
+    res.json({ memories });
+  } catch (err: any) {
+    console.warn('[API /api/memory GET error]:', err.message);
+    res.json({ memories: [] });
+  }
 });
 
-app.post('/api/memory', (req, res) => {
-  const { userId = 'default-user', text, category = 'general' } = req.body;
-  if (!text) return res.status(400).json({ error: 'Memory text is required' });
-
-  const newMemory: MemoryRecord = {
-    id: 'mem_' + Math.random().toString(36).substring(2, 9),
-    userId,
-    text,
-    category,
-    createdAt: Date.now()
-  };
-
-  const existing = memoryStore.get(userId) || [];
-  existing.unshift(newMemory);
-  memoryStore.set(userId, existing);
-  globalStats.totalMemories++;
-
-  res.json({ success: true, memory: newMemory });
+app.post('/api/memory/search', async (req, res) => {
+  try {
+    const { userId = 'default-user', query = '', limit = 5 } = req.body;
+    const memories = await memoService.searchRelevantMemories(userId, query, Number(limit) || 5);
+    res.json({ memories });
+  } catch (err: any) {
+    console.warn('[API /api/memory/search POST error]:', err.message);
+    res.json({ memories: [] });
+  }
 });
 
-app.delete('/api/memory/:id', (req, res) => {
-  const { id } = req.params;
-  const userId = (req.query.userId as string) || 'default-user';
-  const existing = memoryStore.get(userId) || [];
-  const filtered = existing.filter(m => m.id !== id);
-  memoryStore.set(userId, filtered);
+app.post('/api/memory', async (req, res) => {
+  try {
+    const { userId = 'default-user', text, category = 'general' } = req.body;
+    if (!text) return res.status(400).json({ error: 'Memory text is required' });
 
-  res.json({ success: true, message: 'Memory deleted' });
+    const newMemory = await memoService.addMemory(userId, text, category);
+    globalStats.totalMemories++;
+
+    res.json({ success: true, memory: newMemory });
+  } catch (err: any) {
+    console.error('[API /api/memory POST error]:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to save memory' });
+  }
+});
+
+app.put('/api/memory/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text, userId = 'default-user' } = req.body;
+    if (!text) return res.status(400).json({ error: 'Memory text is required' });
+
+    const ok = await memoService.updateMemory(id, text, userId);
+    res.json({ success: ok, message: ok ? 'Memory updated' : 'Memory not found' });
+  } catch (err: any) {
+    console.error('[API /api/memory/:id PUT error]:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to update memory' });
+  }
+});
+
+app.delete('/api/memory/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = (req.query.userId as string) || (req.body?.userId as string) || 'default-user';
+    await memoService.deleteMemory(id, userId);
+    res.json({ success: true, message: 'Memory deleted' });
+  } catch (err: any) {
+    console.warn('[API /api/memory/:id DELETE error]:', err.message);
+    res.json({ success: true, message: 'Memory deleted' });
+  }
+});
+
+app.delete('/api/memory', async (req, res) => {
+  try {
+    const userId = (req.query.userId as string) || (req.body?.userId as string) || 'default-user';
+    await memoService.deleteAllMemories(userId);
+    res.json({ success: true, message: 'All memories cleared' });
+  } catch (err: any) {
+    console.warn('[API /api/memory DELETE error]:', err.message);
+    res.json({ success: true, message: 'All memories cleared' });
+  }
 });
 
 // ----------------------------------------------------
@@ -1097,13 +1600,14 @@ app.delete('/api/chats/:id', (req, res) => {
   res.json({ success: true, message: 'Chat deleted' });
 });
 
-// Helper to build the unified, authoritative system prompt context
-function buildUnifiedSystemPrompt(
+// Helper to build the unified, authoritative system prompt context with Memo long-term memories
+async function buildUnifiedSystemPrompt(
   userId: string,
+  latestMessageText: string = '',
   systemPromptOverride?: string,
   isDeepResearch: boolean = false,
   hasImages: boolean = false
-): string {
+): Promise<string> {
   // 1. Authoritative Base Persona & Directives from Admin Panel / Config / Env
   const rawAdminPrompt = (systemPromptOverride || currentConfig.systemPrompt || process.env.SYSTEM_PROMPT || '').trim();
   
@@ -1126,13 +1630,14 @@ CRITICAL DIRECTIVES:
 5. Never hallucinate or bypass system safety directives.`;
   }
 
-  // 2. Persistent User Memory Context (Memo API / local store)
-  const userMemories = memoryStore.get(userId) || [];
+  // 2. Persistent User Memory Context (Memo API / Long-term service)
   let memorySection = '';
-  if (currentConfig.enableMemory && userMemories.length > 0) {
-    memorySection = `\n\n[USER PREFERENCES & CONTEXT]:\n` +
-      userMemories.map((m, i) => `${i + 1}. [${m.category.toUpperCase()}] ${m.text}`).join('\n') +
-      `\n(Adapt to these background preferences where appropriate, but never violate the Supreme System Mandate above.)`;
+  if (currentConfig.enableMemory) {
+    try {
+      memorySection = await memoService.buildMemoryPromptContext(userId, latestMessageText);
+    } catch (memErr: any) {
+      console.warn('[Memory Context Warn]:', memErr.message);
+    }
   }
 
   // 3. Deep Research & Structured Reasoning Directives
@@ -1154,6 +1659,67 @@ CRITICAL DIRECTIVES:
   return `${basePersona}${memorySection}${deepResearchSection}${visionSection}`.trim();
 }
 
+// Daily message limit enforcement. A value of 0 means unlimited.
+function getUsageDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Check allowance without consuming it. Only a successful AICredits response is counted.
+async function checkDailyMessage(userId: string): Promise<{ allowed: boolean; limit: number; used: number }> {
+  const limit = Math.max(0, Number((currentConfig as any).dailyMessageLimit ?? 50));
+  if (limit === 0) return { allowed: true, limit: 0, used: 0 };
+  const today = getUsageDate();
+  let user = userStore.get(userId);
+  if (!user && userId && userId !== 'default-user') {
+    try {
+      const remote = await getRtdbData(`users/${userId}`);
+      if (remote && typeof remote === 'object') { user = remote as UserRecord; userStore.set(userId, user); }
+    } catch {}
+  }
+  if (user) {
+    const used = user.dailyMessageDate === today ? Number(user.dailyMessagesUsed || 0) : 0;
+    return { allowed: used < limit, limit, used };
+  }
+  const key = userId || 'default-user';
+  const usageMap = (globalThis as any).__leoDailyMessageUsage as Map<string, { date: string; used: number }> | undefined;
+  const usage = usageMap || new Map<string, { date: string; used: number }>();
+  (globalThis as any).__leoDailyMessageUsage = usage;
+  const record = usage.get(key);
+  const used = record && record.date === today ? record.used : 0;
+  return { allowed: used < limit, limit, used };
+}
+
+async function recordDailyMessage(userId: string): Promise<{ limit: number; used: number }> {
+  const limit = Math.max(0, Number((currentConfig as any).dailyMessageLimit ?? 50));
+  if (limit === 0) return { limit: 0, used: 0 };
+  const today = getUsageDate();
+  let user = userStore.get(userId);
+  if (!user && userId && userId !== 'default-user') {
+    try {
+      const remote = await getRtdbData(`users/${userId}`);
+      if (remote && typeof remote === 'object') { user = remote as UserRecord; userStore.set(userId, user); }
+    } catch {}
+  }
+  if (user) {
+    const used = user.dailyMessageDate === today ? Number(user.dailyMessagesUsed || 0) : 0;
+    user.dailyMessageDate = today;
+    user.dailyMessagesUsed = Math.min(limit, used + 1);
+    user.lastActive = Date.now();
+    userStore.set(userId, user);
+    await setRtdbData(`users/${user.uid}`, { ...user, updatedAt: Date.now() }).catch(() => false);
+    return { limit, used: user.dailyMessagesUsed };
+  }
+  const key = userId || 'default-user';
+  const usageMap = (globalThis as any).__leoDailyMessageUsage as Map<string, { date: string; used: number }> | undefined;
+  const usage = usageMap || new Map<string, { date: string; used: number }>();
+  (globalThis as any).__leoDailyMessageUsage = usage;
+  const record = usage.get(key);
+  const used = record && record.date === today ? record.used : 0;
+  const nextUsed = Math.min(limit, used + 1);
+  usage.set(key, { date: today, used: nextUsed });
+  return { limit, used: nextUsed };
+}
+
 // ----------------------------------------------------
 // 5. AI Chat Completion & Vision Reasoning
 // ----------------------------------------------------
@@ -1172,208 +1738,117 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Messages array is required' });
     }
 
+    const dailyUsage = await checkDailyMessage(userId);
+    if (!dailyUsage.allowed) {
+      return res.status(429).json({
+        error: `Daily message limit reached (${dailyUsage.limit} messages). Try again tomorrow.`,
+        dailyMessageLimit: dailyUsage.limit,
+        dailyMessagesUsed: dailyUsage.used
+      });
+    }
+
     const latestUserMessage = messages[messages.length - 1];
     const hasImages = Array.isArray(images) && images.length > 0;
 
-    // Construct the authoritative system prompt containing the defined persona
-    const finalSystemPrompt = buildUnifiedSystemPrompt(
+    const finalSystemPrompt = await buildUnifiedSystemPrompt(
       userId,
+      latestUserMessage.content || '',
       systemPromptOverride,
       Boolean(isDeepResearch),
       hasImages
     );
 
-    if (hasImages) {
-      globalStats.totalVisionQueries++;
-    }
-    globalStats.totalMessages += 2;
-    globalStats.estimatedTokens += 650;
-
-    // Resolve the exact model requested by Render Environment Variables or Admin Settings
+    // AICredits is the ONLY AI provider. The model is selected only by Render secret AICREDITS_MODEL.
     const targetModel = getTargetAiModel();
-    console.log(`[AI CHAT] Using Model: "${targetModel}" | Deep Research: ${isDeepResearch} | Has Images: ${hasImages}`);
+    const configuredAicreditsKey = (process.env.AICREDITS_API_KEY || '').trim();
+    const configuredBase = (process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1').trim().replace(/\/+$/, '');
 
-    // 1. Try AICREDITS.in API if API Key is configured
-    if (currentConfig.aiCreditsApiKey && currentConfig.aiCreditsApiKey.trim().length > 0) {
-      try {
-        const selectedModel = targetModel;
-        
-        // Consistently inject the authoritative system prompt as the top-level 'system' message
-        const formattedMessages: any[] = [
-          { role: 'system', content: finalSystemPrompt }
-        ];
-
-        // Append past user and assistant messages, strictly excluding rogue client system messages
-        for (let i = 0; i < messages.length - 1; i++) {
-          const m = messages[i];
-          if (m.role === 'system') continue;
-          formattedMessages.push({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content
-          });
-        }
-
-        // Format latest message with image if present
-        if (hasImages) {
-          const contentParts: any[] = [{ type: 'text', text: latestUserMessage.content || 'Analyze this image.' }];
-          for (const img of images) {
-            contentParts.push({
-              type: 'image_url',
-              image_url: { url: img }
-            });
-          }
-          formattedMessages.push({ role: 'user', content: contentParts });
-        } else {
-          formattedMessages.push({ role: 'user', content: latestUserMessage.content });
-        }
-
-        const endpoint = `${currentConfig.aiCreditsBaseUrl.replace(/\/+$/, '')}/chat/completions`;
-        const aiResponse = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentConfig.aiCreditsApiKey}`
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: formattedMessages,
-            temperature: currentConfig.temperature,
-            max_tokens: currentConfig.maxTokens
-          })
-        });
-
-        if (aiResponse.ok) {
-          const data = await aiResponse.json();
-          const reply = data.choices?.[0]?.message?.content || 'No response received from AI model.';
-
-          // Asynchronously extract potential memory
-          extractAndSaveMemoryAsync(userId, latestUserMessage.content, reply);
-
-          return res.json({
-            content: reply,
-            model: selectedModel,
-            provider: 'aicredits.in',
-            isDeepResearch,
-            hasVision: hasImages
-          });
-        } else {
-          console.warn('AICredits API error status:', aiResponse.status);
-        }
-      } catch (aiCreditsErr) {
-        console.warn('AICredits request failed, falling back to Gemini SDK:', aiCreditsErr);
-      }
+    if (!configuredAicreditsKey || !targetModel) {
+      return res.status(503).json({
+        error: 'AICredits is not configured. Add AICREDITS_API_KEY and AICREDITS_MODEL in Render Environment Variables.'
+      });
     }
 
-    // 2. Fallback / Native Server-Side Gemini API
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (geminiKey) {
-      const ai = new GoogleGenAI({
-        apiKey: geminiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
+    const endpoint = /\/chat\/completions$/i.test(configuredBase)
+      ? configuredBase
+      : `${configuredBase}/chat/completions`;
+
+    const formattedMessages: any[] = [{ role: 'system', content: finalSystemPrompt }];
+    for (let i = 0; i < messages.length - 1; i++) {
+      const m = messages[i];
+      if (m.role === 'system') continue;
+      formattedMessages.push({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content
+      });
+    }
+
+    if (hasImages) {
+      const contentParts: any[] = [{ type: 'text', text: latestUserMessage.content || 'Analyze this image.' }];
+      for (const img of images) {
+        contentParts.push({ type: 'image_url', image_url: { url: img } });
+      }
+      formattedMessages.push({ role: 'user', content: contentParts });
+    } else {
+      formattedMessages.push({ role: 'user', content: latestUserMessage.content });
+    }
+
+    try {
+      const aiResponse = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${configuredAicreditsKey}`
         },
-      });
-      
-      // Build content turns (Gemini uses 'user' and 'model' turns)
-      const contents: any[] = [];
-
-      // Add conversation history
-      for (const m of messages.slice(0, -1)) {
-        if (m.role === 'system') continue;
-        contents.push({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }]
-        });
-      }
-
-      // Latest message parts
-      const userParts: any[] = [{ text: latestUserMessage.content || '' }];
-
-      if (hasImages) {
-        for (const img of images) {
-          const match = img.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-          if (match) {
-            userParts.push({
-              inlineData: {
-                mimeType: match[1],
-                data: match[2]
-              }
-            });
-          }
-        }
-      }
-
-      contents.push({
-        role: 'user',
-        parts: userParts
+        body: JSON.stringify({
+          model: targetModel,
+          messages: formattedMessages,
+          temperature: currentConfig.temperature,
+          max_tokens: currentConfig.maxTokens
+        })
       });
 
-      // Strict Model Enforcement with unified systemInstruction
-      try {
-        const response = await ai.models.generateContent({
-          model: targetModel,
-          contents,
-          config: {
-            systemInstruction: finalSystemPrompt,
-            temperature: currentConfig.temperature,
-            maxOutputTokens: currentConfig.maxTokens
-          }
+      const responseText = await aiResponse.text();
+      let data: any = {};
+      try { data = responseText ? JSON.parse(responseText) : {}; } catch (_) {}
+
+      if (!aiResponse.ok) {
+        console.warn(`[AICREDITS ${aiResponse.status}] ${endpoint} / ${targetModel}: ${responseText.replace(/\s+/g, ' ').slice(0, 500)}`);
+        return res.status(502).json({
+          error: 'AICredits request failed. Check AICREDITS_API_KEY, AICREDITS_BASE_URL, and AICREDITS_MODEL in Render.',
+          providerDiagnostics: [`[AICREDITS ${aiResponse.status}] ${responseText.replace(/\s+/g, ' ').slice(0, 500)}`]
         });
-
-        const reply = response.text || 'I have analyzed your request.';
-
-        // Asynchronously extract potential memory
-        extractAndSaveMemoryAsync(userId, latestUserMessage.content, reply);
-
-        return res.json({
-          content: reply,
-          model: targetModel,
-          provider: 'gemini',
-          isDeepResearch,
-          hasVision: hasImages
-        });
-      } catch (err: any) {
-        console.warn(`[GEMINI] Execution failed with model "${targetModel}":`, err.message);
-        // Fallback if specific model was unavailable
-        if (!process.env.GEMINI_MODEL && targetModel !== 'gemini-2.5-flash') {
-          try {
-            const fallbackResponse = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents,
-              config: {
-                systemInstruction: finalSystemPrompt,
-                temperature: currentConfig.temperature,
-                maxOutputTokens: currentConfig.maxTokens
-              }
-            });
-            const reply = fallbackResponse.text || 'I have analyzed your request.';
-            extractAndSaveMemoryAsync(userId, latestUserMessage.content, reply);
-            return res.json({
-              content: reply,
-              model: 'gemini-2.5-flash',
-              provider: 'gemini',
-              isDeepResearch,
-              hasVision: hasImages
-            });
-          } catch (fallbackErr: any) {
-            console.warn('[GEMINI FALLBACK] Error:', fallbackErr.message);
-          }
-        }
       }
+
+      const reply = data.choices?.[0]?.message?.content || '';
+      if (!reply.trim()) {
+        return res.status(502).json({
+          error: 'AICredits returned an empty response.',
+          providerDiagnostics: [`[AICREDITS] Empty response for model ${targetModel}`]
+        });
+      }
+
+      const recordedUsage = await recordDailyMessage(userId);
+      if (hasImages) globalStats.totalVisionQueries++;
+      globalStats.totalMessages += 2;
+      globalStats.estimatedTokens += 650;
+      memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
+      return res.json({
+        content: reply,
+        model: targetModel,
+        provider: 'aicredits.in',
+        isDeepResearch,
+        hasVision: hasImages,
+        dailyMessageLimit: recordedUsage.limit,
+        dailyMessagesUsed: recordedUsage.used
+      });
+    } catch (err: any) {
+      console.error(`[AICREDITS] ${endpoint} / ${targetModel}:`, err?.message || err);
+      return res.status(502).json({
+        error: 'AICredits request failed. Check your Render AICredits secrets and server network connection.',
+        providerDiagnostics: [`[AICREDITS] ${err?.message || 'request failed'}`]
+      });
     }
-
-    // 3. Built-in intelligent fallback acknowledging configured persona
-    const simulatedReply = generateIntelligentFallback(latestUserMessage.content, hasImages, isDeepResearch);
-    return res.json({
-      content: simulatedReply,
-      model: currentConfig.visionModel + ' (Intelligent Engine)',
-      provider: 'built-in',
-      isDeepResearch,
-      hasVision: hasImages
-    });
-
   } catch (err: any) {
     console.error('Chat error:', err);
     res.status(500).json({
@@ -1381,153 +1856,3 @@ app.post('/api/chat', async (req, res) => {
     });
   }
 });
-
-// Asynchronous memory extractor
-function extractAndSaveMemoryAsync(userId: string, userMsg: string, aiReply: string) {
-  if (!currentConfig.enableMemory || !userMsg) return;
-  
-  // Look for user preference or project declarations
-  const preferencePatterns = [
-    /(?:my name is|i am|call me)\s+([A-Za-z]+)/i,
-    /(?:i prefer|i like|i love|my favorite)\s+([^.,\n]+)/i,
-    /(?:i am working on|i'm building|my project is)\s+([^.,\n]+)/i
-  ];
-
-  for (const pat of preferencePatterns) {
-    const match = userMsg.match(pat);
-    if (match && match[0]) {
-      const existing = memoryStore.get(userId) || [];
-      const duplicate = existing.some(m => m.text.toLowerCase() === match[0].toLowerCase());
-      if (!duplicate) {
-        existing.push({
-          id: 'mem_' + Math.random().toString(36).substring(2, 9),
-          userId,
-          text: `User stated: "${match[0]}"`,
-          category: 'preference',
-          createdAt: Date.now()
-        });
-        memoryStore.set(userId, existing);
-      }
-      break;
-    }
-  }
-}
-
-function generateIntelligentFallback(prompt: string, hasVision: boolean, isDeepResearch: boolean): string {
-  const p = prompt.toLowerCase();
-  
-  if (hasVision) {
-    return `### 🔍 Leo AI Vision Analysis
-
-I have inspected the uploaded image in detail. Here is the structured visual breakdown:
-
-1. **Visual Elements & Layout**:
-   - High-contrast visual composition with clearly identifiable regions and focal points.
-   - Clean alignment and spatial distribution.
-
-2. **Extracted Content / Insights**:
-   - The image showcases architectural or interface details that emphasize modularity and modern design principles.
-   - Key attributes detected with high confidence.
-
-3. **Recommendations**:
-   - Maintain the balanced negative space.
-   - Ensure responsive scaling across varying screen densities.
-
-*Note: Add your \`AICREDITS_API_KEY\` from [aicredits.in/dashboard](https://aicredits.in/dashboard) or \`GEMINI_API_KEY\` in your environment settings for real-time model inference.*`;
-  }
-
-  if (p.includes('sprint') || p.includes('plan')) {
-    return `### 📅 7-Day Sprint Plan: Core Execution Matrix
-
-Here is an actionable, high-velocity roadmap designed for rapid milestones:
-
-#### **Days 1–2: Foundation & Requirements**
-- **Architecture Freeze**: Define strict data schemas, API contracts, and core interfaces.
-- **Environment Setup**: Configure staging databases, cloud secrets, and authentication keys.
-
-#### **Days 3–4: Core Implementation**
-- **Feature Layering**: Implement primary API endpoints and state containers.
-- **Integration**: Link real-time event listeners and persistent memory engines.
-
-#### **Days 5–6: Quality Assurance & Edge Cases**
-- **Stress Testing**: Verify fallback handlers, rate limits, and network latency resilience.
-- **UI Polish**: Verify touch targets (minimum 44px) and cross-device responsive fluidity.
-
-#### **Day 7: Deployment & Telemetry**
-- **Production Release**: Deploy frontend to Vercel and backend to Render.
-- **Health Monitoring**: Verify system uptime, error logs, and user feedback channels.`;
-  }
-
-  if (p.includes('email') || p.includes('stakeholder')) {
-    return `### ✉️ Executive Stakeholder Brief
-
-**Subject**: Project Milestone Update: Velocity, Timeline & Next Milestones
-
-Dear Stakeholders,
-
-I am pleased to share an update on our current project sprint. Over the past week, the team has achieved substantial momentum:
-
-- **Key Achievements**: Finalized core full-stack infrastructure, integrated persistent memory via Memo API, and optimized response latency.
-- **Upcoming Focus**: Finalizing end-to-end integration tests and deploying production builds across our dual-tier cloud setup.
-- **Risk Assessment**: On schedule with zero critical blocking bottlenecks.
-
-Please let me know if you would like a brief 10-minute sync to review our live demonstration.
-
-Warm regards,  
-**Leo AI Project Team**`;
-  }
-
-  return `### ⚡ Leo AI Intelligence Response
-
-Thank you for reaching out! I am **Leo AI**, your high-performance cognitive assistant.
-
-- **System Prompt**: Strictly enforced for precision, reasoning, and clarity.
-- **Vision Models**: Configured for lightweight, cost-efficient image OCR and layout analysis.
-- **Persistent Memory**: Powered by Memo API to remember your project preferences across sessions.
-- **Full-Stack Separation**: Optimized for seamless Vercel (Frontend) and Render (Backend) hosting.
-
-How would you like to proceed with your request? Feel free to upload an image, activate **Deeper Research**, or explore our curated prompt library!`;
-}
-
-// ----------------------------------------------------
-// 6. Vite Integration & Static Files
-// ----------------------------------------------------
-const isProduction = process.env.NODE_ENV === 'production';
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-
-async function startServer() {
-  if (!isProduction) {
-    try {
-      const { createServer: createViteServer } = await import('vite');
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: 'spa',
-      });
-      app.use(vite.middlewares);
-    } catch (e: any) {
-      console.warn('Vite dev middleware not loaded, serving pure API mode:', e.message);
-    }
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'), (err) => {
-        if (err) {
-          res.json({
-            status: 'online',
-            service: 'Leo AI Backend API',
-            version: '1.0.0',
-            docs: '/api/health',
-            message: 'Leo AI API server is running successfully.'
-          });
-        }
-      });
-    });
-  }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Leo AI Server running at http://0.0.0.0:${PORT}`);
-  });
-}
-
-startServer();

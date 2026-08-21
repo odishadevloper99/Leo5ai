@@ -15,6 +15,7 @@ import {
 import { loginWithGoogle, loginWithCustomToken, logoutUser, isFirebaseConfigured, saveChatToRealtimeDB } from '../lib/firebase';
 import { api } from '../lib/api';
 import { UserProfile } from '../types';
+import { LeoLogoMark } from './LeoLogo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -85,44 +86,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Step 1: Google + Firebase Authentication -> Send OTP
+  // Step 1: Google Authentication -> Firebase Auth -> Instant Verified Session
   const handleGoogleLogin = async () => {
     setLoading(true);
     setErrorMessage('');
     setDevOtp(null);
     try {
-      // 1. Authenticate with Google popup via Firebase Auth
+      // 1. Authenticate with Google via Firebase Auth
       const googleUser = await loginWithGoogle();
-      setPendingUser(googleUser);
-      setEmailInput(googleUser.email);
-
-      // 2. Generate and Send OTP to email
-      const sendRes = await api.sendEmailOtp({
-        email: googleUser.email,
-        uid: googleUser.uid,
-        displayName: googleUser.displayName,
-      });
-
-      if (sendRes.devOtp) {
-        setDevOtp(sendRes.devOtp);
-      }
-
-      if (sendRes.emailDelivered === false) {
-        setDeliveryWarning(
-          sendRes.deliveryError ||
-          'SMTP credentials not detected in environment. If using Gmail, an App Password is required.'
-        );
-      } else {
-        setDeliveryWarning(null);
-      }
-
-      setResendCooldown(30);
-      setStep('otp');
-      setTimeout(() => {
-        inputRefs.current[0]?.focus();
-      }, 150);
+      
+      // Google authentication succeeded and user profile is verified
+      completeConfirmedSession(googleUser);
     } catch (e: any) {
-      setErrorMessage(e.message || 'Google sign-in or OTP generation failed.');
+      setErrorMessage(e.message || 'Google sign-in was not completed.');
     } finally {
       setLoading(false);
     }
@@ -394,9 +370,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* ---------------------------------------------------- */}
         {step === 'initial' && (
           <div className="space-y-4 pt-2">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 mx-auto flex items-center justify-center text-white shadow-md shadow-purple-500/20">
-              <Sparkles className="w-8 h-8" />
-            </div>
+            <LeoLogoMark className="w-16 h-16 mx-auto drop-shadow-md" />
 
             <div>
               <h3 className="font-display font-bold text-lg text-neutral-900">
