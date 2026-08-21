@@ -22,6 +22,8 @@ interface HeaderProps {
   onShare: () => void;
   selectedModel: string;
   onSelectModel: (m: string) => void;
+  onOpenUpgrade?: () => void;
+  userPlan?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,7 +33,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenExport,
   onShare,
   selectedModel,
-  onSelectModel
+  onSelectModel,
+  onOpenUpgrade,
+  userPlan
 }) => {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -215,16 +219,18 @@ export const Header: React.FC<HeaderProps> = ({
           <span>Export chat</span>
         </button>
 
-        {/* Upgrade Pill Button strictly matching the user's mockup design */}
+        {/* Upgrade Pill Button */}
         <button
           id="header-upgrade-btn"
-          onClick={() => {
-            alert('🌟 Leo AI Pro: Unlimited high-speed vision inference and persistent memory enabled for your workspace!');
-          }}
-          className="bg-neutral-950 hover:bg-black text-white text-xs font-medium px-4 py-1.5 rounded-xl shadow-xs hover:shadow transition flex items-center gap-1.5"
+          onClick={onOpenUpgrade}
+          className={`${
+            userPlan === 'pro' || userPlan === 'ultra'
+              ? 'bg-gradient-to-r from-purple-900 to-neutral-950 border border-purple-400/40 text-white'
+              : 'bg-neutral-950 hover:bg-black text-white'
+          } text-xs font-medium px-4 py-1.5 rounded-xl shadow-xs hover:shadow transition flex items-center gap-1.5`}
         >
           <Crown className="w-3.5 h-3.5 text-amber-400" />
-          <span>Upgrade</span>
+          <span>{userPlan === 'pro' || userPlan === 'ultra' ? 'Pro Member' : 'Upgrade'}</span>
         </button>
       </div>
     </header>

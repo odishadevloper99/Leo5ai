@@ -1,4 +1,4 @@
-import { AIConfig, ChatSession, MemoMemoryItem, Message, SystemStats, UserProfile } from '../types';
+import { AIConfig, ChatSession, MemoMemoryItem, Message, SystemStats, UserProfile, PricingPlan, CashfreeConfig, PaymentOrder } from '../types';
 
 const API_BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
 
@@ -392,6 +392,73 @@ export const api = {
       },
     });
     return safeFetchJson(res, 'Unauthenticated or user not found');
+  },
+
+  async getCashfreeConfig(): Promise<CashfreeConfig & { plans: PricingPlan[] }> {
+    try {
+      const res = await fetch(`${API_BASE}/api/payments/config`);
+      return await safeFetchJson(res);
+    } catch {
+      return {
+        isConfigured: false,
+        env: 'SANDBOX',
+        plans: [],
+      };
+    }
+  },
+
+  async getPricingPlans(): Promise<{ plans: PricingPlan[] }> {
+    const res = await fetch(`${API_BASE}/api/payments/plans`);
+    return safeFetchJson(res, 'Failed to fetch pricing plans');
+  },
+
+  async createCashfreeOrder(params: {
+    planId: string;
+    customerName?: string;
+    customerEmail?: string;
+    customerPhone?: string;
+    userId?: string;
+  }): Promise<{
+    success: boolean;
+    orderId: string;
+    cfOrderId?: string;
+    paymentSessionId: string;
+    orderAmount: number;
+    orderCurrency: string;
+    env?: 'SANDBOX' | 'PRODUCTION';
+    isSimulated?: boolean;
+    message?: string;
+    plan: PricingPlan;
+  }> {
+    const res = await fetch(`${API_BASE}/api/payments/cashfree/create-order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return safeFetchJson(res, 'Failed to create Cashfree order');
+  },
+
+  async verifyCashfreeOrder(params: {
+    orderId: string;
+    userId?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    order: PaymentOrder;
+    user: UserProfile;
+    creditsAdded: number;
+  }> {
+    const res = await fetch(`${API_BASE}/api/payments/cashfree/verify-order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return safeFetchJson(res, 'Failed to verify Cashfree payment');
+  },
+
+  async getPaymentHistory(userId?: string): Promise<{ orders: PaymentOrder[] }> {
+    const res = await fetch(`${API_BASE}/api/payments/history?userId=${encodeURIComponent(userId || '')}`);
+    return safeFetchJson(res, 'Failed to fetch payment history');
   },
 
   async getHealth() {

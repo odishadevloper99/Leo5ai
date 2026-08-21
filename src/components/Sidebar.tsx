@@ -15,7 +15,9 @@ import {
   Share2,
   MoreHorizontal,
   Command,
-  Shield
+  Shield,
+  Crown,
+  Zap
 } from 'lucide-react';
 import { ChatSession, UserProfile } from '../types';
 import { LeoLogo } from './LeoLogo';
@@ -36,6 +38,7 @@ interface SidebarProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onOpenSearchModal: () => void;
+  onOpenUpgrade?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -53,7 +56,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenFiles,
   searchQuery,
   onSearchChange,
-  onOpenSearchModal
+  onOpenSearchModal,
+  onOpenUpgrade
 }) => {
   const [hoveredChat, setHoveredChat] = useState<string | null>(null);
 
@@ -220,8 +224,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Bottom User Profile Section matching mockup */}
-        <div className="p-3 border-t border-purple-100/70 bg-neutral-50/50">
+        {/* Bottom Upgrade & User Profile Section */}
+        <div className="p-3 border-t border-purple-100/70 bg-neutral-50/50 space-y-2">
+          {/* Pro / Credit Status Card */}
+          <div
+            onClick={onOpenUpgrade}
+            className="p-2.5 rounded-xl bg-gradient-to-br from-purple-900 to-neutral-900 text-white shadow-xs hover:shadow-md cursor-pointer transition group"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[11px] font-bold">
+                  {user.plan === 'ultra' ? 'Leo Ultra' : user.plan === 'pro' ? 'Leo Pro' : 'Upgrade to Pro'}
+                </span>
+              </div>
+              <span className="text-[10px] bg-purple-800/80 group-hover:bg-purple-700 px-2 py-0.5 rounded-md font-semibold text-purple-200 flex items-center gap-1 transition">
+                <Zap className="w-2.5 h-2.5 text-amber-400" />
+                {user.credits ?? 50} cr
+              </span>
+            </div>
+            <p className="text-[10px] text-purple-300/80 mt-1 line-clamp-1">
+              {user.plan === 'pro' || user.plan === 'ultra'
+                ? 'High-speed Vision & Reasoner active'
+                : 'Get 500+ credits & fast reasoning'}
+            </p>
+          </div>
+
           <div
             id="sidebar-user-profile-card"
             onClick={onOpenAuth}

@@ -10,6 +10,7 @@ import { ExportModal } from './components/ExportModal';
 import { ExploreModal } from './components/ExploreModal';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { HelpModal } from './components/HelpModal';
+import { UpgradePricingModal } from './components/UpgradePricingModal';
 import { INITIAL_CHAT_SESSIONS } from './lib/prompts';
 import {
   auth,
@@ -80,6 +81,30 @@ export default function App() {
   const [isExploreOpen, setIsExploreOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
+
+  // Check for Cashfree order return in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get('order_id');
+    if (orderId) {
+      api.verifyCashfreeOrder({ orderId, userId: user.uid })
+        .then((res) => {
+          if (res.success && res.user) {
+            setUser(res.user);
+            setIsUpgradeOpen(true);
+          }
+        })
+        .catch((err) => {
+          console.warn('Cashfree return verification notice:', err.message);
+        })
+        .finally(() => {
+          // Clean URL params without reloading
+          const newUrl = window.location.pathname + window.location.hash;
+          window.history.replaceState({}, document.title, newUrl);
+        });
+    }
+  }, []);
 
   // Sync sessions to localStorage
   useEffect(() => {
@@ -495,6 +520,7 @@ export default function App() {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onOpenSearchModal={() => setIsCommandPaletteOpen(true)}
+          onOpenUpgrade={() => setIsUpgradeOpen(true)}
         />
 
         {/* Right Main Area */}
@@ -508,6 +534,8 @@ export default function App() {
             onShare={handleShare}
             selectedModel={selectedModel}
             onSelectModel={setSelectedModel}
+            onOpenUpgrade={() => setIsUpgradeOpen(true)}
+            userPlan={user.plan}
           />
 
           {/* Body Content: Welcome Hero OR Active Chat */}
@@ -579,6 +607,13 @@ export default function App() {
       <HelpModal
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
+      />
+
+      <UpgradePricingModal
+        isOpen={isUpgradeOpen}
+        onClose={() => setIsUpgradeOpen(false)}
+        user={user}
+        onUserUpdated={(u) => setUser(u)}
       />
     </div>
   );

@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithCustomToken,
   signOut,
   onAuthStateChanged,
@@ -174,6 +176,93 @@ export async function loginWithGoogle(): Promise<UserProfile> {
     const wrappedError = new Error(friendlyMessage);
     (wrappedError as any).code = err?.code;
     throw wrappedError;
+  }
+}
+
+/**
+ * Sign in with Google Redirect (Fallback for blocked popups / strict sandbox iframe)
+ */
+export async function loginWithGoogleRedirect(): Promise<void> {
+  await signInWithRedirect(auth, googleProvider);
+}
+
+/**
+ * Check for pending redirect sign-in results on app load
+ */
+export async function checkRedirectResult(): Promise<UserProfile | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result || !result.user) return null;
+
+    const fbUser = result.user;
+    const idToken = await fbUser.getIdToken();
+
+    let userProfile: UserProfile = {
+      uid: fbUser.uid,
+      googleId: fbUser.providerData?.[0]?.uid || fbUser.uid,
+      displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Leo Explorer',
+      email: fbUser.email || '',
+      photoURL:
+        fbUser.photoURL ||
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      isAnonymous: false,
+      role: 'user',
+      credits: 50,
+      createdAt: Date.now(),
+      lastLoginAt: Date.now(),
+      lastActive: Date.now(),
+      chatCount: 0,
+    };
+
+    try {
+      const backendRes = await api.loginWithGoogle({
+        idToken: idToken || undefined,
+        credential: idToken || undefined,
+      });
+      if (backendRes.success && backendRes.user) {
+        userProfile = {
+          ...backendRes.user,
+          uid: fbUser.uid,
+          displayName: fbUser.displayName || backendRes.user.displayName,
+          email: fbUser.email || backendRes.user.email,
+          photoURL: fbUser.photoURL || backendRes.user.photoURL,
+        };
+        if (backendRes.token) {
+          localStorage.setItem('leo_auth_token', backendRes.token);
+        }
+      }
+    } catch (backendErr) {
+      console.warn('[Backend Google Auth Verify Note]:', backendErr);
+    }
+
+    try {
+      const userRef = ref(database, `users/${fbUser.uid}`);
+      const snap = await get(userRef);
+      if (snap.exists()) {
+        const existingData = snap.val();
+        userProfile = {
+          ...userProfile,
+          credits: typeof existingData.credits === 'number' ? existingData.credits : userProfile.credits,
+          createdAt: existingData.createdAt || userProfile.createdAt,
+          chatCount: typeof existingData.chatCount === 'number' ? existingData.chatCount : userProfile.chatCount,
+          role: existingData.role || userProfile.role,
+        };
+      }
+      await set(userRef, {
+        ...userProfile,
+        lastLoginAt: Date.now(),
+        lastActive: Date.now(),
+        updatedAt: Date.now(),
+      });
+    } catch (dbErr) {
+      console.warn('[Realtime Database User Sync Note]:', dbErr);
+    }
+
+    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    return userProfile;
+  } catch (err: any) {
+    console.warn('[Google Redirect Auth Check Notice]:', err?.message || err);
+    return null;
   }
 }
 

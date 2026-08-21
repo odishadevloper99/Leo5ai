@@ -32,10 +32,52 @@ export interface UserProfile {
   isAnonymous?: boolean;
   role?: 'admin' | 'user';
   credits?: number;
+  plan?: 'free' | 'pro' | 'ultra';
+  subscriptionActive?: boolean;
+  subscriptionExpiresAt?: number;
+  phone?: string;
   createdAt?: number;
   lastLoginAt?: number;
   lastActive?: number;
   chatCount?: number;
+}
+
+export interface PricingPlan {
+  id: string;
+  name: string;
+  tagline: string;
+  price: number; // in INR
+  originalPrice?: number;
+  period: 'month' | 'year' | 'one-time';
+  creditsGranted: number;
+  features: string[];
+  popular?: boolean;
+  badge?: string;
+  type: 'subscription' | 'credit_pack';
+}
+
+export interface PaymentOrder {
+  orderId: string;
+  orderAmount: number;
+  orderCurrency: string;
+  orderStatus: 'ACTIVE' | 'PAID' | 'FAILED' | 'CANCELLED';
+  paymentSessionId?: string;
+  planId: string;
+  planName: string;
+  creditsGranted: number;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  createdAt: number;
+  paidAt?: number;
+  cfPaymentId?: string;
+  paymentMethod?: string;
+}
+
+export interface CashfreeConfig {
+  isConfigured: boolean;
+  env: 'SANDBOX' | 'PRODUCTION';
+  appId?: string;
 }
 
 export interface MemoMemoryItem {

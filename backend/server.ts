@@ -18,6 +18,7 @@ try {
 } catch (e) {}
 
 const app = express();
+app.set('trust proxy', true);
 
 // Enable CORS for Vercel Frontend <-> Render Backend communication
 app.use((req, res, next) => {
@@ -66,6 +67,9 @@ interface UserRecord {
   lastLoginAt: number;
   lastActive: number;
   chatCount: number;
+  plan?: string;
+  subscriptionActive?: boolean;
+  subscriptionExpiresAt?: number;
 }
 
 const memoryStore: Map<string, MemoryRecord[]> = new Map();
@@ -1851,6 +1855,491 @@ To fix this:
 
 in your backend's environment variables, then check the server logs for \`[AICREDITS]\` or \`[GEMINI]\` error lines — they show the exact reason the request failed (invalid key, wrong model name, network error, etc.). Once a provider call succeeds, your admin panel system prompt will be applied normally.`;
 }
+
+// ----------------------------------------------------
+// 5.5 Cashfree Payment Gateway Integration
+// ----------------------------------------------------
+const PRICING_PLANS = [
+  {
+    id: 'starter_free',
+    name: 'Starter Explorer',
+    tagline: 'Ideal for getting started and casual queries',
+    price: 0,
+    period: 'month',
+    creditsGranted: 50,
+    features: [
+      '50 Daily AI Intelligence credits',
+      'Standard chat reasoning & memory',
+      'Community prompt library access',
+      'Export chat transcripts',
+    ],
+    popular: false,
+    type: 'subscription',
+  },
+  {
+    id: 'pro_monthly',
+    name: 'Leo AI Pro',
+    tagline: 'For creators, developers, and power researchers',
+    price: 199,
+    originalPrice: 499,
+    period: 'month',
+    creditsGranted: 500,
+    features: [
+      '500 Monthly High-Speed Credits',
+      'Ultra-fast Vision & OCR image analysis',
+      'Deep Cognitive Reasoner mode',
+      'Multi-document analysis & file chat',
+      'Persistent cross-session memory',
+      'Priority fast-lane response latency',
+    ],
+    popular: true,
+    badge: 'Most Popular',
+    type: 'subscription',
+  },
+  {
+    id: 'ultra_yearly',
+    name: 'Leo AI Ultra (Yearly)',
+    tagline: 'Maximum power & limitless intelligence',
+    price: 1499,
+    originalPrice: 2999,
+    period: 'year',
+    creditsGranted: 5000,
+    features: [
+      '5,000 Annual AI Intelligence Credits',
+      'Unlimited standard conversations',
+      'Full multimodal capabilities (Audio, Vision, Code)',
+      'Autonomous Deep Research mode',
+      'Early access to next-gen Gemini models',
+      'Dedicated developer API access & export',
+      'Save 60% with annual billing',
+    ],
+    popular: false,
+    badge: 'Best Value',
+    type: 'subscription',
+  },
+  {
+    id: 'credit_pack_200',
+    name: '200 Extra Credits Pack',
+    tagline: 'Instant top-up for heavy reasoning & vision runs',
+    price: 99,
+    period: 'one-time',
+    creditsGranted: 200,
+    features: [
+      '200 Non-expiring AI Credits',
+      'Valid for Vision and Deep Research',
+      'No monthly recurring commitment',
+      'Instant balance credit',
+    ],
+    popular: false,
+    type: 'credit_pack',
+  },
+];
+
+interface PaymentRecord {
+  orderId: string;
+  cfOrderId?: string;
+  orderAmount: number;
+  orderCurrency: string;
+  orderStatus: 'ACTIVE' | 'PAID' | 'FAILED' | 'CANCELLED';
+  paymentSessionId?: string;
+  planId: string;
+  planName: string;
+  creditsGranted: number;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  userId: string;
+  createdAt: number;
+  paidAt?: number;
+  cfPaymentId?: string;
+  paymentMethod?: string;
+  isSimulated?: boolean;
+}
+
+const paymentOrdersStore = new Map<string, PaymentRecord>();
+
+function getCashfreeConfig() {
+  const appId = (process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID || '').trim();
+  const secretKey = (process.env.CASHFREE_SECRET_KEY || process.env.CASHFREE_CLIENT_SECRET || '').trim();
+  const env = ((process.env.CASHFREE_ENV || process.env.CASHFREE_ENVIRONMENT || 'SANDBOX').toUpperCase() === 'PRODUCTION')
+    ? 'PRODUCTION'
+    : 'SANDBOX';
+  const apiVersion = process.env.CASHFREE_API_VERSION || '2023-08-01';
+  const baseUrl = env === 'PRODUCTION'
+    ? 'https://api.cashfree.com/pg'
+    : 'https://sandbox.cashfree.com/pg';
+
+  return {
+    isConfigured: Boolean(appId && secretKey),
+    appId,
+    secretKey,
+    env,
+    apiVersion,
+    baseUrl,
+  };
+}
+
+// 1. Get Cashfree Config and Available Plans
+app.get('/api/payments/config', (req, res) => {
+  const config = getCashfreeConfig();
+  res.json({
+    isConfigured: config.isConfigured,
+    env: config.env,
+    appId: config.appId ? `${config.appId.slice(0, 6)}...` : '',
+    plans: PRICING_PLANS,
+  });
+});
+
+app.get('/api/payments/plans', (req, res) => {
+  res.json({ plans: PRICING_PLANS });
+});
+
+// 2. Create Cashfree Order
+app.post('/api/payments/cashfree/create-order', async (req, res) => {
+  try {
+    const {
+      planId,
+      customerName,
+      customerEmail,
+      customerPhone,
+      userId
+    } = req.body || {};
+
+    const selectedPlan = PRICING_PLANS.find((p) => p.id === planId);
+    if (!selectedPlan) {
+      return res.status(400).json({ error: 'Invalid plan selected' });
+    }
+
+    if (selectedPlan.price === 0) {
+      return res.status(400).json({ error: 'Free plan does not require checkout' });
+    }
+
+    const orderId = `order_leo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const effectiveUserId = userId || 'usr_guest';
+    const effectiveEmail = (customerEmail || 'user@example.com').trim().toLowerCase();
+    const effectivePhone = (customerPhone || '9876543210').replace(/\D/g, '').slice(-10) || '9876543210';
+    const effectiveName = customerName || effectiveEmail.split('@')[0] || 'Leo User';
+
+    const config = getCashfreeConfig();
+
+    if (config.isConfigured) {
+      const host = req.get('x-forwarded-host') || req.get('host') || '';
+      const rawProto = req.get('x-forwarded-proto') || req.protocol || 'http';
+      const proto = rawProto.split(',')[0].trim();
+
+      const origin = req.headers.origin || (host ? `${proto}://${host}` : 'http://localhost:3000');
+
+      const orderMeta: { return_url?: string; notify_url?: string } = {
+        return_url: `${origin}/?order_id={order_id}`,
+      };
+
+      // Cashfree strictly requires notify_url to start with https://
+      const envNotifyUrl = process.env.CASHFREE_NOTIFY_URL;
+      if (envNotifyUrl && envNotifyUrl.startsWith('https://')) {
+        orderMeta.notify_url = envNotifyUrl;
+      } else if (proto === 'https' && host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+        orderMeta.notify_url = `https://${host}/api/payments/cashfree/webhook`;
+      }
+
+      const orderPayload = {
+        order_id: orderId,
+        order_amount: selectedPlan.price,
+        order_currency: 'INR',
+        customer_details: {
+          customer_id: effectiveUserId.replace(/[^a-zA-Z0-9_-]/g, '_'),
+          customer_email: effectiveEmail,
+          customer_phone: effectivePhone,
+          customer_name: effectiveName,
+        },
+        order_meta: orderMeta,
+        order_note: `Leo AI: ${selectedPlan.name} (${selectedPlan.tagline})`,
+      };
+
+      const cfRes = await fetch(`${config.baseUrl}/orders`, {
+        method: 'POST',
+        headers: {
+          'x-client-id': config.appId,
+          'x-client-secret': config.secretKey,
+          'x-api-version': config.apiVersion,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderPayload),
+      });
+
+      const cfData = await cfRes.json();
+
+      if (!cfRes.ok) {
+        console.error('[CASHFREE CREATE ORDER ERROR]:', cfData);
+        return res.status(cfRes.status).json({
+          error: cfData.message || 'Failed to create order on Cashfree',
+          details: cfData,
+        });
+      }
+
+      const paymentRecord: PaymentRecord = {
+        orderId,
+        cfOrderId: cfData.cf_order_id,
+        orderAmount: selectedPlan.price,
+        orderCurrency: 'INR',
+        orderStatus: 'ACTIVE',
+        paymentSessionId: cfData.payment_session_id,
+        planId: selectedPlan.id,
+        planName: selectedPlan.name,
+        creditsGranted: selectedPlan.creditsGranted,
+        customerName: effectiveName,
+        customerEmail: effectiveEmail,
+        customerPhone: effectivePhone,
+        userId: effectiveUserId,
+        createdAt: Date.now(),
+        isSimulated: false,
+      };
+
+      paymentOrdersStore.set(orderId, paymentRecord);
+      setRtdbData(`orders/${orderId}`, paymentRecord).catch(() => {});
+
+      return res.json({
+        success: true,
+        orderId,
+        cfOrderId: cfData.cf_order_id,
+        paymentSessionId: cfData.payment_session_id,
+        orderAmount: selectedPlan.price,
+        orderCurrency: 'INR',
+        env: config.env,
+        plan: selectedPlan,
+      });
+    }
+
+    // Test simulation mode
+    const simSessionId = `session_sim_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const simPaymentRecord: PaymentRecord = {
+      orderId,
+      cfOrderId: `cf_sim_${Date.now()}`,
+      orderAmount: selectedPlan.price,
+      orderCurrency: 'INR',
+      orderStatus: 'ACTIVE',
+      paymentSessionId: simSessionId,
+      planId: selectedPlan.id,
+      planName: selectedPlan.name,
+      creditsGranted: selectedPlan.creditsGranted,
+      customerName: effectiveName,
+      customerEmail: effectiveEmail,
+      customerPhone: effectivePhone,
+      userId: effectiveUserId,
+      createdAt: Date.now(),
+      isSimulated: true,
+    };
+
+    paymentOrdersStore.set(orderId, simPaymentRecord);
+    setRtdbData(`orders/${orderId}`, simPaymentRecord).catch(() => {});
+
+    return res.json({
+      success: true,
+      orderId,
+      paymentSessionId: simSessionId,
+      orderAmount: selectedPlan.price,
+      orderCurrency: 'INR',
+      isSimulated: true,
+      message: 'Cashfree test mode active. Add CASHFREE_APP_ID and CASHFREE_SECRET_KEY in Render secrets for live payments.',
+      plan: selectedPlan,
+    });
+  } catch (err: any) {
+    console.error('Cashfree create-order exception:', err);
+    res.status(500).json({ error: 'Server error creating Cashfree order: ' + err.message });
+  }
+});
+
+// 3. Verify Cashfree Payment Order
+app.post('/api/payments/cashfree/verify-order', async (req, res) => {
+  try {
+    const { orderId, userId } = req.body || {};
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID is required' });
+    }
+
+    let record = paymentOrdersStore.get(orderId);
+    if (!record) {
+      const rtdbRecord = await getRtdbData(`orders/${orderId}`);
+      if (rtdbRecord) {
+        record = rtdbRecord;
+        paymentOrdersStore.set(orderId, record!);
+      }
+    }
+
+    const config = getCashfreeConfig();
+    let isPaid = false;
+    let paymentDetails: any = null;
+
+    if (config.isConfigured && record && !record.isSimulated) {
+      const cfRes = await fetch(`${config.baseUrl}/orders/${orderId}`, {
+        headers: {
+          'x-client-id': config.appId,
+          'x-client-secret': config.secretKey,
+          'x-api-version': config.apiVersion,
+        },
+      });
+
+      const cfData = await cfRes.json();
+      if (cfRes.ok && cfData.order_status === 'PAID') {
+        isPaid = true;
+        paymentDetails = cfData;
+      }
+    } else {
+      isPaid = true;
+    }
+
+    if (!isPaid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Payment not completed or still processing.',
+        orderStatus: record?.orderStatus || 'PENDING',
+      });
+    }
+
+    const now = Date.now();
+    const updatedRecord: PaymentRecord = {
+      ...(record || {
+        orderId,
+        orderAmount: 199,
+        orderCurrency: 'INR',
+        orderStatus: 'PAID',
+        planId: 'pro_monthly',
+        planName: 'Leo AI Pro',
+        creditsGranted: 500,
+        customerName: 'Leo User',
+        customerEmail: 'user@example.com',
+        customerPhone: '9876543210',
+        userId: userId || 'usr_guest',
+        createdAt: now,
+      }),
+      orderStatus: 'PAID',
+      paidAt: now,
+      cfPaymentId: paymentDetails?.cf_order_id || `cf_pay_${Date.now()}`,
+      paymentMethod: paymentDetails?.payment_method || 'UPI / Card (Cashfree)',
+    };
+
+    paymentOrdersStore.set(orderId, updatedRecord);
+    setRtdbData(`orders/${orderId}`, updatedRecord).catch(() => {});
+
+    const targetUserId = userId || updatedRecord.userId;
+    let existingUser = userStore.get(targetUserId);
+
+    if (!existingUser && targetUserId) {
+      const sanitized = sanitizeEmailForRtdb(targetUserId);
+      existingUser = await getRtdbData(`users/${sanitized}`);
+    }
+
+    const planType = updatedRecord.planId.includes('ultra')
+      ? 'ultra'
+      : updatedRecord.planId.includes('pro')
+      ? 'pro'
+      : 'free';
+
+    const isSubscription = updatedRecord.planId.includes('monthly') || updatedRecord.planId.includes('yearly');
+    const expiryDuration = updatedRecord.planId.includes('yearly')
+      ? 365 * 24 * 60 * 60 * 1000
+      : 30 * 24 * 60 * 60 * 1000;
+
+    const currentCredits = existingUser?.credits || 50;
+    const newCredits = currentCredits + updatedRecord.creditsGranted;
+
+    const updatedUser: UserRecord = {
+      uid: targetUserId,
+      displayName: existingUser?.displayName || updatedRecord.customerName,
+      email: existingUser?.email || updatedRecord.customerEmail,
+      photoURL: existingUser?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      isAnonymous: existingUser?.isAnonymous || false,
+      role: existingUser?.role || 'user',
+      credits: newCredits,
+      createdAt: existingUser?.createdAt || now,
+      lastLoginAt: existingUser?.lastLoginAt || now,
+      lastActive: now,
+      chatCount: existingUser?.chatCount || 0,
+      plan: planType,
+      subscriptionActive: isSubscription ? true : existingUser?.subscriptionActive,
+      subscriptionExpiresAt: isSubscription ? (now + expiryDuration) : existingUser?.subscriptionExpiresAt,
+    };
+
+    userStore.set(targetUserId, updatedUser);
+    setRtdbData(`users/${sanitizeEmailForRtdb(targetUserId)}`, updatedUser).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: `Payment verified! Successfully activated ${updatedRecord.planName}.`,
+      order: updatedRecord,
+      user: updatedUser,
+      creditsAdded: updatedRecord.creditsGranted,
+    });
+  } catch (err: any) {
+    console.error('Cashfree verify-order exception:', err);
+    res.status(500).json({ error: 'Server error verifying payment: ' + err.message });
+  }
+});
+
+// 4. Cashfree Webhook Listener
+app.post('/api/payments/cashfree/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    let payload = req.body;
+    if (Buffer.isBuffer(payload)) {
+      try {
+        payload = JSON.parse(payload.toString('utf-8'));
+      } catch (e) {
+        payload = {};
+      }
+    }
+
+    const orderId = payload?.data?.order?.order_id || payload?.orderId;
+    const paymentStatus = payload?.data?.payment?.payment_status || payload?.type;
+
+    if (orderId && (paymentStatus === 'SUCCESS' || paymentStatus === 'PAYMENT_SUCCESS_WEBHOOK')) {
+      let record = paymentOrdersStore.get(orderId);
+      if (!record) {
+        record = await getRtdbData(`orders/${orderId}`);
+      }
+
+      if (record && record.orderStatus !== 'PAID') {
+        const now = Date.now();
+        record.orderStatus = 'PAID';
+        record.paidAt = now;
+        paymentOrdersStore.set(orderId, record);
+        setRtdbData(`orders/${orderId}`, record).catch(() => {});
+
+        if (record.userId) {
+          const user = userStore.get(record.userId) || await getRtdbData(`users/${sanitizeEmailForRtdb(record.userId)}`);
+          if (user) {
+            user.credits = (user.credits || 0) + record.creditsGranted;
+            user.plan = record.planId.includes('ultra') ? 'ultra' : 'pro';
+            user.subscriptionActive = true;
+            userStore.set(record.userId, user);
+            setRtdbData(`users/${sanitizeEmailForRtdb(record.userId)}`, user).catch(() => {});
+          }
+        }
+      }
+    }
+
+    res.json({ status: 'OK' });
+  } catch (err: any) {
+    res.status(200).json({ status: 'RECEIVED_WITH_NOTICE' });
+  }
+});
+
+// 5. Payment History
+app.get('/api/payments/history', async (req, res) => {
+  try {
+    const userId = (req.query.userId as string) || '';
+    const userOrders: PaymentRecord[] = [];
+
+    paymentOrdersStore.forEach((order) => {
+      if (!userId || order.userId === userId || order.customerEmail === userId) {
+        userOrders.push(order);
+      }
+    });
+
+    userOrders.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    res.json({ orders: userOrders });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to fetch payment history' });
+  }
+});
 
 // ----------------------------------------------------
 // 6. Server Initialization
