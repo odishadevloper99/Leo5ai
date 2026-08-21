@@ -25,12 +25,17 @@ export interface ChatSession {
 
 export interface UserProfile {
   uid: string;
+  googleId?: string;
   displayName: string;
   email: string;
   photoURL?: string;
   isAnonymous?: boolean;
   role?: 'admin' | 'user';
+  credits?: number;
   createdAt?: number;
+  lastLoginAt?: number;
+  lastActive?: number;
+  chatCount?: number;
 }
 
 export interface MemoMemoryItem {

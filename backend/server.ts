@@ -1,11 +1,21 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import nodemailer from 'nodemailer';
 import { GoogleGenAI } from '@google/genai';
 import { memoService } from './services/memoService';
 
 dotenv.config();
+
+// Load Firebase configuration fallback from firebase-applet-config.json
+let appletConfig: any = {};
+try {
+  const cfgPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(cfgPath)) {
+    appletConfig = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  }
+} catch (e) {}
 
 const app = express();
 
@@ -45,12 +55,15 @@ interface StoredChat {
 
 interface UserRecord {
   uid: string;
+  googleId?: string;
   displayName: string;
   email: string;
   photoURL?: string;
   isAnonymous: boolean;
   role: 'admin' | 'user';
+  credits: number;
   createdAt: number;
+  lastLoginAt: number;
   lastActive: number;
   chatCount: number;
 }
@@ -101,7 +114,16 @@ let globalStats = {
 let currentConfig = {
   aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
   aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
-  visionModel: process.env.AICREDITS_VISION_MODEL || process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || 'gemini-2.5-flash',
+  visionModel: (
+    process.env.MODEL_ID ||
+    process.env.GEMINI_MODEL_ID ||
+    process.env.GEMINI_MODEL ||
+    process.env.MODEL ||
+    process.env.AI_MODEL ||
+    process.env.AICREDITS_VISION_MODEL ||
+    process.env.VISION_MODEL ||
+    'gemini-3.7-flash'
+  ).replace(/^["']|["']$/g, '').trim(),
   temperature: 0.7,
   maxTokens: 4096,
   systemPrompt: process.env.SYSTEM_PROMPT || `You are Leo AI, an elite, highly intelligent, and versatile AI assistant created to assist humans across engineering, reasoning, visual analysis, writing, and creative brainstorms.
@@ -123,14 +145,22 @@ CRITICAL DIRECTIVES:
 
 // Helper to determine the EXACT model to use based on Render Environment Variables & Admin Config
 function getTargetAiModel(): string {
-  const envModel = process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || process.env.VISION_MODEL;
+  const envModel =
+    process.env.MODEL_ID ||
+    process.env.GEMINI_MODEL_ID ||
+    process.env.GEMINI_MODEL ||
+    process.env.MODEL ||
+    process.env.AI_MODEL ||
+    process.env.AICREDITS_VISION_MODEL ||
+    process.env.VISION_MODEL;
+
   if (envModel && envModel.trim().length > 0) {
-    return envModel.trim();
+    return envModel.replace(/^["']|["']$/g, '').trim();
   }
   if (currentConfig.visionModel && currentConfig.visionModel.trim().length > 0) {
-    return currentConfig.visionModel.trim();
+    return currentConfig.visionModel.replace(/^["']|["']$/g, '').trim();
   }
-  return 'gemini-2.5-flash';
+  return 'gemini-3.7-flash';
 }
 
 // ----------------------------------------------------
@@ -405,7 +435,9 @@ app.get('/api/admin/users', (req, res) => {
       photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       isAnonymous: false,
       role: 'user',
+      credits: 50,
       createdAt: Date.now() - 86400000 * 7,
+      lastLoginAt: Date.now(),
       lastActive: Date.now(),
       chatCount: 14
     });
@@ -772,6 +804,425 @@ async function sendOtpEmail(
   }
 }
 
+// ----------------------------------------------------
+// Google OAuth 2.0 & Token Verification Helpers
+// ----------------------------------------------------
+const DEFAULT_USER_CREDITS = parseInt(process.env.DEFAULT_AI_CREDITS || '50', 10) || 50;
+
+async function findOrCreateGoogleUser(googleData: {
+  sub: string;
+  email: string;
+  name?: string;
+  picture?: string;
+}): Promise<{ user: UserRecord; isNewUser: boolean }> {
+  const normalizedEmail = googleData.email.trim().toLowerCase();
+  const sanitizedEmail = sanitizeEmailForRtdb(normalizedEmail);
+  const defaultCredits = DEFAULT_USER_CREDITS;
+
+  // 1. Search in local userStore by UID, googleId or email
+  let existingUser: UserRecord | undefined;
+  if (googleData.sub && userStore.has(googleData.sub)) {
+    existingUser = userStore.get(googleData.sub);
+  }
+  if (!existingUser) {
+    for (const usr of userStore.values()) {
+      if (
+        (usr.googleId && usr.googleId === googleData.sub) ||
+        (usr.email && usr.email.toLowerCase() === normalizedEmail)
+      ) {
+        existingUser = usr;
+        break;
+      }
+    }
+  }
+
+  // 2. Search in Realtime Database /users if not in local cache
+  if (!existingUser && googleData.sub) {
+    const directUser = await getRtdbData(`users/${googleData.sub}`);
+    if (directUser && (directUser.uid || directUser.email)) {
+      existingUser = directUser;
+    }
+  }
+  if (!existingUser) {
+    const rtdbEmailIndex = await getRtdbData(`users_by_email/${sanitizedEmail}`);
+    if (rtdbEmailIndex && rtdbEmailIndex.uid) {
+      const remoteUser = await getRtdbData(`users/${rtdbEmailIndex.uid}`);
+      if (remoteUser && remoteUser.uid) {
+        existingUser = remoteUser;
+      }
+    }
+  }
+
+  if (existingUser) {
+    const updatedUser: UserRecord = {
+      ...existingUser,
+      uid: existingUser.uid || googleData.sub,
+      googleId: existingUser.googleId || googleData.sub,
+      displayName: existingUser.displayName || googleData.name || normalizedEmail.split('@')[0],
+      photoURL: existingUser.photoURL || googleData.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      credits: typeof existingUser.credits === 'number' ? existingUser.credits : defaultCredits,
+      lastLoginAt: Date.now(),
+      lastActive: Date.now(),
+    };
+    userStore.set(updatedUser.uid, updatedUser);
+
+    // Save to RTDB
+    await setRtdbData(`users/${updatedUser.uid}`, { ...updatedUser, updatedAt: Date.now() });
+    await setRtdbData(`users_by_email/${sanitizedEmail}`, { uid: updatedUser.uid });
+
+    return { user: updatedUser, isNewUser: false };
+  }
+
+  // 3. New User Registration:
+  // Using verified Firebase UID (googleData.sub) ensures 1:1 match with Firebase Auth
+  const newUid = googleData.sub || ('usr_g_' + Math.random().toString(36).substring(2, 10));
+  const isInitialAdmin = Boolean(
+    process.env.ADMIN_EMAIL && normalizedEmail === process.env.ADMIN_EMAIL.trim().toLowerCase()
+  );
+
+  const newUser: UserRecord = {
+    uid: newUid,
+    googleId: googleData.sub,
+    displayName: googleData.name || normalizedEmail.split('@')[0] || 'Leo Explorer',
+    email: normalizedEmail,
+    photoURL: googleData.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    isAnonymous: false,
+    role: isInitialAdmin ? 'admin' : 'user',
+    credits: defaultCredits,
+    createdAt: Date.now(),
+    lastLoginAt: Date.now(),
+    lastActive: Date.now(),
+    chatCount: 0,
+  };
+
+  userStore.set(newUid, newUser);
+
+  // Persist to RTDB
+  await setRtdbData(`users/${newUid}`, { ...newUser, updatedAt: Date.now() });
+  await setRtdbData(`users_by_email/${sanitizedEmail}`, { uid: newUid });
+
+  return { user: newUser, isNewUser: true };
+}
+
+async function verifyGoogleTokenPayload(params: {
+  credential?: string;
+  idToken?: string;
+  accessToken?: string;
+}): Promise<{ sub: string; email: string; name?: string; picture?: string } | null> {
+  const tokenToVerify = params.idToken || params.credential;
+
+  // 1. Google OAuth2 ID Token Verification via tokeninfo
+  if (tokenToVerify) {
+    try {
+      const tokenInfoRes = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenToVerify)}`
+      );
+      if (tokenInfoRes.ok) {
+        const payload: any = await tokenInfoRes.json();
+        if (payload.sub && payload.email) {
+          return {
+            sub: payload.sub,
+            email: payload.email,
+            name: payload.name || payload.given_name,
+            picture: payload.picture,
+          };
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Google Tokeninfo Notice]:', err.message);
+    }
+
+    // 2. Fallback: Firebase Auth ID Token verification via Google Identity Toolkit
+    const firebaseKey = process.env.FIREBASE_API_KEY || appletConfig.apiKey;
+    if (firebaseKey) {
+      try {
+        const fbRes = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken: tokenToVerify }),
+          }
+        );
+        if (fbRes.ok) {
+          const fbData: any = await fbRes.json();
+          const user = fbData.users?.[0];
+          if (user && user.email) {
+            return {
+              sub: user.localId || user.rawId || 'fb_' + Date.now(),
+              email: user.email,
+              name: user.displayName,
+              picture: user.photoUrl,
+            };
+          }
+        }
+      } catch (fbErr: any) {
+        console.warn('[Firebase Token Verification Notice]:', fbErr.message);
+      }
+    }
+  }
+
+  // 3. Google Access Token Verification via userinfo
+  if (params.accessToken) {
+    try {
+      const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${params.accessToken}` },
+      });
+      if (userinfoRes.ok) {
+        const info: any = await userinfoRes.json();
+        if (info.sub && info.email) {
+          return {
+            sub: info.sub,
+            email: info.email,
+            name: info.name || info.given_name,
+            picture: info.picture,
+          };
+        }
+      }
+    } catch (accessErr: any) {
+      console.warn('[Google Userinfo Notice]:', accessErr.message);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Public OAuth Configuration (Safe - never exposes client secrets)
+ */
+app.get('/api/auth/oauth-config', (req, res) => {
+  const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '';
+  res.json({
+    googleClientId,
+    googleConfigured: Boolean(googleClientId),
+    defaultCredits: DEFAULT_USER_CREDITS,
+    firebaseConfigured: Boolean(process.env.FIREBASE_API_KEY || process.env.FIREBASE_PROJECT_ID),
+  });
+});
+
+/**
+ * POST /api/auth/google
+ * Universal Google Authentication endpoint:
+ * Accepts Google ID Token, Credential, Access Token, or OAuth code.
+ * Cryptographically verifies token with Google, creates or finds user, and returns session token.
+ */
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { credential, idToken, accessToken, code, redirectUri } = req.body;
+
+    let verifiedPayload: { sub: string; email: string; name?: string; picture?: string } | null = null;
+
+    // A. Handle Authorization Code Exchange (if code provided)
+    if (code) {
+      const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      if (!clientId || !clientSecret) {
+        return res.status(500).json({
+          success: false,
+          message: 'Google OAuth is missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET in backend configuration.'
+        });
+      }
+
+      const tokenParams = new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri || `${req.protocol}://${req.get('host')}/api/auth/google/callback`,
+        grant_type: 'authorization_code',
+      });
+
+      const tokenExchangeRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: tokenParams.toString(),
+      });
+
+      if (!tokenExchangeRes.ok) {
+        const errJson: any = await tokenExchangeRes.json().catch(() => ({}));
+        return res.status(400).json({
+          success: false,
+          message: errJson.error_description || 'Google OAuth code exchange failed'
+        });
+      }
+
+      const tokenData: any = await tokenExchangeRes.json();
+      verifiedPayload = await verifyGoogleTokenPayload({
+        idToken: tokenData.id_token,
+        accessToken: tokenData.access_token
+      });
+    } else {
+      // B. Verify Token / Credential / AccessToken directly with Google
+      verifiedPayload = await verifyGoogleTokenPayload({ credential, idToken, accessToken });
+    }
+
+    if (!verifiedPayload || !verifiedPayload.email) {
+      return res.status(401).json({
+        success: false,
+        message: 'Google authentication verification failed. Invalid or expired token.'
+      });
+    }
+
+    // C. Find or create user in database
+    const { user, isNewUser } = await findOrCreateGoogleUser(verifiedPayload);
+
+    // D. Mint session token
+    const sessionToken = 'leo_gauth_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+    console.log(`[Google Auth Success] ${isNewUser ? 'Created new user' : 'Logged in existing user'}: ${user.email} (Credits: ${user.credits})`);
+
+    // Set secure cookie if possible
+    res.cookie('leo_auth_session', sessionToken, {
+      httpOnly: true,
+      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    });
+
+    return res.json({
+      success: true,
+      message: isNewUser ? 'Welcome to Leo AI! Your account was created.' : 'Welcome back to Leo AI!',
+      user,
+      token: sessionToken,
+      isNewUser,
+    });
+  } catch (err: any) {
+    console.error('[POST /api/auth/google Error]:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Internal server error during Google authentication.'
+    });
+  }
+});
+
+/**
+ * GET /api/auth/google/url
+ * Generates official Google OAuth 2.0 authorization URL for redirect flows
+ */
+app.get('/api/auth/google/url', (req, res) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    return res.status(500).json({
+      success: false,
+      message: 'GOOGLE_CLIENT_ID is not configured in backend environment variables.'
+    });
+  }
+
+  const redirectUri = (req.query.redirect_uri as string) || `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+  const state = (req.query.state as string) || '/';
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'offline',
+    prompt: 'select_account',
+    state,
+  });
+
+  res.json({
+    success: true,
+    url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+  });
+});
+
+/**
+ * GET /api/auth/google/callback
+ * Handles OAuth 2.0 redirect code from Google and redirects user back to app
+ */
+app.get('/api/auth/google/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+
+  if (error) {
+    return res.redirect(`/?auth_error=${encodeURIComponent(String(error))}`);
+  }
+
+  if (!code) {
+    return res.redirect('/?auth_error=no_code_provided');
+  }
+
+  try {
+    const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/google/callback`;
+
+    if (!clientId || !clientSecret) {
+      return res.redirect('/?auth_error=google_oauth_not_configured_on_backend');
+    }
+
+    const tokenParams = new URLSearchParams({
+      code: String(code),
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+    });
+
+    const tokenExchangeRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenParams.toString(),
+    });
+
+    if (!tokenExchangeRes.ok) {
+      return res.redirect('/?auth_error=token_exchange_failed');
+    }
+
+    const tokenData: any = await tokenExchangeRes.json();
+    const verifiedPayload = await verifyGoogleTokenPayload({
+      idToken: tokenData.id_token,
+      accessToken: tokenData.access_token
+    });
+
+    if (!verifiedPayload || !verifiedPayload.email) {
+      return res.redirect('/?auth_error=verification_failed');
+    }
+
+    const { user } = await findOrCreateGoogleUser(verifiedPayload);
+    const sessionToken = 'leo_gauth_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+    const userParam = encodeURIComponent(JSON.stringify(user));
+    const targetState = (state && String(state).startsWith('/')) ? String(state) : '/';
+
+    return res.redirect(`${targetState}#auth_token=${sessionToken}&user=${userParam}`);
+  } catch (err: any) {
+    console.error('[Google OAuth Callback Error]:', err);
+    return res.redirect(`/?auth_error=${encodeURIComponent(err.message || 'callback_failed')}`);
+  }
+});
+
+/**
+ * GET /api/auth/me or /api/auth/session
+ * Returns current authenticated user and updated AI credits
+ */
+app.get(['/api/auth/me', '/api/auth/session'], (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim() || (req.query.token as string);
+  const uid = (req.query.uid as string) || (req.headers['x-user-id'] as string);
+
+  if (!token && !uid) {
+    return res.status(401).json({ success: false, message: 'Unauthenticated' });
+  }
+
+  let user: UserRecord | undefined;
+  if (uid && userStore.has(uid)) {
+    user = userStore.get(uid);
+  } else {
+    for (const u of userStore.values()) {
+      if (u.uid === uid) {
+        user = u;
+        break;
+      }
+    }
+  }
+
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  res.json({ success: true, user });
+});
+
 app.post('/api/auth/send-otp', async (req, res) => {
   const { email, uid, displayName, photoURL } = req.body;
   if (!email || !email.includes('@')) {
@@ -924,6 +1375,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   otpStore.delete(normalizedEmail);
 
   const finalUid = userProfile?.uid || rtdbRecord?.uid || memRecord?.userProfile?.uid || 'usr_' + Date.now().toString(36);
+  const existingCached = userStore.get(finalUid);
   const finalUser: UserRecord = {
     uid: finalUid,
     displayName: userProfile?.displayName || rtdbRecord?.displayName || memRecord?.userProfile?.displayName || normalizedEmail.split('@')[0],
@@ -931,9 +1383,11 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     photoURL: userProfile?.photoURL || rtdbRecord?.photoURL || memRecord?.userProfile?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     isAnonymous: false,
     role: 'user',
-    createdAt: Date.now(),
+    credits: existingCached && typeof existingCached.credits === 'number' ? existingCached.credits : DEFAULT_USER_CREDITS,
+    createdAt: existingCached?.createdAt || Date.now(),
+    lastLoginAt: Date.now(),
     lastActive: Date.now(),
-    chatCount: 1
+    chatCount: existingCached?.chatCount || 0
   };
 
   await setRtdbData(`users/${finalUid}`, {
@@ -1314,10 +1768,10 @@ app.post('/api/chat', async (req, res) => {
       } catch (err: any) {
         console.warn(`[GEMINI] Execution failed with model "${targetModel}":`, err.message);
         // If the specific model failed, attempt standard fallback only if not explicitly forced
-        if (!process.env.GEMINI_MODEL && targetModel !== 'gemini-2.5-flash') {
+        if (!process.env.GEMINI_MODEL && targetModel !== 'gemini-3.7-flash') {
           try {
             const fallbackResponse = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
+              model: 'gemini-3.7-flash',
               contents,
               config: {
                 systemInstruction: finalSystemPrompt,
@@ -1329,7 +1783,7 @@ app.post('/api/chat', async (req, res) => {
             memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
             return res.json({
               content: reply,
-              model: 'gemini-2.5-flash',
+              model: 'gemini-3.7-flash',
               provider: 'gemini',
               isDeepResearch,
               hasVision: hasImages
