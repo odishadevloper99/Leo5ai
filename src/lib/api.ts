@@ -118,19 +118,51 @@ export const api = {
     return data.memories || [];
   },
 
+  async searchMemories(query: string, userId = 'default-user', limit = 5): Promise<MemoMemoryItem[]> {
+    const res = await fetch(`${API_BASE}/api/memory/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, userId, limit }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.memories || [];
+  },
+
   async addMemory(memory: { userId?: string; text: string; category?: string }): Promise<MemoMemoryItem> {
     const res = await fetch(`${API_BASE}/api/memory`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(memory),
     });
-    if (!res.ok) throw new Error('Failed to save memory');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to save memory' }));
+      throw new Error(err.error || 'Failed to save memory');
+    }
     const data = await res.json();
     return data.memory;
   },
 
+  async updateMemory(id: string, text: string, userId = 'default-user'): Promise<void> {
+    const res = await fetch(`${API_BASE}/api/memory/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, userId }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to update memory' }));
+      throw new Error(err.error || 'Failed to update memory');
+    }
+  },
+
   async deleteMemory(id: string, userId = 'default-user'): Promise<void> {
     await fetch(`${API_BASE}/api/memory/${encodeURIComponent(id)}?userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async clearAllMemories(userId = 'default-user'): Promise<void> {
+    await fetch(`${API_BASE}/api/memory?userId=${encodeURIComponent(userId)}`, {
       method: 'DELETE',
     });
   },

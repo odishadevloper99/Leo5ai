@@ -12,6 +12,7 @@ import {
   Crown
 } from 'lucide-react';
 import { ChatSession } from '../types';
+import { LeoLogoMark } from './LeoLogo';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -99,9 +100,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
             className="flex items-center gap-2 px-3 py-1.5 bg-neutral-50 hover:bg-neutral-100/80 border border-neutral-200/70 rounded-xl text-xs font-medium text-neutral-800 transition"
           >
-            <div className="w-5 h-5 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white text-[10px]">
-              <Sparkles className="w-3 h-3" />
-            </div>
+            <LeoLogoMark className="w-5 h-5 rounded-md" />
             <span className="font-semibold text-neutral-900">Leo AI</span>
             <span className="text-[11px] text-neutral-400 hidden sm:inline">
               ({currentMode.name.replace('Leo AI ', '')})

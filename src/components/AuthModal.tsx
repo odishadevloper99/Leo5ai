@@ -15,6 +15,7 @@ import {
 import { loginWithGoogle, loginWithCustomToken, logoutUser, isFirebaseConfigured, saveChatToRealtimeDB } from '../lib/firebase';
 import { api } from '../lib/api';
 import { UserProfile } from '../types';
+import { LeoLogoMark } from './LeoLogo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -394,9 +395,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* ---------------------------------------------------- */}
         {step === 'initial' && (
           <div className="space-y-4 pt-2">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 mx-auto flex items-center justify-center text-white shadow-md shadow-purple-500/20">
-              <Sparkles className="w-8 h-8" />
-            </div>
+            <LeoLogoMark className="w-16 h-16 mx-auto drop-shadow-md" />
 
             <div>
               <h3 className="font-display font-bold text-lg text-neutral-900">

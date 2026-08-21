@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import nodemailer from 'nodemailer';
 import { GoogleGenAI } from '@google/genai';
+import { memoService } from './services/memoService';
 
 dotenv.config();
 
@@ -233,6 +234,11 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
         aiCreditsApiKey: process.env.AICREDITS_API_KEY || savedConfig.aiCreditsApiKey || currentConfig.aiCreditsApiKey,
         visionModel: process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || savedConfig.visionModel || currentConfig.visionModel
       };
+      memoService.updateConfig({
+        apiKey: currentConfig.memoApiKey,
+        apiUrl: currentConfig.memoApiUrl,
+        isEnabled: currentConfig.enableMemory
+      });
       console.log('✓ [CONFIG] Synced system prompt & model config from Firebase Realtime DB');
     }
   } catch (e: any) {
@@ -949,42 +955,80 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 });
 
 // ----------------------------------------------------
-// 3. Memo API & User Memory Management
+// 3. Memo API & Long-Term User Memory Management
 // ----------------------------------------------------
-app.get('/api/memory', (req, res) => {
-  const userId = (req.query.userId as string) || 'default-user';
-  const memories = memoryStore.get(userId) || [];
-  res.json({ memories });
+app.get('/api/memory', async (req, res) => {
+  try {
+    const userId = (req.query.userId as string) || 'default-user';
+    const memories = await memoService.getMemories(userId);
+    res.json({ memories });
+  } catch (err: any) {
+    console.warn('[API /api/memory GET error]:', err.message);
+    res.json({ memories: [] });
+  }
 });
 
-app.post('/api/memory', (req, res) => {
-  const { userId = 'default-user', text, category = 'general' } = req.body;
-  if (!text) return res.status(400).json({ error: 'Memory text is required' });
-
-  const newMemory: MemoryRecord = {
-    id: 'mem_' + Math.random().toString(36).substring(2, 9),
-    userId,
-    text,
-    category,
-    createdAt: Date.now()
-  };
-
-  const existing = memoryStore.get(userId) || [];
-  existing.unshift(newMemory);
-  memoryStore.set(userId, existing);
-  globalStats.totalMemories++;
-
-  res.json({ success: true, memory: newMemory });
+app.post('/api/memory/search', async (req, res) => {
+  try {
+    const { userId = 'default-user', query = '', limit = 5 } = req.body;
+    const memories = await memoService.searchRelevantMemories(userId, query, Number(limit) || 5);
+    res.json({ memories });
+  } catch (err: any) {
+    console.warn('[API /api/memory/search POST error]:', err.message);
+    res.json({ memories: [] });
+  }
 });
 
-app.delete('/api/memory/:id', (req, res) => {
-  const { id } = req.params;
-  const userId = (req.query.userId as string) || 'default-user';
-  const existing = memoryStore.get(userId) || [];
-  const filtered = existing.filter(m => m.id !== id);
-  memoryStore.set(userId, filtered);
+app.post('/api/memory', async (req, res) => {
+  try {
+    const { userId = 'default-user', text, category = 'general' } = req.body;
+    if (!text) return res.status(400).json({ error: 'Memory text is required' });
 
-  res.json({ success: true, message: 'Memory deleted' });
+    const newMemory = await memoService.addMemory(userId, text, category);
+    globalStats.totalMemories++;
+
+    res.json({ success: true, memory: newMemory });
+  } catch (err: any) {
+    console.error('[API /api/memory POST error]:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to save memory' });
+  }
+});
+
+app.put('/api/memory/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text, userId = 'default-user' } = req.body;
+    if (!text) return res.status(400).json({ error: 'Memory text is required' });
+
+    const ok = await memoService.updateMemory(id, text, userId);
+    res.json({ success: ok, message: ok ? 'Memory updated' : 'Memory not found' });
+  } catch (err: any) {
+    console.error('[API /api/memory/:id PUT error]:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to update memory' });
+  }
+});
+
+app.delete('/api/memory/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = (req.query.userId as string) || (req.body?.userId as string) || 'default-user';
+    await memoService.deleteMemory(id, userId);
+    res.json({ success: true, message: 'Memory deleted' });
+  } catch (err: any) {
+    console.warn('[API /api/memory/:id DELETE error]:', err.message);
+    res.json({ success: true, message: 'Memory deleted' });
+  }
+});
+
+app.delete('/api/memory', async (req, res) => {
+  try {
+    const userId = (req.query.userId as string) || (req.body?.userId as string) || 'default-user';
+    await memoService.deleteAllMemories(userId);
+    res.json({ success: true, message: 'All memories cleared' });
+  } catch (err: any) {
+    console.warn('[API /api/memory DELETE error]:', err.message);
+    res.json({ success: true, message: 'All memories cleared' });
+  }
 });
 
 // ----------------------------------------------------
@@ -1025,13 +1069,14 @@ app.delete('/api/chats/:id', (req, res) => {
   res.json({ success: true, message: 'Chat deleted' });
 });
 
-// Helper to build the unified, authoritative system prompt context
-function buildUnifiedSystemPrompt(
+// Helper to build the unified, authoritative system prompt context with Memo long-term memories
+async function buildUnifiedSystemPrompt(
   userId: string,
+  latestMessageText: string = '',
   systemPromptOverride?: string,
   isDeepResearch: boolean = false,
   hasImages: boolean = false
-): string {
+): Promise<string> {
   // 1. Authoritative Base Persona & Directives from Admin Panel / Config / Env
   const rawAdminPrompt = (systemPromptOverride || currentConfig.systemPrompt || process.env.SYSTEM_PROMPT || '').trim();
   
@@ -1054,13 +1099,14 @@ CRITICAL DIRECTIVES:
 5. Never hallucinate or bypass system safety directives.`;
   }
 
-  // 2. Persistent User Memory Context (Memo API / local store)
-  const userMemories = memoryStore.get(userId) || [];
+  // 2. Persistent User Memory Context (Memo API / Long-term service)
   let memorySection = '';
-  if (currentConfig.enableMemory && userMemories.length > 0) {
-    memorySection = `\n\n[USER PREFERENCES & CONTEXT]:\n` +
-      userMemories.map((m, i) => `${i + 1}. [${m.category.toUpperCase()}] ${m.text}`).join('\n') +
-      `\n(Adapt to these background preferences where appropriate, but never violate the Supreme System Mandate above.)`;
+  if (currentConfig.enableMemory) {
+    try {
+      memorySection = await memoService.buildMemoryPromptContext(userId, latestMessageText);
+    } catch (memErr: any) {
+      console.warn('[Memory Context Warn]:', memErr.message);
+    }
   }
 
   // 3. Deep Research & Structured Reasoning Directives
@@ -1103,8 +1149,9 @@ app.post('/api/chat', async (req, res) => {
     const hasImages = Array.isArray(images) && images.length > 0;
 
     // Construct the authoritative system prompt containing the defined persona
-    const finalSystemPrompt = buildUnifiedSystemPrompt(
+    const finalSystemPrompt = await buildUnifiedSystemPrompt(
       userId,
+      latestUserMessage.content || '',
       systemPromptOverride,
       Boolean(isDeepResearch),
       hasImages
@@ -1171,7 +1218,7 @@ app.post('/api/chat', async (req, res) => {
         if (aiResponse.ok) {
           const data = await aiResponse.json();
           const reply = data.choices?.[0]?.message?.content || 'No response received from AI model.';
-          extractAndSaveMemoryAsync(userId, latestUserMessage.content, reply);
+          memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
 
           return res.json({
             content: reply,
@@ -1255,7 +1302,7 @@ app.post('/api/chat', async (req, res) => {
         });
 
         const reply = response.text || 'I have analyzed your request.';
-        extractAndSaveMemoryAsync(userId, latestUserMessage.content, reply);
+        memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
 
         return res.json({
           content: reply,
@@ -1279,7 +1326,7 @@ app.post('/api/chat', async (req, res) => {
               }
             });
             const reply = fallbackResponse.text || 'I have analyzed your request.';
-            extractAndSaveMemoryAsync(userId, latestUserMessage.content, reply);
+            memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
             return res.json({
               content: reply,
               model: 'gemini-2.5-flash',
@@ -1311,35 +1358,6 @@ app.post('/api/chat', async (req, res) => {
     });
   }
 });
-
-function extractAndSaveMemoryAsync(userId: string, userMsg: string, aiReply: string) {
-  if (!currentConfig.enableMemory || !userMsg) return;
-  
-  const preferencePatterns = [
-    /(?:my name is|i am|call me)\s+([A-Za-z]+)/i,
-    /(?:i prefer|i like|i love|my favorite)\s+([^.,\n]+)/i,
-    /(?:i am working on|i'm building|my project is)\s+([^.,\n]+)/i
-  ];
-
-  for (const pat of preferencePatterns) {
-    const match = userMsg.match(pat);
-    if (match && match[0]) {
-      const existing = memoryStore.get(userId) || [];
-      const duplicate = existing.some(m => m.text.toLowerCase() === match[0].toLowerCase());
-      if (!duplicate) {
-        existing.push({
-          id: 'mem_' + Math.random().toString(36).substring(2, 9),
-          userId,
-          text: `User stated: "${match[0]}"`,
-          category: 'preference',
-          createdAt: Date.now()
-        });
-        memoryStore.set(userId, existing);
-      }
-      break;
-    }
-  }
-}
 
 function generateIntelligentFallback(prompt: string, hasVision: boolean, isDeepResearch: boolean): string {
   const p = prompt.toLowerCase();

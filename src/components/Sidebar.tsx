@@ -18,6 +18,7 @@ import {
   Shield
 } from 'lucide-react';
 import { ChatSession, UserProfile } from '../types';
+import { LeoLogo } from './LeoLogo';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -97,14 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex flex-col flex-1 min-h-0 p-4 pb-2">
           {/* Brand Header */}
           <div className="flex items-center justify-between mb-4 px-1">
-            <div className="flex items-center gap-2.5 cursor-pointer" onClick={onNewChat}>
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white shadow-sm shadow-purple-500/20">
-                <Plus className="w-5 h-5 stroke-[2.5]" />
-              </div>
-              <span className="font-display font-semibold text-lg text-neutral-900 tracking-tight">
-                Leo AI
-              </span>
-            </div>
+            <LeoLogo size="sm" onClick={onNewChat} className="cursor-pointer" />
 
             {/* Collapse toggle button */}
             <button
