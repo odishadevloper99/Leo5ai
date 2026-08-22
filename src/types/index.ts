@@ -47,6 +47,7 @@ export interface UserProfile {
 export interface AIConfig {
   aiCreditsBaseUrl: string;
   aiCreditsModel?: string;
+  freeTokeninModels?: string[];
   hasAiCreditsKey?: boolean;
   tokeninBaseUrl: string;
   tokeninModel?: string;

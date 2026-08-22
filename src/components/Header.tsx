@@ -14,6 +14,7 @@ import {
   BrainCircuit
 } from 'lucide-react';
 import { ChatSession } from '../types';
+import { api } from '../lib/api';
 import { LeoLogoMark } from './LeoLogo';
 
 interface HeaderProps {
@@ -39,8 +40,19 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [freeTokeninModels, setFreeTokeninModels] = useState<string[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getModelAccess()
+      .then((data) => {
+        if (!cancelled) setFreeTokeninModels(data.freeTokeninModels || []);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -59,14 +71,16 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'default', name: 'Leo AI Standard', desc: 'Optimized for conversation, writing, and everyday problem solving', icon: Sparkles, premium: false },
     { id: 'vision', name: 'Leo AI Vision', desc: 'High-speed image understanding, OCR, and diagram reasoning', icon: Eye, premium: false },
     { id: 'reasoning', name: 'Leo AI Deep Reasoner', desc: 'Extended cognitive synthesis for coding and complex logic', icon: Zap, premium: false },
-    { id: 'myt/grok-4.6-free', name: 'Grok 4.6', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
-    { id: 'myt/kimi-k3-free', name: 'Kimi K3', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
-    { id: 'myt/glm-5.3-free', name: 'GLM 5.3', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
-    { id: 'myt/qwen3.8-max-free', name: 'Qwen 3.8 Max', desc: 'Premium Tokenin model', icon: Zap, premium: true },
-    { id: 'myt/deepseek-v4-pro-free', name: 'DeepSeek V4 Pro', desc: 'Premium Tokenin model', icon: BrainCircuit, premium: true },
+    { id: 'myt/grok-4.6-free', name: 'Grok 4.6', desc: 'Tokenin model', icon: Sparkles, premium: true },
+    { id: 'myt/kimi-k3-free', name: 'Kimi K3', desc: 'Tokenin model', icon: Sparkles, premium: true },
+    { id: 'myt/glm-5.3-free', name: 'GLM 5.3', desc: 'Tokenin model', icon: Sparkles, premium: true },
+    { id: 'myt/qwen3.8-max-free', name: 'Qwen 3.8 Max', desc: 'Tokenin model', icon: Zap, premium: true },
+    { id: 'myt/deepseek-v4-pro-free', name: 'DeepSeek V4 Pro', desc: 'Tokenin model', icon: BrainCircuit, premium: true },
   ];
   const currentMode = engineModes.find((m) => m.id === selectedModel) || engineModes[0];
-  const isPremium = (currentMode as any).premium && !['pro', 'ultra', 'premium', 'admin'].includes(String(userPlan || '').toLowerCase());
+  const isPaidPlan = ['pro', 'ultra', 'premium', 'admin'].includes(String(userPlan || '').toLowerCase());
+  const isActuallyPremium = (mode: any) => mode.premium && !isPaidPlan && !freeTokeninModels.includes(mode.id);
+  const isPremium = isActuallyPremium(currentMode);
 
   return (
     <header
@@ -115,7 +129,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <button
                       key={mode.id}
                       onClick={() => {
-                        if (mode.premium && !['pro', 'ultra', 'premium', 'admin'].includes(String(userPlan || '').toLowerCase())) {
+                        if (isActuallyPremium(mode)) {
                           window.open('https://t.me/Unknownboy1525', '_blank', 'noopener,noreferrer');
                           return;
                         }
@@ -140,7 +154,7 @@ export const Header: React.FC<HeaderProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-semibold">{mode.name}</span>
-                            {mode.premium && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Premium</span>}
+                            {isActuallyPremium(mode) && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Premium</span>}
                         </div>
                         <p className="text-[11px] text-neutral-500 line-clamp-1">{mode.desc}</p>
                       </div>

@@ -209,7 +209,9 @@ function effectiveDailyLimit(userId: string): number {
   return currentConfig.dailyMessageLimit;
 }
 
-function userCanUsePremiumModel(userId: string): boolean {
+function userCanUsePremiumModel(userId: string, model?: string): boolean {
+  // Admin-controlled free model list is authoritative for Free users.
+  if (model && currentConfig.freeTokeninModels.includes(model)) return true;
   const user = userStore.get(userId);
   return Boolean(user && ['admin', 'premium', 'pro', 'ultra'].includes(String(user.plan || '').toLowerCase()) || user?.role === 'admin');
 }
@@ -239,6 +241,11 @@ function getTargetAiModel(): string {
   }
   return 'gemini-3.7-flash';
 }
+
+// Public model-access list. It exposes only model IDs that the Admin has marked free.
+app.get('/api/models/access', (_req, res) => {
+  res.json({ freeTokeninModels: currentConfig.freeTokeninModels || [] });
+});
 
 // ----------------------------------------------------
 // Firebase RTDB Helpers
@@ -456,6 +463,7 @@ app.post('/api/admin/config', async (req, res) => {
     aiCreditsModel,
     tokeninBaseUrl,
     tokeninModel,
+    freeTokeninModels,
     visionModel,
     temperature,
     maxTokens,
@@ -475,6 +483,11 @@ app.post('/api/admin/config', async (req, res) => {
   if (aiCreditsModel !== undefined) currentConfig.aiCreditsModel = String(aiCreditsModel).trim();
   if (tokeninBaseUrl !== undefined) currentConfig.tokeninBaseUrl = String(tokeninBaseUrl).trim().replace(/\/+$/, '');
   if (tokeninModel !== undefined) currentConfig.tokeninModel = String(tokeninModel).trim();
+  if (freeTokeninModels !== undefined) {
+    currentConfig.freeTokeninModels = Array.isArray(freeTokeninModels)
+      ? freeTokeninModels.filter((id: any) => TOKENIN_MODEL_IDS.has(String(id)))
+      : [];
+  }
   if (visionModel !== undefined) currentConfig.visionModel = visionModel;
   if (temperature !== undefined) currentConfig.temperature = Number(temperature);
   if (maxTokens !== undefined) currentConfig.maxTokens = Number(maxTokens);
@@ -1927,7 +1940,7 @@ app.post('/api/chat', async (req, res) => {
     // Resolve the exact model requested by Render Environment Variables or Admin Settings
     const targetModel = typeof requestedModel === 'string' && requestedModel.trim() ? requestedModel.trim() : getTargetAiModel();
 
-    if (isTokeninModel(targetModel) && !userCanUsePremiumModel(userId)) {
+    if (isTokeninModel(targetModel) && !userCanUsePremiumModel(userId, targetModel)) {
       return res.status(403).json({
         error: 'Premium access is required for this model. Contact @Unknownboy1525 for premium access.',
         premiumRequired: true,

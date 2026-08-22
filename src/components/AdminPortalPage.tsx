@@ -22,6 +22,14 @@ import {
 import { api } from '../lib/api';
 import { AIConfig, MemoMemoryItem, SystemStats, UserProfile } from '../types';
 
+const FREE_MODEL_OPTIONS = [
+  { id: 'myt/grok-4.6-free', name: 'Grok 4.6' },
+  { id: 'myt/kimi-k3-free', name: 'Kimi K3' },
+  { id: 'myt/glm-5.3-free', name: 'GLM 5.3' },
+  { id: 'myt/qwen3.8-max-free', name: 'Qwen 3.8 Max' },
+  { id: 'myt/deepseek-v4-pro-free', name: 'DeepSeek V4 Pro' },
+];
+
 interface AdminPortalPageProps {
   onExit: () => void;
 }
@@ -110,6 +118,25 @@ export const AdminPortalPage: React.FC<AdminPortalPageProps> = ({ onExit }) => {
       setTimeout(() => setSaveSuccessMsg(''), 4000);
     } catch (err: any) {
       alert('Failed to save config: ' + err.message);
+    }
+  };
+
+  const handleToggleFreeModel = async (modelId: string) => {
+    if (!config) return;
+    const current = config.freeTokeninModels || [];
+    const next = current.includes(modelId)
+      ? current.filter((id) => id !== modelId)
+      : [...current, modelId];
+
+    const previous = config;
+    setConfig({ ...config, freeTokeninModels: next });
+    try {
+      await api.saveAdminConfig({ freeTokeninModels: next });
+      setSaveSuccessMsg('Free model access updated successfully!');
+      setTimeout(() => setSaveSuccessMsg(''), 2500);
+    } catch (err: any) {
+      setConfig(previous);
+      alert('Failed to update free model access: ' + err.message);
     }
   };
 
@@ -409,6 +436,46 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
               {/* TAB 2: AI Config */}
               {activeTab === 'aiConfig' && config && (
                 <form onSubmit={handleSaveConfig} className="space-y-6">
+                  <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-white">Free Model Access</h3>
+                        <p className="text-[11px] text-neutral-400 mt-1">
+                          Turn on a button to allow Free users to use that Tokenin model. Premium access stays unchanged for every model you leave off.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {FREE_MODEL_OPTIONS.map((model) => {
+                        const isFree = (config.freeTokeninModels || []).includes(model.id);
+                        return (
+                          <button
+                            key={model.id}
+                            type="button"
+                            onClick={() => handleToggleFreeModel(model.id)}
+                            className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition ${
+                              isFree
+                                ? 'bg-emerald-950/40 border-emerald-700/60'
+                                : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
+                            }`}
+                          >
+                            <div className="text-left min-w-0">
+                              <div className="text-xs font-semibold text-white">{model.name}</div>
+                              <div className="text-[10px] text-neutral-500 truncate">{model.id}</div>
+                            </div>
+                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full border ${
+                              isFree
+                                ? 'text-emerald-400 bg-emerald-950 border-emerald-800'
+                                : 'text-amber-400 bg-amber-950/30 border-amber-900/50'
+                            }`}>
+                              {isFree ? 'FREE' : 'PREMIUM'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   <div>
                     <h2 className="text-sm sm:text-base font-semibold text-white">AI Engine & Vision Configuration</h2>
                     <p className="text-xs text-neutral-400 mt-0.5">

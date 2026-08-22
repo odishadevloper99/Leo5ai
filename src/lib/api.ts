@@ -95,6 +95,11 @@ export const api = {
     throw lastError || new Error('Failed to communicate with Leo AI engine');
   },
 
+  async getModelAccess(): Promise<{ freeTokeninModels: string[] }> {
+    const res = await fetch(`${API_BASE}/api/models/access`);
+    return safeFetchJson(res, 'Failed to load model access settings');
+  },
+
   async adminLogin(password: string): Promise<{ success: boolean; token: string; message: string }> {
     const res = await fetch(`${API_BASE}/api/admin/login`, {
       method: 'POST',
