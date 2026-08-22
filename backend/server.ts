@@ -1632,7 +1632,8 @@ app.post('/api/chat', async (req, res) => {
       userId = 'default-user',
       images = [],
       isDeepResearch = false,
-      systemPromptOverride
+      systemPromptOverride,
+      model
     } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -1670,43 +1671,120 @@ app.post('/api/chat', async (req, res) => {
     globalStats.totalMessages += 2;
     globalStats.estimatedTokens += 650;
 
-    // Resolve the exact model requested by Render Environment Variables or Admin Settings
-    const targetModel = getTargetAiModel();
-    console.log(`[AI CHAT] Using Model: "${targetModel}" | Deep Research: ${isDeepResearch} | Has Images: ${hasImages}`);
+    // Resolve the exact model requested by the client. The frontend model
+    // selection MUST be authoritative for known models; previously the backend
+    // ignored req.body.model and always used an environment/default model.
+    const TOKENIN_MODELS = new Set([
+      'myt/grok-4.6',
+      'myt/kimi-k3',
+      'myt/glm-5.3',
+      'myt/qwen3.8-max',
+      'myt/deepseek-v4-pro'
+    ]);
+    const requestedModel = typeof model === 'string' ? model.trim() : '';
+    const targetModel = requestedModel || getTargetAiModel();
+    const isTokeninModel = TOKENIN_MODELS.has(targetModel);
+    console.log(`[AI CHAT] Using Model: "${targetModel}" | Provider: ${isTokeninModel ? 'tokenin' : 'existing'} | Deep Research: ${isDeepResearch} | Has Images: ${hasImages}`);
 
-    // 1. Try AICREDITS.in API if API Key is configured
+    const formattedMessages: any[] = [
+      { role: 'system', content: finalSystemPrompt }
+    ];
+    for (let i = 0; i < messages.length - 1; i++) {
+      const m = messages[i];
+      if (m.role === 'system') continue;
+      formattedMessages.push({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content
+      });
+    }
+
+    if (hasImages) {
+      const contentParts: any[] = [{ type: 'text', text: latestUserMessage.content || 'Analyze this image.' }];
+      for (const img of images) {
+        contentParts.push({ type: 'image_url', image_url: { url: img } });
+      }
+      formattedMessages.push({ role: 'user', content: contentParts });
+    } else {
+      formattedMessages.push({ role: 'user', content: latestUserMessage.content });
+    }
+
+    // 1. Tokenin models ALWAYS use Tokenin. They never fall back to
+    // AICredits/Gemini because doing so would silently use the wrong provider.
+    if (isTokeninModel) {
+      const tokeninKey = (process.env.TOKENIN_API_KEY || '').trim();
+      const tokeninBaseUrl = (process.env.TOKENIN_BASE_URL || 'https://tokenin.my.id/api/v1').trim().replace(/\/+$/, '');
+
+      if (!tokeninKey) {
+        return res.status(503).json({
+          error: 'Tokenin provider is not configured. Set TOKENIN_API_KEY in the backend environment.',
+          provider: 'tokenin',
+          model: targetModel
+        });
+      }
+
+      try {
+        const endpoint = `${tokeninBaseUrl}/chat/completions`;
+        const tokeninResponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tokeninKey}`
+          },
+          body: JSON.stringify({
+            model: targetModel,
+            messages: formattedMessages,
+            temperature: currentConfig.temperature,
+            max_tokens: currentConfig.maxTokens
+          })
+        });
+
+        if (!tokeninResponse.ok) {
+          const errBody = await tokeninResponse.text().catch(() => '');
+          console.error(`[TOKENIN] Request failed with status ${tokeninResponse.status} for model "${targetModel}": ${errBody.slice(0, 1000)}`);
+          const status = tokeninResponse.status === 401 || tokeninResponse.status === 403 ? 502 :
+            tokeninResponse.status === 429 ? 429 : 502;
+          return res.status(status).json({
+            error: tokeninResponse.status === 429
+              ? 'Tokenin rate limit reached. Please try again later.'
+              : tokeninResponse.status === 401 || tokeninResponse.status === 403
+                ? 'Tokenin authentication failed. Check TOKENIN_API_KEY.'
+                : 'The selected Tokenin model is currently unavailable.',
+            provider: 'tokenin',
+            model: targetModel
+          });
+        }
+
+        const data = await tokeninResponse.json();
+        const reply = data.choices?.[0]?.message?.content || data.output?.text || data.response || '';
+        if (!reply) {
+          console.error(`[TOKENIN] Empty response for model "${targetModel}"`);
+          return res.status(502).json({ error: 'Tokenin returned an empty response.', provider: 'tokenin', model: targetModel });
+        }
+
+        memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
+        return res.json({
+          content: reply,
+          model: targetModel,
+          provider: 'tokenin',
+          isDeepResearch,
+          hasVision: hasImages
+        });
+      } catch (tokeninErr: any) {
+        console.error('[TOKENIN] Request threw an error:', tokeninErr);
+        return res.status(502).json({
+          error: 'Could not reach the Tokenin provider. Check TOKENIN_BASE_URL and server network connectivity.',
+          provider: 'tokenin',
+          model: targetModel
+        });
+      }
+    }
+
+    // 2. Existing AICredits provider path for non-Tokenin models.
+    //
     if (currentConfig.aiCreditsApiKey && currentConfig.aiCreditsApiKey.trim().length > 0) {
       try {
         const selectedModel = targetModel;
         
-        // Consistently inject the authoritative system prompt as the top-level 'system' message
-        const formattedMessages: any[] = [
-          { role: 'system', content: finalSystemPrompt }
-        ];
-
-        // Append past user and assistant messages, strictly excluding rogue client system messages
-        for (let i = 0; i < messages.length - 1; i++) {
-          const m = messages[i];
-          if (m.role === 'system') continue;
-          formattedMessages.push({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content
-          });
-        }
-
-        if (hasImages) {
-          const contentParts: any[] = [{ type: 'text', text: latestUserMessage.content || 'Analyze this image.' }];
-          for (const img of images) {
-            contentParts.push({
-              type: 'image_url',
-              image_url: { url: img }
-            });
-          }
-          formattedMessages.push({ role: 'user', content: contentParts });
-        } else {
-          formattedMessages.push({ role: 'user', content: latestUserMessage.content });
-        }
-
         const endpoint = `${currentConfig.aiCreditsBaseUrl.replace(/\/+$/, '')}/chat/completions`;
         const aiResponse = await fetch(endpoint, {
           method: 'POST',
@@ -1855,12 +1933,12 @@ app.post('/api/chat', async (req, res) => {
       }
     }
 
-    // 3. Fallback response
-    const simulatedReply = generateIntelligentFallback(latestUserMessage.content, hasImages, isDeepResearch);
-    return res.json({
-      content: simulatedReply,
-      model: currentConfig.visionModel + ' (Intelligent Engine)',
-      provider: 'built-in',
+    // No provider succeeded. Never return a fake AI answer: that would make it
+    // look as if the selected model and Admin system prompt were used.
+    return res.status(503).json({
+      error: 'No AI provider is currently available. Configure a valid provider in the backend environment.',
+      provider: 'none',
+      model: targetModel,
       isDeepResearch,
       hasVision: hasImages
     });

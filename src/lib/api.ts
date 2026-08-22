@@ -88,21 +88,10 @@ export const api = {
       }
     }
 
-    const latestUserMsg = params.messages[params.messages.length - 1]?.content || 'your query';
-    const hasImages = Boolean(params.images && params.images.length > 0);
-
-    // If server is warming up or temporarily returning HTML, provide an intelligent fallback
-    return {
-      content: `### Response from Leo AI\n\nI have received your request regarding: **"${latestUserMsg.slice(0, 80)}${latestUserMsg.length > 80 ? '...' : ''}"**\n\n${
-        hasImages ? '🖼️ **Visual inspection noted**: Image analyzed.\n\n' : ''
-      }${
-        params.isDeepResearch ? '🔍 **Deep Research Mode Active**: Multi-perspective analysis initiated.\n\n' : ''
-      }I am ready to assist you. If you are experiencing a brief connection warm-up, please try asking again or check your backend connection status.`,
-      model: 'gemini-3.7-flash',
-      provider: 'Leo AI Engine',
-      isDeepResearch: params.isDeepResearch,
-      hasVision: hasImages,
-    };
+    // Do not fabricate a local AI response when the backend is unavailable.
+    // Surface the real provider/connection error so the selected model and
+    // Admin system prompt are never falsely presented as having been used.
+    throw lastError || new Error('Failed to communicate with Leo AI engine');
   },
 
   async adminLogin(password: string): Promise<{ success: boolean; token: string; message: string }> {
