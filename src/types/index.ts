@@ -45,10 +45,12 @@ export interface UserProfile {
 }
 
 export interface AIConfig {
-  aiCreditsApiKey: string;
   aiCreditsBaseUrl: string;
-  tokeninApiKey: string;
+  aiCreditsModel?: string;
+  hasAiCreditsKey?: boolean;
   tokeninBaseUrl: string;
+  tokeninModel?: string;
+  hasTokeninKey?: boolean;
   visionModel: string;
   temperature: number;
   maxTokens: number;

@@ -63,6 +63,7 @@ export const api = {
     content: string;
     model: string;
     provider: string;
+    fallbackUsed?: boolean;
     isDeepResearch?: boolean;
     hasVision?: boolean;
   }> {

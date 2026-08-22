@@ -2,11 +2,11 @@
 
 The app now routes these model IDs directly to the Tokenin provider:
 
-- myt/grok-4.6
-- myt/kimi-k3
-- myt/glm-5.3
-- myt/qwen3.8-max
-- myt/deepseek-v4-pro
+- myt/grok-4.6-free
+- myt/kimi-k3-free
+- myt/glm-5.3-free
+- myt/qwen3.8-max-free
+- myt/deepseek-v4-pro-free
 
 Set these backend environment variables:
 

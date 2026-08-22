@@ -399,7 +399,7 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                     <div className="p-3.5 sm:p-4 rounded-2xl bg-neutral-950 border border-neutral-800">
                       <p className="text-[10px] sm:text-[11px] text-neutral-400">Active Mode</p>
                       <p className="text-sm sm:text-base font-bold text-emerald-400 mt-1 truncate">
-                        {config?.aiCreditsApiKey ? 'AICredits.in' : 'Gemini / Cloud'}
+                        {config?.hasAiCreditsKey ? 'AICredits.in' : (config?.hasTokeninKey ? 'Tokenin' : 'Not configured')}
                       </p>
                     </div>
                   </div>

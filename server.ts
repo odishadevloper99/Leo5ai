@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import nodemailer from 'nodemailer';
-import { GoogleGenAI } from '@google/genai';
 import { memoService } from './backend/services/memoService';
 
 dotenv.config();
@@ -121,8 +120,10 @@ let globalStats = {
 let currentConfig = {
   aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
   aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
+  aiCreditsModel: (process.env.AICREDITS_MODEL || '').replace(/^["']|["']$/g, '').trim(),
   tokeninApiKey: process.env.TOKENIN_API_KEY || '',
-  tokeninBaseUrl: process.env.TOKENIN_BASE_URL || 'https://tokenin.my.id/api/v1',
+  tokeninBaseUrl: (process.env.TOKENIN_BASE_URL || 'https://tokenin.my.id/api/v1').trim().replace(/\/+$/, ''),
+  tokeninModel: (process.env.TOKENIN_MODEL || '').replace(/^["']|["']$/g, '').trim(),
   visionModel: (
     process.env.MODEL_ID ||
     process.env.GEMINI_MODEL_ID ||
@@ -190,11 +191,11 @@ function checkAndRecordDailyMessage(userId: string): { limit: number; used: numb
 }
 
 const TOKENIN_MODELS = [
-  { id: 'myt/grok-4.6', name: 'Grok 4.6', premium: true },
-  { id: 'myt/kimi-k3', name: 'Kimi K3', premium: true },
-  { id: 'myt/glm-5.3', name: 'GLM 5.3', premium: true },
-  { id: 'myt/qwen3.8-max', name: 'Qwen 3.8 Max', premium: true },
-  { id: 'myt/deepseek-v4-pro', name: 'DeepSeek V4 Pro', premium: true },
+  { id: 'myt/grok-4.6-free', name: 'Grok 4.6', premium: true },
+  { id: 'myt/kimi-k3-free', name: 'Kimi K3', premium: true },
+  { id: 'myt/glm-5.3-free', name: 'GLM 5.3', premium: true },
+  { id: 'myt/qwen3.8-max-free', name: 'Qwen 3.8 Max', premium: true },
+  { id: 'myt/deepseek-v4-pro-free', name: 'DeepSeek V4 Pro', premium: true },
 ] as const;
 const TOKENIN_MODEL_IDS = new Set(TOKENIN_MODELS.map(m => m.id));
 
@@ -336,10 +337,15 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
       currentConfig = {
         ...currentConfig,
         ...savedConfig,
-        // Always preserve Render's explicit environment variable overrides if present
-        aiCreditsApiKey: process.env.AICREDITS_API_KEY || savedConfig.aiCreditsApiKey || currentConfig.aiCreditsApiKey,
-        tokeninApiKey: process.env.TOKENIN_API_KEY || savedConfig.tokeninApiKey || currentConfig.tokeninApiKey,
+        // Always preserve Render's explicit environment variable overrides if
+        // present. Provider SECRETS (API keys) must never be overwritten by
+        // whatever the Admin Panel previously persisted to Firebase RTDB —
+        // Render env vars always win for these.
+        aiCreditsApiKey: process.env.AICREDITS_API_KEY || currentConfig.aiCreditsApiKey,
+        tokeninApiKey: process.env.TOKENIN_API_KEY || currentConfig.tokeninApiKey,
         tokeninBaseUrl: process.env.TOKENIN_BASE_URL || savedConfig.tokeninBaseUrl || currentConfig.tokeninBaseUrl,
+        aiCreditsModel: process.env.AICREDITS_MODEL || currentConfig.aiCreditsModel,
+        tokeninModel: process.env.TOKENIN_MODEL || currentConfig.tokeninModel,
         visionModel: process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || savedConfig.visionModel || currentConfig.visionModel
       };
       memoService.updateConfig({
@@ -379,6 +385,7 @@ app.get('/api/health', (req, res) => {
     uptime: Math.floor((Date.now() - globalStats.serverStartTime) / 1000),
     services: {
       aiCredits: Boolean(currentConfig.aiCreditsApiKey),
+      tokenin: Boolean(currentConfig.tokeninApiKey),
       geminiFallback: Boolean(process.env.GEMINI_API_KEY),
       memoApi: Boolean(currentConfig.memoApiKey),
       mongoDb: currentConfig.mongoDbConfigured,
@@ -426,11 +433,13 @@ app.get('/api/admin/config', (req, res) => {
     return res.status(403).json({ error: 'Unauthorized. Admin privileges required.' });
   }
 
-  // Return safe config (mask sensitive keys if present)
+  // Provider secrets (API keys) are never sent back to the client, even to an
+  // authenticated admin — only booleans/model/base-url.
+  const { aiCreditsApiKey, tokeninApiKey, ...safeConfig } = currentConfig;
   res.json({
-    ...currentConfig,
-    hasAiCreditsKey: Boolean(currentConfig.aiCreditsApiKey),
-    hasTokeninKey: Boolean(currentConfig.tokeninApiKey),
+    ...safeConfig,
+    hasAiCreditsKey: Boolean(aiCreditsApiKey),
+    hasTokeninKey: Boolean(tokeninApiKey),
     hasMemoKey: Boolean(currentConfig.memoApiKey),
     hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
     adminPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD)
@@ -443,10 +452,10 @@ app.post('/api/admin/config', async (req, res) => {
   }
 
   const {
-    aiCreditsApiKey,
     aiCreditsBaseUrl,
-    tokeninApiKey,
+    aiCreditsModel,
     tokeninBaseUrl,
+    tokeninModel,
     visionModel,
     temperature,
     maxTokens,
@@ -460,10 +469,12 @@ app.post('/api/admin/config', async (req, res) => {
     dailyMessageLimit
   } = req.body;
 
-  if (aiCreditsApiKey !== undefined) currentConfig.aiCreditsApiKey = aiCreditsApiKey;
+  // Provider SECRETS (aiCreditsApiKey / tokeninApiKey) are intentionally NOT
+  // accepted here — they are Render-environment-only.
   if (aiCreditsBaseUrl !== undefined) currentConfig.aiCreditsBaseUrl = aiCreditsBaseUrl;
-  if (tokeninApiKey !== undefined) currentConfig.tokeninApiKey = tokeninApiKey;
-  if (tokeninBaseUrl !== undefined) currentConfig.tokeninBaseUrl = tokeninBaseUrl;
+  if (aiCreditsModel !== undefined) currentConfig.aiCreditsModel = String(aiCreditsModel).trim();
+  if (tokeninBaseUrl !== undefined) currentConfig.tokeninBaseUrl = String(tokeninBaseUrl).trim().replace(/\/+$/, '');
+  if (tokeninModel !== undefined) currentConfig.tokeninModel = String(tokeninModel).trim();
   if (visionModel !== undefined) currentConfig.visionModel = visionModel;
   if (temperature !== undefined) currentConfig.temperature = Number(temperature);
   if (maxTokens !== undefined) currentConfig.maxTokens = Number(maxTokens);
@@ -482,15 +493,17 @@ app.post('/api/admin/config', async (req, res) => {
     isEnabled: currentConfig.enableMemory
   });
 
-  // Persist updated configuration permanently to Firebase Realtime Database
-  await setRtdbData('system/config', currentConfig);
+  // Persist updated configuration permanently to Firebase Realtime Database —
+  // but never the provider secrets themselves.
+  const { aiCreditsApiKey: _omitAiCreditsKey, tokeninApiKey: _omitTokeninKey, ...configToPersist } = currentConfig;
+  await setRtdbData('system/config', configToPersist);
 
   console.log('✓ [ADMIN] Saved and persisted system prompt and AI config to database');
 
   res.json({
     success: true,
     message: 'Leo AI configuration updated and persisted successfully across all instances.',
-    config: currentConfig
+    config: configToPersist
   });
 });
 
@@ -1788,6 +1801,82 @@ CRITICAL DIRECTIVES:
 // ----------------------------------------------------
 // 5. AI Chat Completion & Vision Reasoning
 // ----------------------------------------------------
+// ----------------------------------------------------
+// 4b. Two-provider AI configuration (AICredits primary, Tokenin fallback)
+// ----------------------------------------------------
+function getAiCreditsDiagnostics() {
+  return {
+    configured: Boolean(currentConfig.aiCreditsApiKey && currentConfig.aiCreditsApiKey.trim()),
+    model: currentConfig.aiCreditsModel || getTargetAiModel(),
+    baseUrl: currentConfig.aiCreditsBaseUrl
+  };
+}
+
+function getTokeninDiagnostics() {
+  return {
+    configured: Boolean(currentConfig.tokeninApiKey && currentConfig.tokeninApiKey.trim()),
+    model: currentConfig.tokeninModel || getTargetAiModel(),
+    baseUrl: currentConfig.tokeninBaseUrl
+  };
+}
+
+interface ProviderResult {
+  ok: boolean;
+  content?: string;
+  status?: number;
+  error?: string;
+}
+
+async function callOpenAiCompatibleProvider(opts: {
+  label: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  messages: any[];
+}): Promise<ProviderResult> {
+  const { label, baseUrl, apiKey, model, messages } = opts;
+  const endpoint = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey.trim()}`
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: currentConfig.temperature,
+        max_tokens: currentConfig.maxTokens
+      })
+    });
+
+    const raw = await response.text();
+    if (!response.ok) {
+      console.error(`[${label.toUpperCase()}] Request failed with status ${response.status} for model "${model}": ${raw.slice(0, 500)}`);
+      return { ok: false, status: response.status, error: `${label} responded with status ${response.status}` };
+    }
+
+    let data: any = null;
+    try { data = JSON.parse(raw); } catch {
+      console.error(`[${label.toUpperCase()}] Response was not valid JSON.`);
+      return { ok: false, status: response.status, error: `${label} returned a non-JSON response.` };
+    }
+
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) {
+      console.error(`[${label.toUpperCase()}] Empty response content for model "${model}".`);
+      return { ok: false, status: response.status, error: `${label} returned no response content.` };
+    }
+
+    return { ok: true, content, status: response.status };
+  } catch (err: any) {
+    console.error(`[${label.toUpperCase()}] Request threw an error:`, err?.message || err);
+    return { ok: false, error: `Could not reach ${label} (network error).` };
+  }
+}
+
 app.post('/api/chat', async (req, res) => {
   try {
     const {
@@ -1892,193 +1981,97 @@ app.post('/api/chat', async (req, res) => {
       }
     }
 
-    // 2. Try AICREDITS.in API if API Key is configured
-    if (currentConfig.aiCreditsApiKey && currentConfig.aiCreditsApiKey.trim().length > 0) {
-      try {
-        const selectedModel = targetModel;
-        
-        // Consistently inject the authoritative system prompt as the top-level 'system' message
-        const formattedMessages: any[] = [
-          { role: 'system', content: finalSystemPrompt }
-        ];
+    // 2. Two-provider automatic fallback for regular (non premium-Tokenin-model)
+    // requests: AICredits is PRIMARY, Tokenin is the automatic FALLBACK.
+    const aiCreditsDiag = getAiCreditsDiagnostics();
+    const tokeninDiag = getTokeninDiagnostics();
+    const providerDiagnostics: any[] = [];
+    let selectedProvider: 'aicredits' | 'tokenin' | null = null;
+    let fallbackUsed = false;
+    let finalReply: string | null = null;
+    let finalModelUsed = targetModel;
 
-        // Append past user and assistant messages, strictly excluding rogue client system messages
-        for (let i = 0; i < messages.length - 1; i++) {
-          const m = messages[i];
-          if (m.role === 'system') continue;
-          formattedMessages.push({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content
-          });
-        }
+    console.log(
+      `[PROVIDERS] aicredits.configured=${aiCreditsDiag.configured} model="${aiCreditsDiag.model}" baseUrl="${aiCreditsDiag.baseUrl}" | ` +
+      `tokenin.configured=${tokeninDiag.configured} model="${tokeninDiag.model}" baseUrl="${tokeninDiag.baseUrl}"`
+    );
 
-        // Format latest message with image if present
-        if (hasImages) {
-          const contentParts: any[] = [{ type: 'text', text: latestUserMessage.content || 'Analyze this image.' }];
-          for (const img of images) {
-            contentParts.push({
-              type: 'image_url',
-              image_url: { url: img }
-            });
-          }
-          formattedMessages.push({ role: 'user', content: contentParts });
-        } else {
-          formattedMessages.push({ role: 'user', content: latestUserMessage.content });
-        }
-
-        const endpoint = `${currentConfig.aiCreditsBaseUrl.replace(/\/+$/, '')}/chat/completions`;
-        const aiResponse = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentConfig.aiCreditsApiKey.trim()}`
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: formattedMessages,
-            temperature: currentConfig.temperature,
-            max_tokens: currentConfig.maxTokens
-          })
-        });
-
-        if (aiResponse.ok) {
-          const data = await aiResponse.json();
-          const reply = data.choices?.[0]?.message?.content || 'No response received from AI model.';
-
-          // Asynchronously extract potential long-term memory via MemoService
-          memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
-
-          return res.json({
-            content: reply,
-            model: selectedModel,
-            provider: 'aicredits.in',
-            isDeepResearch,
-            hasVision: hasImages
-          });
-        } else {
-          console.warn('AICredits API error status:', aiResponse.status);
-        }
-      } catch (aiCreditsErr) {
-        console.warn('AICredits request failed, falling back to Gemini SDK:', aiCreditsErr);
-      }
+    const formattedMessages: any[] = [{ role: 'system', content: finalSystemPrompt }];
+    for (let i = 0; i < messages.length - 1; i++) {
+      const m = messages[i];
+      if (m.role === 'system') continue;
+      formattedMessages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
+    }
+    if (hasImages) {
+      const contentParts: any[] = [{ type: 'text', text: latestUserMessage.content || 'Analyze this image.' }];
+      for (const img of images) contentParts.push({ type: 'image_url', image_url: { url: img } });
+      formattedMessages.push({ role: 'user', content: contentParts });
+    } else {
+      formattedMessages.push({ role: 'user', content: latestUserMessage.content });
     }
 
-    // 2. Fallback / Native Server-Side Gemini API
-    const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
-    if (geminiKey) {
-      const ai = new GoogleGenAI({
-        apiKey: geminiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
+    // 2a. Try AICredits (primary)
+    if (aiCreditsDiag.configured) {
+      const aiCreditsModel = currentConfig.aiCreditsModel || targetModel;
+      const result = await callOpenAiCompatibleProvider({
+        label: 'aicredits',
+        baseUrl: currentConfig.aiCreditsBaseUrl,
+        apiKey: currentConfig.aiCreditsApiKey,
+        model: aiCreditsModel,
+        messages: formattedMessages
       });
-      
-      // Build content turns (Gemini uses 'user' and 'model' turns)
-      const contents: any[] = [];
-
-      // Add conversation history
-      for (const m of messages.slice(0, -1)) {
-        if (m.role === 'system') continue;
-        contents.push({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }]
-        });
+      providerDiagnostics.push({ provider: 'aicredits', ok: result.ok, status: result.status ?? null, error: result.error ?? null });
+      if (result.ok && result.content) {
+        selectedProvider = 'aicredits';
+        finalReply = result.content;
+        finalModelUsed = aiCreditsModel;
       }
-
-      // Latest message parts
-      const userParts: any[] = [{ text: latestUserMessage.content || '' }];
-
-      if (hasImages) {
-        for (const img of images) {
-          const match = img.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-          if (match) {
-            userParts.push({
-              inlineData: {
-                mimeType: match[1],
-                data: match[2]
-              }
-            });
-          }
-        }
-      }
-
-      contents.push({
-        role: 'user',
-        parts: userParts
-      });
-
-      // Strict Model Enforcement with unified systemInstruction
-      try {
-        const response = await ai.models.generateContent({
-          model: targetModel,
-          contents,
-          config: {
-            systemInstruction: finalSystemPrompt,
-            temperature: currentConfig.temperature,
-            maxOutputTokens: currentConfig.maxTokens
-          }
-        });
-
-        const reply = response.text || 'I have analyzed your request.';
-
-        // Asynchronously extract potential long-term memory via MemoService
-        memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
-
-        return res.json({
-          content: reply,
-          model: targetModel,
-          provider: 'gemini',
-          isDeepResearch,
-          hasVision: hasImages
-        });
-      } catch (err: any) {
-        console.warn(`[GEMINI] Execution failed with model "${targetModel}":`, err.message);
-        // If the primary model failed for any reason (invalid/unavailable model,
-        // account doesn't have access to a brand-new preview model, etc.), always
-        // retry once against a widely-available stable model instead of only
-        // retrying when a *different* model was originally requested. Without
-        // this, a single bad/inaccessible model name previously meant every
-        // request fell straight through to the canned fallback message even
-        // with a perfectly valid GEMINI_API_KEY.
-        const stableFallbackModel = 'gemini-2.5-flash';
-        if (targetModel !== stableFallbackModel) {
-          try {
-            const fallbackResponse = await ai.models.generateContent({
-              model: stableFallbackModel,
-              contents,
-              config: {
-                systemInstruction: finalSystemPrompt,
-                temperature: currentConfig.temperature,
-                maxOutputTokens: currentConfig.maxTokens
-              }
-            });
-            const reply = fallbackResponse.text || 'I have analyzed your request.';
-            memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
-            return res.json({
-              content: reply,
-              model: stableFallbackModel,
-              provider: 'gemini',
-              isDeepResearch,
-              hasVision: hasImages
-            });
-          } catch (fallbackErr: any) {
-            console.warn(`[GEMINI FALLBACK] Error with model "${stableFallbackModel}":`, fallbackErr.message);
-          }
-        }
-      }
+    } else {
+      providerDiagnostics.push({ provider: 'aicredits', ok: false, status: null, error: 'AICREDITS_API_KEY is not configured.' });
     }
 
-    // 3. Built-in intelligent fallback acknowledging configured persona
-    const simulatedReply = generateIntelligentFallback(latestUserMessage.content, hasImages, isDeepResearch);
-    return res.json({
-      content: simulatedReply,
-      model: currentConfig.visionModel + ' (Intelligent Engine)',
-      provider: 'built-in',
+    // 2b. Try Tokenin (automatic fallback) if AICredits didn't succeed
+    if (!finalReply && tokeninDiag.configured) {
+      fallbackUsed = true;
+      const tokeninModel = currentConfig.tokeninModel || targetModel;
+      const result = await callOpenAiCompatibleProvider({
+        label: 'tokenin',
+        baseUrl: currentConfig.tokeninBaseUrl,
+        apiKey: currentConfig.tokeninApiKey,
+        model: tokeninModel,
+        messages: formattedMessages
+      });
+      providerDiagnostics.push({ provider: 'tokenin', ok: result.ok, status: result.status ?? null, error: result.error ?? null });
+      if (result.ok && result.content) {
+        selectedProvider = 'tokenin';
+        finalReply = result.content;
+        finalModelUsed = tokeninModel;
+      }
+    } else if (!finalReply) {
+      providerDiagnostics.push({ provider: 'tokenin', ok: false, status: null, error: 'TOKENIN_API_KEY is not configured.' });
+    }
+
+    if (finalReply && selectedProvider) {
+      memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, finalReply).catch(() => {});
+      return res.json({
+        content: finalReply,
+        model: finalModelUsed,
+        provider: selectedProvider,
+        fallbackUsed,
+        isDeepResearch,
+        hasVision: hasImages
+      });
+    }
+
+    console.error('[PROVIDERS] All configured AI providers failed:', JSON.stringify(providerDiagnostics));
+    return res.status(502).json({
+      error: 'All configured AI providers failed.',
+      providerDiagnostics,
+      model: targetModel,
       isDeepResearch,
       hasVision: hasImages
     });
+
 
   } catch (err: any) {
     console.error('Chat error:', err);
@@ -2176,7 +2169,8 @@ app.all('/api/*', (req, res) => {
 // 6. Vite Integration & Static Files
 // ----------------------------------------------------
 const isProduction = process.env.NODE_ENV === 'production';
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = Number(process.env.PORT) || 10000;
+const HOST = '0.0.0.0';
 
 async function startServer() {
   if (!isProduction) {
@@ -2208,8 +2202,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Leo AI Server running at http://0.0.0.0:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`Leo AI backend running on ${HOST}:${PORT}`);
   });
 }
 

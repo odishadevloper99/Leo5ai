@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import nodemailer from 'nodemailer';
-import { GoogleGenAI } from '@google/genai';
 import { memoService } from './services/memoService';
 
 dotenv.config();
@@ -118,6 +117,15 @@ let globalStats = {
 let currentConfig = {
   aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
   aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
+  // AICREDITS_MODEL: the exact model id AICredits expects. Previously there was
+  // no dedicated env var for this, so the backend silently reused whatever
+  // MODEL_ID/GEMINI_MODEL/etc resolved to (often a Gemini-style model name like
+  // "gemini-3.7-flash"), which AICredits' OpenAI-compatible endpoint rejects.
+  // That bad model name was the root cause of AICredits calls failing.
+  aiCreditsModel: (process.env.AICREDITS_MODEL || '').replace(/^["']|["']$/g, '').trim(),
+  tokeninApiKey: process.env.TOKENIN_API_KEY || '',
+  tokeninBaseUrl: (process.env.TOKENIN_BASE_URL || 'https://tokenin.my.id/api/v1').trim().replace(/\/+$/, ''),
+  tokeninModel: (process.env.TOKENIN_MODEL || '').replace(/^["']|["']$/g, '').trim(),
   visionModel: (
     process.env.MODEL_ID ||
     process.env.GEMINI_MODEL_ID ||
@@ -297,9 +305,15 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
       currentConfig = {
         ...currentConfig,
         ...savedConfig,
-        // Always preserve Render's explicit environment variable overrides if present
-        aiCreditsApiKey: process.env.AICREDITS_API_KEY || savedConfig.aiCreditsApiKey || currentConfig.aiCreditsApiKey,
-        visionModel: process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || savedConfig.visionModel || currentConfig.visionModel
+        // Always preserve Render's explicit environment variable overrides if
+        // present. Provider SECRETS (API keys) in particular must never be
+        // overwritten by whatever the Admin Panel previously persisted to
+        // Firebase RTDB — Render env vars always win for these.
+        aiCreditsApiKey: process.env.AICREDITS_API_KEY || currentConfig.aiCreditsApiKey,
+        tokeninApiKey: process.env.TOKENIN_API_KEY || currentConfig.tokeninApiKey,
+        visionModel: process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || savedConfig.visionModel || currentConfig.visionModel,
+        aiCreditsModel: process.env.AICREDITS_MODEL || currentConfig.aiCreditsModel,
+        tokeninModel: process.env.TOKENIN_MODEL || currentConfig.tokeninModel
       };
       memoService.updateConfig({
         apiKey: currentConfig.memoApiKey,
@@ -338,6 +352,7 @@ app.get('/api/health', (req, res) => {
     uptime: Math.floor((Date.now() - globalStats.serverStartTime) / 1000),
     services: {
       aiCredits: Boolean(currentConfig.aiCreditsApiKey),
+      tokenin: Boolean(currentConfig.tokeninApiKey),
       geminiFallback: Boolean(process.env.GEMINI_API_KEY),
       memoApi: Boolean(currentConfig.memoApiKey),
       mongoDb: currentConfig.mongoDbConfigured,
@@ -385,9 +400,14 @@ app.get('/api/admin/config', (req, res) => {
     return res.status(403).json({ error: 'Unauthorized. Admin privileges required.' });
   }
 
+  // Provider secrets (API keys) are never sent back to the client, even to an
+  // authenticated admin — only booleans/model/base-url, which is enough for
+  // the Admin Panel to show configuration status.
+  const { aiCreditsApiKey, tokeninApiKey, ...safeConfig } = currentConfig;
   res.json({
-    ...currentConfig,
-    hasAiCreditsKey: Boolean(currentConfig.aiCreditsApiKey),
+    ...safeConfig,
+    hasAiCreditsKey: Boolean(aiCreditsApiKey),
+    hasTokeninKey: Boolean(tokeninApiKey),
     hasMemoKey: Boolean(currentConfig.memoApiKey),
     hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
     adminPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD)
@@ -400,8 +420,10 @@ app.post('/api/admin/config', async (req, res) => {
   }
 
   const {
-    aiCreditsApiKey,
     aiCreditsBaseUrl,
+    aiCreditsModel,
+    tokeninBaseUrl,
+    tokeninModel,
     visionModel,
     temperature,
     maxTokens,
@@ -415,8 +437,14 @@ app.post('/api/admin/config', async (req, res) => {
     dailyMessageLimit
   } = req.body;
 
-  if (aiCreditsApiKey !== undefined) currentConfig.aiCreditsApiKey = aiCreditsApiKey;
+  // Provider SECRETS (aiCreditsApiKey / tokeninApiKey) are intentionally NOT
+  // accepted here — they are Render-environment-only (see requirement: admin
+  // panel may edit normal AI configuration, but never provider secrets). Any
+  // aiCreditsApiKey/tokeninApiKey fields in the request body are ignored.
   if (aiCreditsBaseUrl !== undefined) currentConfig.aiCreditsBaseUrl = aiCreditsBaseUrl;
+  if (aiCreditsModel !== undefined) currentConfig.aiCreditsModel = String(aiCreditsModel).trim();
+  if (tokeninBaseUrl !== undefined) currentConfig.tokeninBaseUrl = String(tokeninBaseUrl).trim().replace(/\/+$/, '');
+  if (tokeninModel !== undefined) currentConfig.tokeninModel = String(tokeninModel).trim();
   if (visionModel !== undefined) currentConfig.visionModel = visionModel;
   if (temperature !== undefined) currentConfig.temperature = Number(temperature);
   if (maxTokens !== undefined) currentConfig.maxTokens = Number(maxTokens);
@@ -429,15 +457,19 @@ app.post('/api/admin/config', async (req, res) => {
   if (fallbackToGemini !== undefined) currentConfig.fallbackToGemini = Boolean(fallbackToGemini);
   if (dailyMessageLimit !== undefined) currentConfig.dailyMessageLimit = Math.max(0, Number(dailyMessageLimit) || 0);
 
-  // Persist updated configuration permanently to Firebase Realtime Database
-  await setRtdbData('system/config', currentConfig);
+  // Persist updated configuration permanently to Firebase Realtime Database —
+  // but never the provider secrets themselves; those must stay Render-only
+  // and are re-applied from process.env on every boot (see
+  // syncSystemConfigFromDatabase above).
+  const { aiCreditsApiKey: _omitAiCreditsKey, tokeninApiKey: _omitTokeninKey, ...configToPersist } = currentConfig;
+  await setRtdbData('system/config', configToPersist);
 
   console.log('✓ [ADMIN] Saved and persisted system prompt and AI config to database');
 
   res.json({
     success: true,
     message: 'Leo AI configuration updated and persisted successfully across all instances.',
-    config: currentConfig
+    config: configToPersist
   });
 });
 
@@ -1623,6 +1655,89 @@ CRITICAL DIRECTIVES:
 }
 
 // ----------------------------------------------------
+// 4b. Two-provider AI configuration (AICredits primary, Tokenin fallback)
+// ----------------------------------------------------
+// NOTE: these helpers never log or return the actual API key values — only
+// booleans/model/base-url are surfaced, so it's safe to print or send them
+// to the client in error diagnostics.
+function getAiCreditsDiagnostics() {
+  return {
+    configured: Boolean(currentConfig.aiCreditsApiKey && currentConfig.aiCreditsApiKey.trim()),
+    model: currentConfig.aiCreditsModel || getTargetAiModel(),
+    baseUrl: currentConfig.aiCreditsBaseUrl
+  };
+}
+
+function getTokeninDiagnostics() {
+  return {
+    configured: Boolean(currentConfig.tokeninApiKey && currentConfig.tokeninApiKey.trim()),
+    model: currentConfig.tokeninModel || getTargetAiModel(),
+    baseUrl: currentConfig.tokeninBaseUrl
+  };
+}
+
+interface ProviderResult {
+  ok: boolean;
+  content?: string;
+  status?: number;
+  error?: string;
+}
+
+// Sends an OpenAI-compatible chat/completions request to a given provider.
+// `model` here is whatever this specific provider should use — AICredits and
+// Tokenin are configured independently (AICREDITS_MODEL vs TOKENIN_MODEL) so
+// one provider's model name is never silently sent to the other provider.
+async function callOpenAiCompatibleProvider(opts: {
+  label: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  messages: any[];
+}): Promise<ProviderResult> {
+  const { label, baseUrl, apiKey, model, messages } = opts;
+  const endpoint = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey.trim()}`
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: currentConfig.temperature,
+        max_tokens: currentConfig.maxTokens
+      })
+    });
+
+    const raw = await response.text();
+    if (!response.ok) {
+      console.error(`[${label.toUpperCase()}] Request failed with status ${response.status} for model "${model}": ${raw.slice(0, 500)}`);
+      return { ok: false, status: response.status, error: `${label} responded with status ${response.status}` };
+    }
+
+    let data: any = null;
+    try { data = JSON.parse(raw); } catch {
+      console.error(`[${label.toUpperCase()}] Response was not valid JSON.`);
+      return { ok: false, status: response.status, error: `${label} returned a non-JSON response.` };
+    }
+
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) {
+      console.error(`[${label.toUpperCase()}] Empty response content for model "${model}".`);
+      return { ok: false, status: response.status, error: `${label} returned no response content.` };
+    }
+
+    return { ok: true, content, status: response.status };
+  } catch (err: any) {
+    console.error(`[${label.toUpperCase()}] Request threw an error:`, err?.message || err);
+    return { ok: false, error: `Could not reach ${label} (network error).` };
+  }
+}
+
+// ----------------------------------------------------
 // 5. AI Chat Completion & Vision Reasoning
 // ----------------------------------------------------
 app.post('/api/chat', async (req, res) => {
@@ -1675,11 +1790,11 @@ app.post('/api/chat', async (req, res) => {
     // selection MUST be authoritative for known models; previously the backend
     // ignored req.body.model and always used an environment/default model.
     const TOKENIN_MODELS = new Set([
-      'myt/grok-4.6',
-      'myt/kimi-k3',
-      'myt/glm-5.3',
-      'myt/qwen3.8-max',
-      'myt/deepseek-v4-pro'
+      'myt/grok-4.6-free',
+      'myt/kimi-k3-free',
+      'myt/glm-5.3-free',
+      'myt/qwen3.8-max-free',
+      'myt/deepseek-v4-pro-free'
     ]);
     const requestedModel = typeof model === 'string' ? model.trim() : '';
     const targetModel = requestedModel || getTargetAiModel();
@@ -1779,169 +1894,89 @@ app.post('/api/chat', async (req, res) => {
       }
     }
 
-    // 2. Existing AICredits provider path for non-Tokenin models.
-    //
-    if (currentConfig.aiCreditsApiKey && currentConfig.aiCreditsApiKey.trim().length > 0) {
-      try {
-        const selectedModel = targetModel;
-        
-        const endpoint = `${currentConfig.aiCreditsBaseUrl.replace(/\/+$/, '')}/chat/completions`;
-        const aiResponse = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentConfig.aiCreditsApiKey.trim()}`
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: formattedMessages,
-            temperature: currentConfig.temperature,
-            max_tokens: currentConfig.maxTokens
-          })
-        });
+    // 2. Two-provider automatic fallback for regular (non premium-Tokenin-model)
+    // requests: AICredits is PRIMARY, Tokenin is the automatic FALLBACK. This
+    // replaces the old AICredits -> Gemini SDK -> canned-error chain, which is
+    // why AICredits failures used to surface as "No AI provider is currently
+    // available" whenever GEMINI_API_KEY wasn't set (see root-cause notes).
+    const aiCreditsDiag = getAiCreditsDiagnostics();
+    const tokeninDiag = getTokeninDiagnostics();
+    const providerDiagnostics: any[] = [];
+    let selectedProvider: 'aicredits' | 'tokenin' | null = null;
+    let fallbackUsed = false;
+    let finalReply: string | null = null;
+    let finalModelUsed = targetModel;
 
-        if (aiResponse.ok) {
-          const data = await aiResponse.json();
-          const reply = data.choices?.[0]?.message?.content || 'No response received from AI model.';
-          memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
+    console.log(
+      `[PROVIDERS] aicredits.configured=${aiCreditsDiag.configured} model="${aiCreditsDiag.model}" baseUrl="${aiCreditsDiag.baseUrl}" | ` +
+      `tokenin.configured=${tokeninDiag.configured} model="${tokeninDiag.model}" baseUrl="${tokeninDiag.baseUrl}"`
+    );
 
-          return res.json({
-            content: reply,
-            model: selectedModel,
-            provider: 'aicredits.in',
-            isDeepResearch,
-            hasVision: hasImages
-          });
-        } else {
-          // IMPORTANT: previously a non-OK response here was silently ignored
-          // (no log, no error), so the request would quietly fall through to
-          // Gemini and then to the hard-coded canned "built-in" reply, which
-          // completely ignores the admin panel's system prompt. Log the real
-          // reason so failures (bad key, bad model name, etc.) are visible in
-          // the server logs instead of looking like "the AI is ignoring my
-          // system prompt" with no explanation.
-          const errBody = await aiResponse.text().catch(() => '');
-          console.error(
-            `[AICREDITS] Request failed with status ${aiResponse.status} for model "${selectedModel}": ${errBody.slice(0, 500)}`
-          );
-        }
-      } catch (aiCreditsErr) {
-        console.error('[AICREDITS] Request threw an error, falling back:', aiCreditsErr);
+    // 2a. Try AICredits (primary)
+    if (aiCreditsDiag.configured) {
+      const aiCreditsModel = currentConfig.aiCreditsModel || targetModel;
+      const result = await callOpenAiCompatibleProvider({
+        label: 'aicredits',
+        baseUrl: currentConfig.aiCreditsBaseUrl,
+        apiKey: currentConfig.aiCreditsApiKey,
+        model: aiCreditsModel,
+        messages: formattedMessages
+      });
+      providerDiagnostics.push({ provider: 'aicredits', ok: result.ok, status: result.status ?? null, error: result.error ?? null });
+      if (result.ok && result.content) {
+        selectedProvider = 'aicredits';
+        finalReply = result.content;
+        finalModelUsed = aiCreditsModel;
       }
+    } else {
+      providerDiagnostics.push({ provider: 'aicredits', ok: false, status: null, error: 'AICREDITS_API_KEY is not configured.' });
     }
 
-    // 2. Gemini fallback / Server-Side Gemini API
-    const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
-    if (geminiKey) {
-      const ai = new GoogleGenAI({
-        apiKey: geminiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
+    // 2b. Try Tokenin (automatic fallback) if AICredits didn't succeed
+    if (!finalReply && tokeninDiag.configured) {
+      fallbackUsed = true;
+      const tokeninModel = currentConfig.tokeninModel || targetModel;
+      const result = await callOpenAiCompatibleProvider({
+        label: 'tokenin',
+        baseUrl: currentConfig.tokeninBaseUrl,
+        apiKey: currentConfig.tokeninApiKey,
+        model: tokeninModel,
+        messages: formattedMessages
       });
-      
-      // Build content turns (Gemini uses 'user' and 'model' turns)
-      const contents: any[] = [];
-
-      for (const m of messages.slice(0, -1)) {
-        if (m.role === 'system') continue;
-        contents.push({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }]
-        });
+      providerDiagnostics.push({ provider: 'tokenin', ok: result.ok, status: result.status ?? null, error: result.error ?? null });
+      if (result.ok && result.content) {
+        selectedProvider = 'tokenin';
+        finalReply = result.content;
+        finalModelUsed = tokeninModel;
       }
-
-      const userParts: any[] = [{ text: latestUserMessage.content || '' }];
-
-      if (hasImages) {
-        for (const img of images) {
-          const match = img.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-          if (match) {
-            userParts.push({
-              inlineData: {
-                mimeType: match[1],
-                data: match[2]
-              }
-            });
-          }
-        }
-      }
-
-      contents.push({
-        role: 'user',
-        parts: userParts
-      });
-
-      // Strict Model Enforcement with unified systemInstruction
-      try {
-        const response = await ai.models.generateContent({
-          model: targetModel,
-          contents,
-          config: {
-            systemInstruction: finalSystemPrompt,
-            temperature: currentConfig.temperature,
-            maxOutputTokens: currentConfig.maxTokens
-          }
-        });
-
-        const reply = response.text || 'I have analyzed your request.';
-        memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
-
-        return res.json({
-          content: reply,
-          model: targetModel,
-          provider: 'gemini',
-          isDeepResearch,
-          hasVision: hasImages
-        });
-      } catch (err: any) {
-        console.warn(`[GEMINI] Execution failed with model "${targetModel}":`, err.message);
-        // If the primary model failed for any reason (invalid/unavailable model,
-        // account doesn't have access to a brand-new preview model, etc.), always
-        // retry once against a widely-available stable model instead of only
-        // retrying when a *different* model was originally requested. Without
-        // this, a single bad/inaccessible model name previously meant every
-        // request fell straight through to the canned "No AI Provider" message
-        // even with a perfectly valid GEMINI_API_KEY.
-        const stableFallbackModel = 'gemini-2.5-flash';
-        if (targetModel !== stableFallbackModel) {
-          try {
-            const fallbackResponse = await ai.models.generateContent({
-              model: stableFallbackModel,
-              contents,
-              config: {
-                systemInstruction: finalSystemPrompt,
-                temperature: currentConfig.temperature,
-                maxOutputTokens: currentConfig.maxTokens
-              }
-            });
-            const reply = fallbackResponse.text || 'I have analyzed your request.';
-            memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
-            return res.json({
-              content: reply,
-              model: stableFallbackModel,
-              provider: 'gemini',
-              isDeepResearch,
-              hasVision: hasImages
-            });
-          } catch (fallbackErr: any) {
-            console.warn(`[GEMINI FALLBACK] Error with model "${stableFallbackModel}":`, fallbackErr.message);
-          }
-        }
-      }
+    } else if (!finalReply) {
+      providerDiagnostics.push({ provider: 'tokenin', ok: false, status: null, error: 'TOKENIN_API_KEY is not configured.' });
     }
 
-    // No provider succeeded. Never return a fake AI answer: that would make it
-    // look as if the selected model and Admin system prompt were used.
-    return res.status(503).json({
-      error: 'No AI provider is currently available. Configure a valid provider in the backend environment.',
-      provider: 'none',
+    if (finalReply && selectedProvider) {
+      memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, finalReply).catch(() => {});
+      return res.json({
+        content: finalReply,
+        model: finalModelUsed,
+        provider: selectedProvider,
+        fallbackUsed,
+        isDeepResearch,
+        hasVision: hasImages
+      });
+    }
+
+    // Both providers failed (or neither is configured). Never return a fake AI
+    // answer: that would make it look as if the selected model and Admin
+    // system prompt were used. providerDiagnostics never contains API keys.
+    console.error('[PROVIDERS] All configured AI providers failed:', JSON.stringify(providerDiagnostics));
+    return res.status(502).json({
+      error: 'All configured AI providers failed.',
+      providerDiagnostics,
       model: targetModel,
       isDeepResearch,
       hasVision: hasImages
     });
+
 
   } catch (err: any) {
     console.error('Chat error:', err);
@@ -1951,49 +1986,12 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-function generateIntelligentFallback(prompt: string, hasVision: boolean, isDeepResearch: boolean): string {
-  const p = prompt.toLowerCase();
-  
-  if (hasVision) {
-    return `### 🔍 Leo AI Vision Analysis
-
-I have inspected the uploaded image in detail. Here is the structured visual breakdown:
-
-1. **Visual Elements & Layout**:
-   - High-contrast visual composition with clearly identifiable regions and focal points.
-   - Clean alignment and spatial distribution.
-
-2. **Extracted Content / Insights**:
-   - The image showcases architectural or interface details that emphasize modularity and modern design principles.
-   - Key attributes detected with high confidence.
-
-3. **Recommendations**:
-   - Maintain the balanced negative space.
-   - Ensure responsive scaling across varying screen densities.
-
-*Note: Add your \`AICREDITS_API_KEY\` from [aicredits.in/dashboard](https://aicredits.in/dashboard) or \`GEMINI_API_KEY\` in your environment settings for real-time model inference.*`;
-  }
-
-  // Honest diagnostic message. Previously this pretended everything (including
-  // the admin system prompt) was "strictly enforced" even though this canned
-  // reply is generated locally and never actually reaches an AI model — which
-  // is exactly why the admin panel's system prompt appeared to be ignored:
-  // this reply doesn't use it at all.
-  return `### ⚠️ No AI Provider Connected
-
-I couldn't reach a real AI model, so this is a canned local message — **your Admin Panel system prompt was NOT used to generate this reply.**
-
-To fix this:
-1. Set a valid \`AICREDITS_API_KEY\` (and check \`AICREDITS_BASE_URL\` / model name), **or**
-2. Set a valid \`GEMINI_API_KEY\`
-
-in your backend's environment variables, then check the server logs for \`[AICREDITS]\` or \`[GEMINI]\` error lines — they show the exact reason the request failed (invalid key, wrong model name, network error, etc.). Once a provider call succeeds, your admin panel system prompt will be applied normally.`;
-}
 
 // ----------------------------------------------------
 // 6. Server Initialization
 // ----------------------------------------------------
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = Number(process.env.PORT) || 10000;
+const HOST = '0.0.0.0';
 
 app.get('*', (req, res) => {
   res.json({
@@ -2005,6 +2003,6 @@ app.get('*', (req, res) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Leo AI Backend API Server running at http://0.0.0.0:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`Leo AI backend running on ${HOST}:${PORT}`);
 });

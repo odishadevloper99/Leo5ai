@@ -59,11 +59,11 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'default', name: 'Leo AI Standard', desc: 'Optimized for conversation, writing, and everyday problem solving', icon: Sparkles, premium: false },
     { id: 'vision', name: 'Leo AI Vision', desc: 'High-speed image understanding, OCR, and diagram reasoning', icon: Eye, premium: false },
     { id: 'reasoning', name: 'Leo AI Deep Reasoner', desc: 'Extended cognitive synthesis for coding and complex logic', icon: Zap, premium: false },
-    { id: 'myt/grok-4.6', name: 'Grok 4.6', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
-    { id: 'myt/kimi-k3', name: 'Kimi K3', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
-    { id: 'myt/glm-5.3', name: 'GLM 5.3', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
-    { id: 'myt/qwen3.8-max', name: 'Qwen 3.8 Max', desc: 'Premium Tokenin model', icon: Zap, premium: true },
-    { id: 'myt/deepseek-v4-pro', name: 'DeepSeek V4 Pro', desc: 'Premium Tokenin model', icon: BrainCircuit, premium: true },
+    { id: 'myt/grok-4.6-free', name: 'Grok 4.6', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
+    { id: 'myt/kimi-k3-free', name: 'Kimi K3', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
+    { id: 'myt/glm-5.3-free', name: 'GLM 5.3', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
+    { id: 'myt/qwen3.8-max-free', name: 'Qwen 3.8 Max', desc: 'Premium Tokenin model', icon: Zap, premium: true },
+    { id: 'myt/deepseek-v4-pro-free', name: 'DeepSeek V4 Pro', desc: 'Premium Tokenin model', icon: BrainCircuit, premium: true },
   ];
   const currentMode = engineModes.find((m) => m.id === selectedModel) || engineModes[0];
   const isPremium = (currentMode as any).premium && !['pro', 'ultra', 'premium', 'admin'].includes(String(userPlan || '').toLowerCase());

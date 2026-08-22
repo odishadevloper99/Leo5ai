@@ -414,18 +414,33 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
 
                     <div>
                       <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                        AICredits.in API Key (from https://aicredits.in/dashboard)
+                        AICredits.in API Key
                       </label>
                       <input
                         type="password"
-                        placeholder="sk-aicredits-..."
-                        value={config.aiCreditsApiKey}
-                        onChange={(e) => setConfig({ ...config, aiCreditsApiKey: e.target.value })}
-                        className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-xs font-mono"
+                        placeholder="Configured via AICREDITS_API_KEY on Render"
+                        value=""
+                        disabled
+                        className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-neutral-100 text-neutral-400 outline-none text-xs font-mono cursor-not-allowed"
                       />
                       <p className="text-[10px] text-neutral-400 mt-1">
-                        Requests proxy through your secure backend to aicredits.in API without exposing keys to the browser.
+                        Provider secrets are Render-environment-only and can't be set from the Admin Panel — set <code>AICREDITS_API_KEY</code> in your Render service's environment variables. Status: {config.hasAiCreditsKey ? 'configured ✓' : 'not configured'}.
                       </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                          AICredits Model
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. gpt-4o-mini"
+                          value={(config as any).aiCreditsModel || ''}
+                          onChange={(e) => setConfig({ ...config, aiCreditsModel: e.target.value } as any)}
+                          className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono"
+                        />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -445,7 +460,16 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                         <label className="block text-xs font-semibold text-neutral-700 mb-1">
                           Tokenin API Key
                         </label>
-                        <input type="password" placeholder="Tokenin API key" value={(config as any).tokeninApiKey || ''} onChange={(e) => setConfig({ ...config, tokeninApiKey: e.target.value } as any)} className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono" />
+                        <input
+                          type="password"
+                          placeholder="Configured via TOKENIN_API_KEY on Render"
+                          value=""
+                          disabled
+                          className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-neutral-100 text-neutral-400 outline-none text-xs font-mono cursor-not-allowed"
+                        />
+                        <p className="text-[10px] text-neutral-400 mt-1">
+                          Status: {(config as any).hasTokeninKey ? 'configured ✓' : 'not configured'}.
+                        </p>
                       </div>
 
                       <div>
@@ -454,10 +478,17 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                         </label>
                         <input type="text" value={(config as any).tokeninBaseUrl || 'https://tokenin.my.id/api/v1'} onChange={(e) => setConfig({ ...config, tokeninBaseUrl: e.target.value } as any)} className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono" />
                       </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                          Tokenin Model (fallback)
+                        </label>
+                        <input type="text" placeholder="e.g. gpt-4o-mini" value={(config as any).tokeninModel || ''} onChange={(e) => setConfig({ ...config, tokeninModel: e.target.value } as any)} className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono" />
+                      </div>
                     </div>
                     <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 mb-3">
                       <p className="text-xs font-semibold text-neutral-800">Tokenin Models</p>
-                      <p className="text-[10px] text-neutral-500 mt-1">Grok 4.6 · Kimi K3 · GLM 5.3 · Qwen 3.8 Max · DeepSeek V4 Pro — routed through Tokenin, not AICredits.</p>
+                      <p className="text-[10px] text-neutral-500 mt-1">Grok 4.6 · Kimi K3 · GLM 5.3 · Qwen 3.8 Max · DeepSeek V4 Pro — routed through Tokenin, not AICredits. Tokenin is also the automatic fallback for all other models if AICredits is unavailable.</p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
