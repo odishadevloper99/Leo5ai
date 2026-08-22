@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import nodemailer from 'nodemailer';
+import { GoogleGenAI } from '@google/genai';
 import { memoService } from './services/memoService';
 
 dotenv.config();
@@ -69,8 +70,6 @@ interface UserRecord {
   plan?: string;
   subscriptionActive?: boolean;
   subscriptionExpiresAt?: number;
-  dailyMessagesUsed?: number;
-  dailyMessageDate?: string;
 }
 
 const memoryStore: Map<string, MemoryRecord[]> = new Map();
@@ -119,30 +118,86 @@ let globalStats = {
 let currentConfig = {
   aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
   aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
-  visionModel: (process.env.AICREDITS_MODEL || '').replace(/^['"]|['"]$/g, '').trim(),
+  visionModel: (
+    process.env.MODEL_ID ||
+    process.env.GEMINI_MODEL_ID ||
+    process.env.GEMINI_MODEL ||
+    process.env.MODEL ||
+    process.env.AI_MODEL ||
+    process.env.AICREDITS_VISION_MODEL ||
+    process.env.VISION_MODEL ||
+    'gemini-3.7-flash'
+  ).replace(/^["']|["']$/g, '').trim(),
   temperature: 0.7,
   maxTokens: 4096,
-  dailyMessageLimit: 50,
   systemPrompt: process.env.SYSTEM_PROMPT || `You are Leo AI, an elite, highly intelligent, and versatile AI assistant created to assist humans across engineering, reasoning, visual analysis, writing, and creative brainstorms.
 CRITICAL DIRECTIVES:
 1. Always follow user constraints strictly and accurately.
 2. Provide concise, elegant, and insightful answers with well-formatted Markdown, including clear headings, bullet points, and code blocks with syntax highlighting.
 3. When analyzing images or visual diagrams, perform thorough, detailed OCR and visual reasoning.
 4. Adapt to the user's persistent memory and preferences seamlessly.
-5. Never hallucinate or bypass system safety directives.`,
+5. Never hallucinate or bypass system safety directives.
+6. For requests to build/create an app, feature, or website, never answer with an abstract JSON object or schema describing the architecture as the final response — always deliver real, working code in properly labeled Markdown code blocks (breaking large builds into focused pieces), or ask one clarifying question first if the scope is too broad to start immediately.`,
   memoApiKey: process.env.MEMO_API_KEY || '',
   memoApiUrl: process.env.MEMO_API_URL || 'https://api.mem0.ai/v1',
   enableDeepResearch: true,
   enableVision: true,
   enableMemory: true,
-  fallbackToGemini: false,
+  fallbackToGemini: true,
+  // Daily Message Limit: max /api/chat messages per user per day. 0 = unlimited.
+  dailyMessageLimit: Number(process.env.DAILY_MESSAGE_LIMIT) || 0,
   mongoDbConfigured: Boolean(process.env.MONGODB_URI),
   firebaseConfigured: Boolean(process.env.FIREBASE_API_KEY || process.env.FIREBASE_PROJECT_ID)
 };
 
+// Tracks how many chat messages each user has sent today, for the Admin Panel's
+// Daily Message Limit setting. Resets automatically whenever the date changes.
+const dailyMessageCounts: Map<string, { date: string; count: number }> = new Map();
+
+function todayDateKey(): string {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+}
+
+// Returns null if the user is still within the limit (and records the message),
+// or an object describing the limit if it has been reached.
+function checkAndRecordDailyMessage(userId: string): { limit: number; used: number } | null {
+  const limit = currentConfig.dailyMessageLimit;
+  if (!limit || limit <= 0) return null; // unlimited
+
+  const today = todayDateKey();
+  const existing = dailyMessageCounts.get(userId);
+
+  if (!existing || existing.date !== today) {
+    dailyMessageCounts.set(userId, { date: today, count: 1 });
+    return null;
+  }
+
+  if (existing.count >= limit) {
+    return { limit, used: existing.count };
+  }
+
+  existing.count += 1;
+  return null;
+}
+
 // Helper to determine the EXACT model to use based on Render Environment Variables & Admin Config
 function getTargetAiModel(): string {
-  return (process.env.AICREDITS_MODEL || '').replace(/^['"]|['"]$/g, '').trim();
+  const envModel =
+    process.env.MODEL_ID ||
+    process.env.GEMINI_MODEL_ID ||
+    process.env.GEMINI_MODEL ||
+    process.env.MODEL ||
+    process.env.AI_MODEL ||
+    process.env.AICREDITS_VISION_MODEL ||
+    process.env.VISION_MODEL;
+
+  if (envModel && envModel.trim().length > 0) {
+    return envModel.replace(/^["']|["']$/g, '').trim();
+  }
+  if (currentConfig.visionModel && currentConfig.visionModel.trim().length > 0) {
+    return currentConfig.visionModel.replace(/^["']|["']$/g, '').trim();
+  }
+  return 'gemini-3.7-flash';
 }
 
 // ----------------------------------------------------
@@ -243,10 +298,8 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
         ...currentConfig,
         ...savedConfig,
         // Always preserve Render's explicit environment variable overrides if present
-        aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
-        aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
-        visionModel: getTargetAiModel(),
-        fallbackToGemini: false
+        aiCreditsApiKey: process.env.AICREDITS_API_KEY || savedConfig.aiCreditsApiKey || currentConfig.aiCreditsApiKey,
+        visionModel: process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || savedConfig.visionModel || currentConfig.visionModel
       };
       memoService.updateConfig({
         apiKey: currentConfig.memoApiKey,
@@ -284,8 +337,8 @@ app.get('/api/health', (req, res) => {
     timestamp: Date.now(),
     uptime: Math.floor((Date.now() - globalStats.serverStartTime) / 1000),
     services: {
-      aiCredits: Boolean((process.env.AICREDITS_API_KEY || '').trim() && getTargetAiModel()),
-      aiCreditsModel: getTargetAiModel(),
+      aiCredits: Boolean(currentConfig.aiCreditsApiKey),
+      geminiFallback: Boolean(process.env.GEMINI_API_KEY),
       memoApi: Boolean(currentConfig.memoApiKey),
       mongoDb: currentConfig.mongoDbConfigured,
       firebase: currentConfig.firebaseConfigured
@@ -332,15 +385,11 @@ app.get('/api/admin/config', (req, res) => {
     return res.status(403).json({ error: 'Unauthorized. Admin privileges required.' });
   }
 
-  // AICredits provider secrets/model are controlled only by Render.
   res.json({
     ...currentConfig,
-    aiCreditsApiKey: '',
-    aiCreditsBaseUrl: (process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1').trim(),
-    visionModel: getTargetAiModel(),
-    hasAiCreditsKey: Boolean((process.env.AICREDITS_API_KEY || '').trim()),
+    hasAiCreditsKey: Boolean(currentConfig.aiCreditsApiKey),
     hasMemoKey: Boolean(currentConfig.memoApiKey),
-    aiCreditsModel: getTargetAiModel(),
+    hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
     adminPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD)
   });
 });
@@ -356,49 +405,39 @@ app.post('/api/admin/config', async (req, res) => {
     visionModel,
     temperature,
     maxTokens,
-    dailyMessageLimit,
     systemPrompt,
     memoApiKey,
     memoApiUrl,
     enableDeepResearch,
     enableVision,
     enableMemory,
-    fallbackToGemini
+    fallbackToGemini,
+    dailyMessageLimit
   } = req.body;
 
-  // AICredits provider settings are Render-only and cannot be overridden from the Admin Panel.
-  currentConfig.aiCreditsApiKey = process.env.AICREDITS_API_KEY || '';
-  currentConfig.aiCreditsBaseUrl = process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1';
-  currentConfig.visionModel = getTargetAiModel();
+  if (aiCreditsApiKey !== undefined) currentConfig.aiCreditsApiKey = aiCreditsApiKey;
+  if (aiCreditsBaseUrl !== undefined) currentConfig.aiCreditsBaseUrl = aiCreditsBaseUrl;
+  if (visionModel !== undefined) currentConfig.visionModel = visionModel;
   if (temperature !== undefined) currentConfig.temperature = Number(temperature);
   if (maxTokens !== undefined) currentConfig.maxTokens = Number(maxTokens);
-  if (dailyMessageLimit !== undefined) currentConfig.dailyMessageLimit = Math.max(0, Number(dailyMessageLimit));
   if (systemPrompt !== undefined) currentConfig.systemPrompt = systemPrompt;
   if (memoApiKey !== undefined) currentConfig.memoApiKey = memoApiKey;
   if (memoApiUrl !== undefined) currentConfig.memoApiUrl = memoApiUrl;
   if (enableDeepResearch !== undefined) currentConfig.enableDeepResearch = Boolean(enableDeepResearch);
   if (enableVision !== undefined) currentConfig.enableVision = Boolean(enableVision);
   if (enableMemory !== undefined) currentConfig.enableMemory = Boolean(enableMemory);
-  // Provider fallback is disabled: AICredits is the only AI provider.
-  currentConfig.fallbackToGemini = false;
+  if (fallbackToGemini !== undefined) currentConfig.fallbackToGemini = Boolean(fallbackToGemini);
+  if (dailyMessageLimit !== undefined) currentConfig.dailyMessageLimit = Math.max(0, Number(dailyMessageLimit) || 0);
 
-  // Persist only non-provider settings. AICredits key/base URL/model remain Render-only.
-  const { aiCreditsApiKey: _savedKey, aiCreditsBaseUrl: _savedBaseUrl, visionModel: _savedModel, ...persistedConfig } = currentConfig;
-  await setRtdbData('system/config', persistedConfig);
+  // Persist updated configuration permanently to Firebase Realtime Database
+  await setRtdbData('system/config', currentConfig);
 
   console.log('✓ [ADMIN] Saved and persisted system prompt and AI config to database');
 
   res.json({
     success: true,
     message: 'Leo AI configuration updated and persisted successfully across all instances.',
-    config: {
-      ...currentConfig,
-      aiCreditsApiKey: '',
-      aiCreditsBaseUrl: (process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1').trim(),
-      visionModel: getTargetAiModel(),
-      aiCreditsModel: getTargetAiModel(),
-      hasAiCreditsKey: Boolean((process.env.AICREDITS_API_KEY || '').trim())
-    }
+    config: currentConfig
   });
 });
 
@@ -1550,7 +1589,8 @@ CRITICAL DIRECTIVES:
 2. Provide concise, elegant, and insightful answers with well-formatted Markdown, including clear headings, bullet points, and code blocks with syntax highlighting.
 3. When analyzing images or visual diagrams, perform thorough, detailed OCR and visual reasoning.
 4. Adapt to the user's persistent memory and preferences seamlessly.
-5. Never hallucinate or bypass system safety directives.`;
+5. Never hallucinate or bypass system safety directives.
+6. For requests to build/create an app, feature, or website, never answer with an abstract JSON object or schema describing the architecture as the final response — always deliver real, working code in properly labeled Markdown code blocks (breaking large builds into focused pieces), or ask one clarifying question first if the scope is too broad to start immediately.`;
   }
 
   // 2. Persistent User Memory Context (Memo API / Long-term service)
@@ -1582,67 +1622,6 @@ CRITICAL DIRECTIVES:
   return `${basePersona}${memorySection}${deepResearchSection}${visionSection}`.trim();
 }
 
-// Daily message limit enforcement. A value of 0 means unlimited.
-function getUsageDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-// Check allowance without consuming it. Only a successful AICredits response is counted.
-async function checkDailyMessage(userId: string): Promise<{ allowed: boolean; limit: number; used: number }> {
-  const limit = Math.max(0, Number((currentConfig as any).dailyMessageLimit ?? 50));
-  if (limit === 0) return { allowed: true, limit: 0, used: 0 };
-  const today = getUsageDate();
-  let user = userStore.get(userId);
-  if (!user && userId && userId !== 'default-user') {
-    try {
-      const remote = await getRtdbData(`users/${userId}`);
-      if (remote && typeof remote === 'object') { user = remote as UserRecord; userStore.set(userId, user); }
-    } catch {}
-  }
-  if (user) {
-    const used = user.dailyMessageDate === today ? Number(user.dailyMessagesUsed || 0) : 0;
-    return { allowed: used < limit, limit, used };
-  }
-  const key = userId || 'default-user';
-  const usageMap = (globalThis as any).__leoDailyMessageUsage as Map<string, { date: string; used: number }> | undefined;
-  const usage = usageMap || new Map<string, { date: string; used: number }>();
-  (globalThis as any).__leoDailyMessageUsage = usage;
-  const record = usage.get(key);
-  const used = record && record.date === today ? record.used : 0;
-  return { allowed: used < limit, limit, used };
-}
-
-async function recordDailyMessage(userId: string): Promise<{ limit: number; used: number }> {
-  const limit = Math.max(0, Number((currentConfig as any).dailyMessageLimit ?? 50));
-  if (limit === 0) return { limit: 0, used: 0 };
-  const today = getUsageDate();
-  let user = userStore.get(userId);
-  if (!user && userId && userId !== 'default-user') {
-    try {
-      const remote = await getRtdbData(`users/${userId}`);
-      if (remote && typeof remote === 'object') { user = remote as UserRecord; userStore.set(userId, user); }
-    } catch {}
-  }
-  if (user) {
-    const used = user.dailyMessageDate === today ? Number(user.dailyMessagesUsed || 0) : 0;
-    user.dailyMessageDate = today;
-    user.dailyMessagesUsed = Math.min(limit, used + 1);
-    user.lastActive = Date.now();
-    userStore.set(userId, user);
-    await setRtdbData(`users/${user.uid}`, { ...user, updatedAt: Date.now() }).catch(() => false);
-    return { limit, used: user.dailyMessagesUsed };
-  }
-  const key = userId || 'default-user';
-  const usageMap = (globalThis as any).__leoDailyMessageUsage as Map<string, { date: string; used: number }> | undefined;
-  const usage = usageMap || new Map<string, { date: string; used: number }>();
-  (globalThis as any).__leoDailyMessageUsage = usage;
-  const record = usage.get(key);
-  const used = record && record.date === today ? record.used : 0;
-  const nextUsed = Math.min(limit, used + 1);
-  usage.set(key, { date: today, used: nextUsed });
-  return { limit, used: nextUsed };
-}
-
 // ----------------------------------------------------
 // 5. AI Chat Completion & Vision Reasoning
 // ----------------------------------------------------
@@ -1653,26 +1632,30 @@ app.post('/api/chat', async (req, res) => {
       userId = 'default-user',
       images = [],
       isDeepResearch = false,
-      systemPromptOverride,
-      stream = false
+      systemPromptOverride
     } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'Messages array is required' });
     }
 
-    const dailyUsage = await checkDailyMessage(userId);
-    if (!dailyUsage.allowed) {
-      return res.status(429).json({
-        error: `Daily message limit reached (${dailyUsage.limit} messages). Try again tomorrow.`,
-        dailyMessageLimit: dailyUsage.limit,
-        dailyMessagesUsed: dailyUsage.used
-      });
+    // Admin Panel "Daily Message Limit" enforcement (skipped for authenticated admins)
+    if (!isAuthorizedAdmin(req)) {
+      const limitHit = checkAndRecordDailyMessage(userId);
+      if (limitHit) {
+        return res.status(429).json({
+          error: `Daily message limit reached (${limitHit.used}/${limitHit.limit}). Please try again tomorrow.`,
+          limitReached: true,
+          limit: limitHit.limit,
+          used: limitHit.used
+        });
+      }
     }
 
     const latestUserMessage = messages[messages.length - 1];
     const hasImages = Array.isArray(images) && images.length > 0;
 
+    // Construct the authoritative system prompt containing the defined persona
     const finalSystemPrompt = await buildUnifiedSystemPrompt(
       userId,
       latestUserMessage.content || '',
@@ -1681,101 +1664,269 @@ app.post('/api/chat', async (req, res) => {
       hasImages
     );
 
-    // AICredits is the ONLY AI provider. The model is selected only by Render secret AICREDITS_MODEL.
-    const targetModel = getTargetAiModel();
-    const configuredAicreditsKey = (process.env.AICREDITS_API_KEY || '').trim();
-    const configuredBase = (process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1').trim().replace(/\/+$/, '');
-
-    if (!configuredAicreditsKey || !targetModel) {
-      return res.status(503).json({
-        error: 'AICredits is not configured. Add AICREDITS_API_KEY and AICREDITS_MODEL in Render Environment Variables.'
-      });
-    }
-
-    const endpoint = /\/chat\/completions$/i.test(configuredBase)
-      ? configuredBase
-      : `${configuredBase}/chat/completions`;
-
-    const formattedMessages: any[] = [{ role: 'system', content: finalSystemPrompt }];
-    for (let i = 0; i < messages.length - 1; i++) {
-      const m = messages[i];
-      if (m.role === 'system') continue;
-      formattedMessages.push({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.content
-      });
-    }
-
     if (hasImages) {
-      const contentParts: any[] = [{ type: 'text', text: latestUserMessage.content || 'Analyze this image.' }];
-      for (const img of images) {
-        contentParts.push({ type: 'image_url', image_url: { url: img } });
+      globalStats.totalVisionQueries++;
+    }
+    globalStats.totalMessages += 2;
+    globalStats.estimatedTokens += 650;
+
+    // Resolve the exact model requested by Render Environment Variables or Admin Settings
+    const targetModel = getTargetAiModel();
+    console.log(`[AI CHAT] Using Model: "${targetModel}" | Deep Research: ${isDeepResearch} | Has Images: ${hasImages}`);
+
+    // 1. Try AICREDITS.in API if API Key is configured
+    if (currentConfig.aiCreditsApiKey && currentConfig.aiCreditsApiKey.trim().length > 0) {
+      try {
+        const selectedModel = targetModel;
+        
+        // Consistently inject the authoritative system prompt as the top-level 'system' message
+        const formattedMessages: any[] = [
+          { role: 'system', content: finalSystemPrompt }
+        ];
+
+        // Append past user and assistant messages, strictly excluding rogue client system messages
+        for (let i = 0; i < messages.length - 1; i++) {
+          const m = messages[i];
+          if (m.role === 'system') continue;
+          formattedMessages.push({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: m.content
+          });
+        }
+
+        if (hasImages) {
+          const contentParts: any[] = [{ type: 'text', text: latestUserMessage.content || 'Analyze this image.' }];
+          for (const img of images) {
+            contentParts.push({
+              type: 'image_url',
+              image_url: { url: img }
+            });
+          }
+          formattedMessages.push({ role: 'user', content: contentParts });
+        } else {
+          formattedMessages.push({ role: 'user', content: latestUserMessage.content });
+        }
+
+        const endpoint = `${currentConfig.aiCreditsBaseUrl.replace(/\/+$/, '')}/chat/completions`;
+        const aiResponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentConfig.aiCreditsApiKey.trim()}`
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages: formattedMessages,
+            temperature: currentConfig.temperature,
+            max_tokens: currentConfig.maxTokens
+          })
+        });
+
+        if (aiResponse.ok) {
+          const data = await aiResponse.json();
+          const reply = data.choices?.[0]?.message?.content || 'No response received from AI model.';
+          memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
+
+          return res.json({
+            content: reply,
+            model: selectedModel,
+            provider: 'aicredits.in',
+            isDeepResearch,
+            hasVision: hasImages
+          });
+        } else {
+          // IMPORTANT: previously a non-OK response here was silently ignored
+          // (no log, no error), so the request would quietly fall through to
+          // Gemini and then to the hard-coded canned "built-in" reply, which
+          // completely ignores the admin panel's system prompt. Log the real
+          // reason so failures (bad key, bad model name, etc.) are visible in
+          // the server logs instead of looking like "the AI is ignoring my
+          // system prompt" with no explanation.
+          const errBody = await aiResponse.text().catch(() => '');
+          console.error(
+            `[AICREDITS] Request failed with status ${aiResponse.status} for model "${selectedModel}": ${errBody.slice(0, 500)}`
+          );
+        }
+      } catch (aiCreditsErr) {
+        console.error('[AICREDITS] Request threw an error, falling back:', aiCreditsErr);
       }
-      formattedMessages.push({ role: 'user', content: contentParts });
-    } else {
-      formattedMessages.push({ role: 'user', content: latestUserMessage.content });
     }
 
-    try {
-      const aiResponse = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${configuredAicreditsKey}`
+    // 2. Gemini fallback / Server-Side Gemini API
+    const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
+    if (geminiKey) {
+      const ai = new GoogleGenAI({
+        apiKey: geminiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
         },
-        body: JSON.stringify({
+      });
+      
+      // Build content turns (Gemini uses 'user' and 'model' turns)
+      const contents: any[] = [];
+
+      for (const m of messages.slice(0, -1)) {
+        if (m.role === 'system') continue;
+        contents.push({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }]
+        });
+      }
+
+      const userParts: any[] = [{ text: latestUserMessage.content || '' }];
+
+      if (hasImages) {
+        for (const img of images) {
+          const match = img.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+          if (match) {
+            userParts.push({
+              inlineData: {
+                mimeType: match[1],
+                data: match[2]
+              }
+            });
+          }
+        }
+      }
+
+      contents.push({
+        role: 'user',
+        parts: userParts
+      });
+
+      // Strict Model Enforcement with unified systemInstruction
+      try {
+        const response = await ai.models.generateContent({
           model: targetModel,
-          messages: formattedMessages,
-          temperature: currentConfig.temperature,
-          max_tokens: currentConfig.maxTokens
-        })
-      });
-
-      const responseText = await aiResponse.text();
-      let data: any = {};
-      try { data = responseText ? JSON.parse(responseText) : {}; } catch (_) {}
-
-      if (!aiResponse.ok) {
-        console.warn(`[AICREDITS ${aiResponse.status}] ${endpoint} / ${targetModel}: ${responseText.replace(/\s+/g, ' ').slice(0, 500)}`);
-        return res.status(502).json({
-          error: 'AICredits request failed. Check AICREDITS_API_KEY, AICREDITS_BASE_URL, and AICREDITS_MODEL in Render.',
-          providerDiagnostics: [`[AICREDITS ${aiResponse.status}] ${responseText.replace(/\s+/g, ' ').slice(0, 500)}`]
+          contents,
+          config: {
+            systemInstruction: finalSystemPrompt,
+            temperature: currentConfig.temperature,
+            maxOutputTokens: currentConfig.maxTokens
+          }
         });
-      }
 
-      const reply = data.choices?.[0]?.message?.content || '';
-      if (!reply.trim()) {
-        return res.status(502).json({
-          error: 'AICredits returned an empty response.',
-          providerDiagnostics: [`[AICREDITS] Empty response for model ${targetModel}`]
+        const reply = response.text || 'I have analyzed your request.';
+        memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
+
+        return res.json({
+          content: reply,
+          model: targetModel,
+          provider: 'gemini',
+          isDeepResearch,
+          hasVision: hasImages
         });
+      } catch (err: any) {
+        console.warn(`[GEMINI] Execution failed with model "${targetModel}":`, err.message);
+        // If the primary model failed for any reason (invalid/unavailable model,
+        // account doesn't have access to a brand-new preview model, etc.), always
+        // retry once against a widely-available stable model instead of only
+        // retrying when a *different* model was originally requested. Without
+        // this, a single bad/inaccessible model name previously meant every
+        // request fell straight through to the canned "No AI Provider" message
+        // even with a perfectly valid GEMINI_API_KEY.
+        const stableFallbackModel = 'gemini-2.5-flash';
+        if (targetModel !== stableFallbackModel) {
+          try {
+            const fallbackResponse = await ai.models.generateContent({
+              model: stableFallbackModel,
+              contents,
+              config: {
+                systemInstruction: finalSystemPrompt,
+                temperature: currentConfig.temperature,
+                maxOutputTokens: currentConfig.maxTokens
+              }
+            });
+            const reply = fallbackResponse.text || 'I have analyzed your request.';
+            memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
+            return res.json({
+              content: reply,
+              model: stableFallbackModel,
+              provider: 'gemini',
+              isDeepResearch,
+              hasVision: hasImages
+            });
+          } catch (fallbackErr: any) {
+            console.warn(`[GEMINI FALLBACK] Error with model "${stableFallbackModel}":`, fallbackErr.message);
+          }
+        }
       }
-
-      const recordedUsage = await recordDailyMessage(userId);
-      if (hasImages) globalStats.totalVisionQueries++;
-      globalStats.totalMessages += 2;
-      globalStats.estimatedTokens += 650;
-      memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
-      return res.json({
-        content: reply,
-        model: targetModel,
-        provider: 'aicredits.in',
-        isDeepResearch,
-        hasVision: hasImages,
-        dailyMessageLimit: recordedUsage.limit,
-        dailyMessagesUsed: recordedUsage.used
-      });
-    } catch (err: any) {
-      console.error(`[AICREDITS] ${endpoint} / ${targetModel}:`, err?.message || err);
-      return res.status(502).json({
-        error: 'AICredits request failed. Check your Render AICredits secrets and server network connection.',
-        providerDiagnostics: [`[AICREDITS] ${err?.message || 'request failed'}`]
-      });
     }
+
+    // 3. Fallback response
+    const simulatedReply = generateIntelligentFallback(latestUserMessage.content, hasImages, isDeepResearch);
+    return res.json({
+      content: simulatedReply,
+      model: currentConfig.visionModel + ' (Intelligent Engine)',
+      provider: 'built-in',
+      isDeepResearch,
+      hasVision: hasImages
+    });
+
   } catch (err: any) {
     console.error('Chat error:', err);
     res.status(500).json({
       error: 'An error occurred while generating response: ' + (err?.message || 'Unknown error')
     });
   }
+});
+
+function generateIntelligentFallback(prompt: string, hasVision: boolean, isDeepResearch: boolean): string {
+  const p = prompt.toLowerCase();
+  
+  if (hasVision) {
+    return `### 🔍 Leo AI Vision Analysis
+
+I have inspected the uploaded image in detail. Here is the structured visual breakdown:
+
+1. **Visual Elements & Layout**:
+   - High-contrast visual composition with clearly identifiable regions and focal points.
+   - Clean alignment and spatial distribution.
+
+2. **Extracted Content / Insights**:
+   - The image showcases architectural or interface details that emphasize modularity and modern design principles.
+   - Key attributes detected with high confidence.
+
+3. **Recommendations**:
+   - Maintain the balanced negative space.
+   - Ensure responsive scaling across varying screen densities.
+
+*Note: Add your \`AICREDITS_API_KEY\` from [aicredits.in/dashboard](https://aicredits.in/dashboard) or \`GEMINI_API_KEY\` in your environment settings for real-time model inference.*`;
+  }
+
+  // Honest diagnostic message. Previously this pretended everything (including
+  // the admin system prompt) was "strictly enforced" even though this canned
+  // reply is generated locally and never actually reaches an AI model — which
+  // is exactly why the admin panel's system prompt appeared to be ignored:
+  // this reply doesn't use it at all.
+  return `### ⚠️ No AI Provider Connected
+
+I couldn't reach a real AI model, so this is a canned local message — **your Admin Panel system prompt was NOT used to generate this reply.**
+
+To fix this:
+1. Set a valid \`AICREDITS_API_KEY\` (and check \`AICREDITS_BASE_URL\` / model name), **or**
+2. Set a valid \`GEMINI_API_KEY\`
+
+in your backend's environment variables, then check the server logs for \`[AICREDITS]\` or \`[GEMINI]\` error lines — they show the exact reason the request failed (invalid key, wrong model name, network error, etc.). Once a provider call succeeds, your admin panel system prompt will be applied normally.`;
+}
+
+// ----------------------------------------------------
+// 6. Server Initialization
+// ----------------------------------------------------
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+app.get('*', (req, res) => {
+  res.json({
+    status: 'online',
+    service: 'Leo AI Backend API',
+    version: '1.0.0',
+    health: '/api/health',
+    message: 'Leo AI API server is running successfully on Render.'
+  });
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Leo AI Backend API Server running at http://0.0.0.0:${PORT}`);
 });

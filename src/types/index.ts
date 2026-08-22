@@ -40,20 +40,15 @@ export interface UserProfile {
   lastLoginAt?: number;
   lastActive?: number;
   chatCount?: number;
-}
-
-export interface MemoMemoryItem {
-  id: string;
-  userId: string;
-  text: string;
-  category?: 'preference' | 'fact' | 'project' | 'general';
-  createdAt: number;
-  confidence?: number;
+  dailyMessageLimitOverride?: number;
+  dailyMessageCount?: number;
 }
 
 export interface AIConfig {
   aiCreditsApiKey: string;
   aiCreditsBaseUrl: string;
+  tokeninApiKey: string;
+  tokeninBaseUrl: string;
   visionModel: string;
   temperature: number;
   maxTokens: number;
@@ -64,7 +59,7 @@ export interface AIConfig {
   enableVision: boolean;
   enableMemory: boolean;
   fallbackToGemini: boolean;
-  dailyMessageLimit?: number;
+  dailyMessageLimit: number;
   mongoDbConfigured: boolean;
   firebaseConfigured: boolean;
 }

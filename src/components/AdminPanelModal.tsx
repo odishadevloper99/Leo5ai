@@ -411,38 +411,74 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                         </span>
                       )}
                     </div>
-                    <div className="p-3 rounded-xl bg-purple-50 border border-purple-100">
-                      <div className="text-xs font-semibold text-purple-900">AICredits.in — Active Provider</div>
-                      <p className="text-[10px] text-purple-700 mt-1">API key, endpoint, and model are controlled only by Render Environment Variables.</p>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-neutral-700 mb-1">AICredits Base URL (Render)</label>
-                        <input type="text" value={config.aiCreditsBaseUrl} readOnly className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500 outline-none text-xs font-mono" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-neutral-700 mb-1">AICredits Model (Render)</label>
-                        <input type="text" value={(config as any).aiCreditsModel || config.visionModel || 'Not configured'} readOnly className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-neutral-50 text-neutral-500 outline-none text-xs font-mono" />
-                      </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        AICredits.in API Key (from https://aicredits.in/dashboard)
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="sk-aicredits-..."
+                        value={config.aiCreditsApiKey}
+                        onChange={(e) => setConfig({ ...config, aiCreditsApiKey: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-xs font-mono"
+                      />
+                      <p className="text-[10px] text-neutral-400 mt-1">
+                        Requests proxy through your secure backend to aicredits.in API without exposing keys to the browser.
+                      </p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                          Daily Message Limit (0 = Unlimited)
+                          AICredits Base URL
                         </label>
                         <input
-                          type="number"
-                          min="0"
-                          value={config.dailyMessageLimit ?? 50}
-                          onChange={(e) =>
-                            setConfig({ ...config, dailyMessageLimit: Math.max(0, parseInt(e.target.value, 10) || 0) })
-                          }
-                          className="w-full px-3 py-1.5 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs"
+                          type="text"
+                          value={config.aiCreditsBaseUrl}
+                          onChange={(e) => setConfig({ ...config, aiCreditsBaseUrl: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono"
                         />
                       </div>
 
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                          Tokenin API Key
+                        </label>
+                        <input type="password" placeholder="Tokenin API key" value={(config as any).tokeninApiKey || ''} onChange={(e) => setConfig({ ...config, tokeninApiKey: e.target.value } as any)} className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono" />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                          Tokenin Base URL
+                        </label>
+                        <input type="text" value={(config as any).tokeninBaseUrl || 'https://tokenin.my.id/api/v1'} onChange={(e) => setConfig({ ...config, tokeninBaseUrl: e.target.value } as any)} className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono" />
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 mb-3">
+                      <p className="text-xs font-semibold text-neutral-800">Tokenin Models</p>
+                      <p className="text-[10px] text-neutral-500 mt-1">Grok 4.6 · Kimi K3 · GLM 5.3 · Qwen 3.8 Max · DeepSeek V4 Pro — routed through Tokenin, not AICredits.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                          Vision Model (Cheapest Vision-Capable)
+                        </label>
+                        <select
+                          value={config.visionModel}
+                          onChange={(e) => setConfig({ ...config, visionModel: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs bg-white"
+                        >
+                          <option value="gemini-1.5-flash">gemini-1.5-flash (Cheapest Vision Model)</option>
+                          <option value="gpt-4o-mini">gpt-4o-mini (Cost-Efficient OpenAI Vision)</option>
+                          <option value="gemini-2.0-flash">gemini-2.0-flash (Ultra-Fast Multimodal)</option>
+                          <option value="claude-3-haiku-20240307">claude-3-haiku (Anthropic Vision)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-neutral-700 mb-1">
                           Temperature: {config.temperature}
@@ -469,6 +505,24 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                           className="w-full px-3 py-1.5 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs"
                         />
                       </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                          Daily Message Limit (per user)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={config.dailyMessageLimit}
+                          onChange={(e) =>
+                            setConfig({ ...config, dailyMessageLimit: Math.max(0, parseInt(e.target.value) || 0) })
+                          }
+                          className="w-full px-3 py-1.5 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs"
+                        />
+                        <p className="text-[10px] text-neutral-400 mt-1">
+                          Max chat messages each user can send per day. Set to 0 for unlimited. Admins are never limited.
+                        </p>
+                      </div>
                     </div>
 
                     <div className="space-y-2 pt-2 border-t border-neutral-100">
@@ -492,6 +546,15 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                         <span>Enable Deeper Research & Step-by-Step Thinking</span>
                       </label>
 
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-neutral-800">
+                        <input
+                          type="checkbox"
+                          checked={config.fallbackToGemini}
+                          onChange={(e) => setConfig({ ...config, fallbackToGemini: e.target.checked })}
+                          className="rounded accent-purple-600"
+                        />
+                        <span>Fallback to Server-Side Gemini API if AICredits key is unset</span>
+                      </label>
                     </div>
 
                     <button
@@ -688,13 +751,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              Active
-                            </span>
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                              {u.role || 'User'}
-                            </span>
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <select value={u.plan || 'free'} onChange={async (e) => { try { const result = await api.updateAdminUser(u.uid, { plan: e.target.value }); setUsers(prev => prev.map(x => x.uid === u.uid ? result.user : x)); } catch (err: any) { alert(err.message); } }} className="text-[10px] px-2 py-1 rounded-lg border border-neutral-200 bg-white">
+                              <option value="free">Free</option><option value="premium">Premium</option><option value="pro">Pro</option><option value="ultra">Ultra</option>
+                            </select>
+                            <input type="number" min="0" placeholder="Daily limit" value={u.dailyMessageLimitOverride ?? ''} onChange={(e) => setUsers(prev => prev.map(x => x.uid === u.uid ? { ...x, dailyMessageLimitOverride: e.target.value === '' ? undefined : Number(e.target.value) } : x))} onBlur={async (e) => { try { const value = e.target.value === '' ? null : Number(e.target.value); const result = await api.updateAdminUser(u.uid, { dailyMessageLimitOverride: value }); setUsers(prev => prev.map(x => x.uid === u.uid ? result.user : x)); } catch (err: any) { alert(err.message); } }} className="w-24 text-[10px] px-2 py-1 rounded-lg border border-neutral-200 outline-none" />
+                            <button onClick={async () => { try { const result = await api.resetAdminUserDailyUsage(u.uid); setUsers(prev => prev.map(x => x.uid === u.uid ? result.user : x)); } catch (err: any) { alert(err.message); } }} className="text-[10px] px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50">Reset today</button>
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">{u.plan || 'free'} · used {u.dailyMessageCount || 0}</span>
                           </div>
                         </div>
                       ))}
@@ -720,7 +783,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                         </span>
                         <button
                           onClick={() => {
-                            const envString = `NODE_ENV=production\nPORT=3000\nADMIN_PASSWORD=your_super_secret_admin_pass\nAICREDITS_API_KEY=your_aicredits_api_key\nAICREDITS_BASE_URL=https://api.aicredits.in/v1\nAICREDITS_MODEL=your_model_name\nMEMO_API_KEY=your_memo_api_key\nMONGODB_URI=mongodb+srv://...`;
+                            const envString = `NODE_ENV=production\nPORT=3000\nADMIN_PASSWORD=your_super_secret_admin_pass\nAICREDITS_API_KEY=your_aicredits_api_key\nAICREDITS_BASE_URL=https://api.aicredits.in/v1\nAICREDITS_VISION_MODEL=gemini-1.5-flash\nMEMO_API_KEY=your_memo_api_key\nMONGODB_URI=mongodb+srv://...\nGEMINI_API_KEY=your_gemini_key`;
                             navigator.clipboard.writeText(envString);
                             setCopiedEnv(true);
                             setTimeout(() => setCopiedEnv(false), 2000);
@@ -737,9 +800,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
 ADMIN_PASSWORD=your_super_secret_admin_pass
 AICREDITS_API_KEY=your_aicredits_api_key
 AICREDITS_BASE_URL=https://api.aicredits.in/v1
-AICREDITS_MODEL=your_model_name
+AICREDITS_VISION_MODEL=gemini-1.5-flash
 MEMO_API_KEY=your_memo_api_key
 MONGODB_URI=mongodb+srv://...
+GEMINI_API_KEY=your_gemini_key
 
 # 2. Vercel Frontend Environment Secrets:
 VITE_API_BASE_URL=https://your-render-backend.onrender.com

@@ -67,7 +67,7 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │                     2. BACKEND API SERVICE                       │
 │   • Node.js + Express REST API Server (Render Cloud)             │
-│   • Model Router: AICredits API (Render-selected model)   │
+│   • Model Router: Gemini 2.5 Flash, 3.7 Flash & AI Credits API   │
 │   • SendGrid & Nodemailer Email OTP Engine (30s Rate Limiter)    │
 │   • Firebase Realtime Database Gateway (Config Sync & State)     │
 │   • Executive Admin Authorization Layer (`/api/admin/*`)         │
@@ -77,7 +77,7 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │                   3. CLOUD SERVICES & STORAGE                    │
 │   • Firebase Realtime Database: User Profiles, Config & OTPs     │
-│   • AI Model Inference Provider (AICredits only)           │
+│   • AI Model Inference Providers (Gemini / AI Credits)           │
 │   • SendGrid / SMTP Gateway: 6-Digit Cryptographic Code Delivery │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -92,7 +92,7 @@
 | **Styling & UI** | Tailwind CSS v4, Motion (Framer Motion), Lucide React |
 | **Markdown & Syntax** | React Markdown, Remark GFM |
 | **Backend Framework** | Node.js 22+, Express 4.21, TSX, esbuild |
-| **AI SDK & Model Inference**| AI Credits V1 REST API (Render-selected model) |
+| **AI SDK & Model Inference**| `@google/genai` (Gemini 2.5 / 3.7), AI Credits V1 REST API |
 | **Database & Identity** | Firebase Auth, Firebase Realtime Database (RTDB) |
 | **Email & Security** | SendGrid API / Nodemailer (SMTP), Crypto-secure 6-Digit OTP |
 | **Hosting & Deployment** | Vercel (Frontend SPA) + Render (Backend Web Service) |
@@ -104,6 +104,7 @@
 | Service | Primary Purpose | Dashboard Access |
 | :--- | :--- | :--- |
 | **AI Credits API** | Primary LLM Provider & Vision API | [aicredits.in/dashboard](https://aicredits.in/dashboard) |
+| **Google AI Studio** | Gemini Server-Side API Engine | [aistudio.google.com](https://aistudio.google.com) |
 | **Firebase Console** | Realtime DB & User Auth | [console.firebase.google.com](https://console.firebase.google.com) |
 | **SendGrid** | High-Deliverability OTP Email Gateway | [app.sendgrid.com](https://app.sendgrid.com) |
 | **Google App Passwords** | SMTP OTP Backup Delivery | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) |
@@ -179,8 +180,9 @@ git push -u origin main
 | :--- | :--- | :--- |
 | `NODE_ENV` | Environment mode | `production` |
 | `PORT` | Container Port | `10000` |
+| `GEMINI_API_KEY` | Gemini API Secret Key | `AIzaSy...` |
+| `GEMINI_MODEL` | Forced Target Model | `gemini-2.5-flash` |
 | `AICREDITS_API_KEY` | AI Credits API Key | `sk-...` |
-| `AICREDITS_MODEL` | AICredits model selected by you in Render | `your_model_name` |
 | `AICREDITS_BASE_URL` | AI Credits Endpoint | `https://api.aicredits.in/v1` |
 | `ADMIN_PASSWORD` | Access password for `/admin` | `YourSecretAdminPass123!` |
 | `FIREBASE_PROJECT_ID` | Firebase Project ID | `your-firebase-project-id` |

@@ -71,7 +71,7 @@ export const INITIAL_CHAT_SESSIONS = [
         role: 'assistant' as const,
         content: `### 🚀 7-Day Sprint Plan: Product Milestone Release\n\nHere is your high-velocity sprint breakdown:\n\n- **Day 1: Scope Freeze & Architecture Review** — Finalize API schemas, lock feature requirements, and establish CI/CD verification.\n- **Day 2-3: Core Module Implementation** — Implement state containers, integrate Memo API memory cache, and link realtime database endpoints.\n- **Day 4: Deep Reasoning & Edge-Case Testing** — Execute stress tests on vision upload pipelines, test offline sync, and audit admin authentication security.\n- **Day 5: Responsive UX Polish** — Verify fluid layout across mobile, tablet, and desktop viewports.\n- **Day 6: Staging Deployment & Telemetry** — Deploy backend on Render, deploy frontend on Vercel, and configure production environment secrets.\n- **Day 7: Launch & Monitoring** — Monitor error logs and track user satisfaction metrics.`,
         timestamp: Date.now() - 3600000 * 2 + 1000,
-        modelUsed: 'AICredits',
+        modelUsed: 'gemini-1.5-flash',
       },
     ],
   },

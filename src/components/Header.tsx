@@ -9,6 +9,9 @@ import {
   Zap,
   Menu,
   Check,
+  Crown,
+  Database,
+  BrainCircuit
 } from 'lucide-react';
 import { ChatSession } from '../types';
 import { LeoLogoMark } from './LeoLogo';
@@ -21,6 +24,7 @@ interface HeaderProps {
   onShare: () => void;
   selectedModel: string;
   onSelectModel: (m: string) => void;
+  userPlan?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   onShare,
   selectedModel,
   onSelectModel,
+  userPlan
 }) => {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -50,29 +55,18 @@ export const Header: React.FC<HeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Clean, user-friendly modes with NO model IDs exposed
   const engineModes = [
-    {
-      id: 'default',
-      name: 'Leo AI Standard',
-      desc: 'Optimized for conversation, writing, and everyday problem solving',
-      icon: Sparkles,
-    },
-    {
-      id: 'vision',
-      name: 'Leo AI Vision',
-      desc: 'High-speed image understanding, OCR, and diagram reasoning',
-      icon: Eye,
-    },
-    {
-      id: 'reasoning',
-      name: 'Leo AI Deep Reasoner',
-      desc: 'Extended cognitive synthesis for coding and complex logic',
-      icon: Zap,
-    },
+    { id: 'default', name: 'Leo AI Standard', desc: 'Optimized for conversation, writing, and everyday problem solving', icon: Sparkles, premium: false },
+    { id: 'vision', name: 'Leo AI Vision', desc: 'High-speed image understanding, OCR, and diagram reasoning', icon: Eye, premium: false },
+    { id: 'reasoning', name: 'Leo AI Deep Reasoner', desc: 'Extended cognitive synthesis for coding and complex logic', icon: Zap, premium: false },
+    { id: 'myt/grok-4.6', name: 'Grok 4.6', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
+    { id: 'myt/kimi-k3', name: 'Kimi K3', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
+    { id: 'myt/glm-5.3', name: 'GLM 5.3', desc: 'Premium Tokenin model', icon: Sparkles, premium: true },
+    { id: 'myt/qwen3.8-max', name: 'Qwen 3.8 Max', desc: 'Premium Tokenin model', icon: Zap, premium: true },
+    { id: 'myt/deepseek-v4-pro', name: 'DeepSeek V4 Pro', desc: 'Premium Tokenin model', icon: BrainCircuit, premium: true },
   ];
-
   const currentMode = engineModes.find((m) => m.id === selectedModel) || engineModes[0];
+  const isPremium = (currentMode as any).premium && !['pro', 'ultra', 'premium', 'admin'].includes(String(userPlan || '').toLowerCase());
 
   return (
     <header
@@ -121,6 +115,10 @@ export const Header: React.FC<HeaderProps> = ({
                     <button
                       key={mode.id}
                       onClick={() => {
+                        if (mode.premium && !['pro', 'ultra', 'premium', 'admin'].includes(String(userPlan || '').toLowerCase())) {
+                          window.open('https://t.me/Unknownboy1525', '_blank', 'noopener,noreferrer');
+                          return;
+                        }
                         onSelectModel(mode.id);
                         setModelDropdownOpen(false);
                       }}
@@ -142,6 +140,7 @@ export const Header: React.FC<HeaderProps> = ({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-semibold">{mode.name}</span>
+                            {mode.premium && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Premium</span>}
                         </div>
                         <p className="text-[11px] text-neutral-500 line-clamp-1">{mode.desc}</p>
                       </div>
@@ -214,6 +213,16 @@ export const Header: React.FC<HeaderProps> = ({
           <span>Export chat</span>
         </button>
 
+        {/* Pro/Ultra Plan Badge (display only — purchase flow removed) */}
+        {(userPlan === 'pro' || userPlan === 'ultra') && (
+          <span
+            id="header-plan-badge"
+            className="bg-gradient-to-r from-purple-900 to-neutral-950 border border-purple-400/40 text-white text-xs font-medium px-4 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5"
+          >
+            <Crown className="w-3.5 h-3.5 text-amber-400" />
+            <span>Pro Member</span>
+          </span>
+        )}
       </div>
     </header>
   );

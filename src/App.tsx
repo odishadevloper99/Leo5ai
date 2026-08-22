@@ -81,7 +81,6 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
 
-
   // Sync sessions to localStorage
   useEffect(() => {
     localStorage.setItem('leo_chat_sessions', JSON.stringify(sessions));
@@ -331,6 +330,7 @@ export default function App() {
         userId: user.uid,
         images,
         isDeepResearch,
+        model: selectedModel,
       });
 
       const assistantMessage: Message = {
@@ -346,7 +346,7 @@ export default function App() {
       setSessions((prev) =>
         prev.map((s) =>
           s.id === currentSession!.id
-            ? { ...s, messages: finalMessages, updatedAt: Date.now() }
+            ? { ...s, messages: finalMessages, updatedAt: Date.now(), model: selectedModel }
             : s
         )
       );
@@ -509,7 +509,8 @@ export default function App() {
             onShare={handleShare}
             selectedModel={selectedModel}
             onSelectModel={setSelectedModel}
-            />
+            userPlan={user.plan}
+          />
 
           {/* Body Content: Welcome Hero OR Active Chat */}
           <main className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
@@ -581,7 +582,6 @@ export default function App() {
         isOpen={isHelpOpen}
         onClose={() => setIsHelpOpen(false)}
       />
-
     </div>
   );
 }
