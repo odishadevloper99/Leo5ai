@@ -62,16 +62,45 @@ export const ChatView: React.FC<ChatViewProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  // Resilient Copy to Clipboard (with iframe & mobile fallbacks)
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // Fall through to fallback
+    }
+
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      textArea.setAttribute('readonly', '');
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand('copy');
+      textArea.remove();
+      return successful;
+    } catch {
+      return false;
+    }
+  };
+
   // Copy Message Content
-  const handleCopyText = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopyText = async (id: string, text: string) => {
+    await copyToClipboard(text);
     setCopiedMsgId(id);
     setTimeout(() => setCopiedMsgId(null), 2000);
   };
 
   // Copy Specific Code
-  const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
+  const handleCopyCode = async (code: string) => {
+    await copyToClipboard(code);
     setCopiedCodeBlock(code);
     setTimeout(() => setCopiedCodeBlock(null), 2000);
   };
@@ -212,7 +241,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
               {/* Message Bubble Container */}
               <div
-                className={`max-w-[85%] md:max-w-[78%] flex flex-col ${
+                className={`w-full max-w-[94%] sm:max-w-[88%] md:max-w-[80%] min-w-0 flex flex-col ${
                   isUser ? 'items-end' : 'items-start'
                 }`}
               >
@@ -254,32 +283,32 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
                 {/* Main Message Box */}
                 <div
-                  className={`rounded-2xl p-4 text-xs md:text-sm leading-relaxed transition ${
+                  className={`w-full min-w-0 overflow-hidden rounded-2xl p-3.5 md:p-4.5 text-xs md:text-sm leading-relaxed transition-all duration-150 ${
                     isUser
-                      ? 'bg-purple-600 text-white rounded-tr-xs shadow-sm'
-                      : 'bg-white border border-purple-100/80 rounded-tl-xs shadow-xs text-neutral-800'
+                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-tr-xs shadow-[0_4px_14px_rgba(147,51,234,0.25)]'
+                      : 'bg-white border border-purple-100/90 rounded-tl-xs shadow-[0_2px_12px_rgba(0,0,0,0.03)] text-neutral-800'
                   }`}
                 >
                   {/* Assistant Deep Reasoning Collapsible Block */}
                   {!isUser && message.isDeepResearch && (
-                    <div className="mb-3 border border-purple-100 rounded-xl bg-purple-50/50 p-2.5 text-xs">
+                    <div className="mb-3.5 border border-purple-200/80 rounded-xl bg-purple-50/60 p-3 text-xs shadow-2xs">
                       <button
                         onClick={() => toggleReasoning(message.id)}
-                        className="flex items-center justify-between w-full font-medium text-purple-900"
+                        className="flex items-center justify-between w-full font-semibold text-purple-900 active:scale-[0.99] transition"
                       >
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                           <BrainCircuit className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
                           <span>Deep Reasoning & Cognitive Steps</span>
                         </div>
                         {expandedReasoning[message.id] ? (
-                          <ChevronUp className="w-3.5 h-3.5 text-purple-500" />
+                          <ChevronUp className="w-4 h-4 text-purple-600" />
                         ) : (
-                          <ChevronDown className="w-3.5 h-3.5 text-purple-500" />
+                          <ChevronDown className="w-4 h-4 text-purple-600" />
                         )}
                       </button>
 
                       {expandedReasoning[message.id] && (
-                        <div className="mt-2 pt-2 border-t border-purple-100 text-[11px] text-purple-800/90 space-y-1">
+                        <div className="mt-2.5 pt-2.5 border-t border-purple-200/70 text-[11px] text-purple-900/85 space-y-1.5 leading-relaxed font-sans">
                           <p>1. Deconstructed user objective and identified core domain requirements.</p>
                           <p>2. Evaluated systemic constraints, tradeoffs, and production best practices.</p>
                           <p>3. Synthesized structured, multi-dimensional response adhering strictly to directives.</p>
@@ -289,12 +318,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   )}
 
                   {/* Markdown Content */}
-                  <div className={`prose-sm max-w-none break-words ${isUser ? 'text-white' : 'text-neutral-800'}`}>
+                  <div className={`w-full min-w-0 overflow-hidden prose-sm max-w-none break-words ${isUser ? 'text-white' : 'text-neutral-850'}`}>
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
                         pre({ children }: any) {
-                          return <div className="my-2.5 overflow-hidden">{children}</div>;
+                          return <div className="my-2.5 w-full min-w-0 max-w-full overflow-hidden">{children}</div>;
                         },
                         code({ node, inline, className, children, ...props }: any) {
                           const match = /language-(\w+)/.exec(className || '');
@@ -306,32 +335,37 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             const language = match ? match[1] : 'code';
                             const isCopied = copiedCodeBlock === codeString;
                             return (
-                              <div className="relative my-2 rounded-xl overflow-hidden bg-[#18181b] border border-neutral-800 text-neutral-100 shadow-xs">
+                              <div className="relative my-2 rounded-xl overflow-hidden bg-[#121316] border border-neutral-800 text-neutral-100 shadow-md w-full min-w-0 max-w-full">
                                 {/* Header Bar with Language tag & Prominent Copy Button */}
-                                <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#27272a] border-b border-neutral-700/60 text-xs text-neutral-300">
-                                  <span className="font-mono text-[11px] uppercase tracking-wider text-purple-300 font-semibold">
+                                <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#1e2025] border-b border-neutral-800 text-xs text-neutral-300 w-full min-w-0 select-none">
+                                  <span className="font-mono text-[11px] uppercase tracking-wider text-purple-300 font-bold truncate pr-2 shrink-0">
                                     {language}
                                   </span>
                                   <button
-                                    onClick={() => handleCopyCode(codeString)}
-                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-200 hover:text-white transition text-xs font-medium active:scale-95"
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleCopyCode(codeString);
+                                    }}
+                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-200 hover:text-white transition text-xs font-medium active:scale-95 shadow-2xs shrink-0 cursor-pointer"
                                   >
                                     {isCopied ? (
                                       <>
-                                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                        <span className="text-emerald-400 font-semibold">Copied!</span>
+                                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                        <span className="text-emerald-400 font-semibold text-[11px]">Copied!</span>
                                       </>
                                     ) : (
                                       <>
-                                        <Copy className="w-3.5 h-3.5" />
-                                        <span>Copy code</span>
+                                        <Copy className="w-3.5 h-3.5 text-neutral-300 shrink-0" />
+                                        <span className="text-neutral-200 text-[11px]">Copy code</span>
                                       </>
                                     )}
                                   </button>
                                 </div>
                                 {/* Code content with horizontal scrolling */}
-                                <div className="p-3.5 overflow-x-auto text-xs md:text-sm font-mono leading-relaxed text-neutral-200">
-                                  <pre className="m-0 p-0 font-mono bg-transparent">
+                                <div className="p-3.5 overflow-x-auto text-xs md:text-sm font-mono leading-relaxed text-neutral-150 w-full max-w-full">
+                                  <pre className="m-0 p-0 font-mono bg-transparent whitespace-pre">
                                     <code>{codeString}</code>
                                   </pre>
                                 </div>
@@ -342,10 +376,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           // Clean Inline Code Badge
                           return (
                             <code
-                              className={`px-1.5 py-0.5 mx-0.5 rounded-md font-mono text-[12px] md:text-[13px] font-medium inline-block transition ${
+                              className={`px-1.5 py-0.5 mx-0.5 rounded-md font-mono text-[12px] md:text-[13px] font-semibold inline-block transition ${
                                 isUser
                                   ? 'bg-purple-700/80 text-white'
-                                  : 'bg-purple-50 text-purple-800 border border-purple-200/70'
+                                  : 'bg-purple-50 text-purple-800 border border-purple-200/80'
                               }`}
                               {...props}
                             >
@@ -379,7 +413,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         },
                         table({ children }: any) {
                           return (
-                            <div className="overflow-x-auto my-3 rounded-xl border border-purple-100">
+                            <div className="overflow-x-auto my-3 rounded-xl border border-purple-100 shadow-2xs">
                               <table className="min-w-full text-xs text-left divide-y divide-purple-100">
                                 {children}
                               </table>
@@ -387,10 +421,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           );
                         },
                         th({ children }: any) {
-                          return <th className="px-3 py-2 bg-purple-50 font-semibold text-purple-900">{children}</th>;
+                          return <th className="px-3.5 py-2.5 bg-purple-50/90 font-semibold text-purple-900">{children}</th>;
                         },
                         td({ children }: any) {
-                          return <td className="px-3 py-2 border-t border-purple-50 text-neutral-700">{children}</td>;
+                          return <td className="px-3.5 py-2 border-t border-purple-50 text-neutral-700">{children}</td>;
                         }
                       }}
                     >
@@ -474,8 +508,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
       </div>
 
       {/* Floating Bottom Input Bar in Active Chat View */}
-      <div className="flex-shrink-0 p-2.5 md:p-6 bg-white/95 border-t border-purple-100/60 backdrop-blur-md pb-[max(0.6rem,env(safe-area-inset-bottom))]">
-        <div className="max-w-3xl mx-auto w-full bg-white rounded-2xl border border-purple-100/90 shadow-md shadow-purple-500/5 p-2.5 md:p-3">
+      <div className="flex-shrink-0 p-2.5 md:p-6 bg-white/95 border-t border-purple-100/70 backdrop-blur-xl pb-[max(0.6rem,env(safe-area-inset-bottom))]">
+        <div className="max-w-3xl mx-auto w-full bg-white rounded-2xl border border-purple-100/90 shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus-within:border-purple-300 focus-within:ring-4 focus-within:ring-purple-100/50 p-2.5 md:p-3 transition-all duration-200">
           {/* Selected Images Preview */}
           {selectedImages.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2 px-1">
@@ -504,7 +538,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask Leo AI a follow up..."
-            className="w-full resize-none bg-transparent text-base md:text-sm text-neutral-800 placeholder-neutral-400 focus:outline-none px-1 py-1"
+            className="w-full resize-none bg-transparent text-base md:text-sm text-neutral-800 placeholder-neutral-400 focus:outline-none px-1 py-1 leading-relaxed"
           />
 
           {/* Bottom Bar Controls */}
@@ -512,10 +546,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setIsDeepResearch(!isDeepResearch)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition active:scale-95 ${
                   isDeepResearch
-                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                    : 'bg-purple-50/70 hover:bg-purple-100/80 text-purple-700'
+                    ? 'bg-purple-100 text-purple-900 border border-purple-300 font-semibold'
+                    : 'bg-purple-50/80 hover:bg-purple-100 text-purple-700'
                 }`}
               >
                 <BrainCircuit className="w-3 h-3" />
@@ -525,7 +559,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 title="Upload image for Vision analysis"
-                className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition"
+                className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80 rounded-lg transition active:scale-95"
               >
                 <ImageIcon className="w-4 h-4" />
               </button>
@@ -533,7 +567,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <button
                 onClick={onOpenSavedPrompts}
                 title="Open Prompt Library"
-                className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition"
+                className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80 rounded-lg transition active:scale-95"
               >
                 <Lightbulb className="w-4 h-4" />
               </button>
@@ -543,10 +577,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <button
                 onClick={handleToggleVoice}
                 title="Voice input"
-                className={`p-1.5 rounded-lg transition ${
+                className={`p-1.5 rounded-lg transition active:scale-95 ${
                   isRecording
                     ? 'bg-red-500 text-white animate-pulse'
-                    : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100'
+                    : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80'
                 }`}
               >
                 <Mic className="w-4 h-4" />
@@ -555,7 +589,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <button
                 onClick={() => handleSubmit()}
                 disabled={!inputText.trim() && selectedImages.length === 0}
-                className="w-7 h-7 rounded-lg bg-neutral-900 hover:bg-black disabled:opacity-30 text-white flex items-center justify-center shadow-xs transition"
+                className="w-7 h-7 rounded-lg bg-neutral-900 hover:bg-black disabled:opacity-30 text-white flex items-center justify-center shadow-xs transition active:scale-95"
               >
                 <ArrowUp className="w-4 h-4" />
               </button>

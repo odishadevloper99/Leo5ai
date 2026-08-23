@@ -100,14 +100,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex flex-col flex-1 min-h-0 p-4 pb-2">
           {/* Brand Header */}
           <div className="flex items-center justify-between mb-4 px-1">
-            <LeoLogo size="sm" onClick={onNewChat} className="cursor-pointer" />
+            <LeoLogo size="sm" onClick={onNewChat} className="cursor-pointer hover:opacity-90 transition active:scale-95" />
 
             {/* Collapse toggle button */}
             <button
               id="sidebar-collapse-btn"
               onClick={onToggle}
               title="Collapse sidebar"
-              className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition"
+              className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg transition active:scale-95"
             >
               <PanelLeftClose className="w-4 h-4" />
             </button>
@@ -117,7 +117,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             id="sidebar-new-chat-btn"
             onClick={onNewChat}
-            className="w-full bg-[#18181b] hover:bg-black text-white text-sm font-medium py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all duration-150 active:scale-[0.99] mb-3"
+            className="w-full bg-[#18181b] hover:bg-black text-white text-sm font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-xs hover:shadow-md transition-all duration-150 active:scale-[0.98] mb-3"
           >
             <Plus className="w-4 h-4" />
             <span>New chat</span>
@@ -132,12 +132,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               placeholder="Search"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full bg-neutral-100/80 hover:bg-neutral-100 focus:bg-white text-xs text-neutral-800 placeholder-neutral-400 pl-9 pr-10 py-2 rounded-xl border border-transparent focus:border-purple-300 focus:ring-2 focus:ring-purple-100 outline-none transition"
+              className="w-full bg-neutral-100/80 hover:bg-neutral-100/95 focus:bg-white text-xs text-neutral-800 placeholder-neutral-400 pl-9 pr-10 py-2 rounded-xl border border-transparent focus:border-purple-300 focus:ring-2 focus:ring-purple-100/60 outline-none transition"
             />
             <button
               onClick={onOpenSearchModal}
               title="Quick command palette"
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-white text-[10px] font-mono text-neutral-400 border border-neutral-200 shadow-xs flex items-center gap-0.5"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-white text-[10px] font-mono text-neutral-400 border border-neutral-200 shadow-2xs flex items-center gap-0.5"
             >
               <Command className="w-2.5 h-2.5" />
               <span>K</span>
@@ -149,7 +149,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               id="nav-explore-btn"
               onClick={onOpenExplore}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-neutral-100/90 text-left transition"
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-neutral-100/90 text-left transition active:scale-[0.99]"
             >
               <Compass className="w-4 h-4 text-neutral-500" />
               <span>Explore</span>
@@ -157,7 +157,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               id="nav-library-btn"
               onClick={onOpenLibrary}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-neutral-100/90 text-left transition"
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-neutral-100/90 text-left transition active:scale-[0.99]"
             >
               <Bookmark className="w-4 h-4 text-neutral-500" />
               <span>Library</span>
@@ -165,7 +165,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               id="nav-files-btn"
               onClick={onOpenFiles}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-neutral-100/90 text-left transition"
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-neutral-100/90 text-left transition active:scale-[0.99]"
             >
               <FolderClosed className="w-4 h-4 text-neutral-500" />
               <span>Files</span>
@@ -173,7 +173,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               id="nav-history-btn"
               onClick={onOpenSearchModal}
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-neutral-100/90 text-left transition"
+              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl hover:bg-neutral-100/90 text-left transition active:scale-[0.99]"
             >
               <History className="w-4 h-4 text-neutral-500" />
               <span>History</span>
@@ -290,10 +290,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onMouseEnter={() => setHoveredChat(session.id)}
         onMouseLeave={() => setHoveredChat(null)}
         onClick={() => onSelectSession(session.id)}
-        className={`group relative flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer text-xs transition ${
+        className={`group relative flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer text-xs transition-all duration-150 active:scale-[0.99] ${
           isActive
-            ? 'bg-purple-50/80 text-purple-950 font-medium'
-            : 'text-neutral-700 hover:bg-neutral-100/80'
+            ? 'bg-purple-50 text-purple-950 font-semibold ring-1 ring-purple-200/80 shadow-2xs'
+            : 'text-neutral-700 hover:bg-neutral-100/80 hover:text-neutral-900'
         }`}
       >
         <span className="truncate flex-1 pr-2">{session.title}</span>
@@ -305,9 +305,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onDeleteSession(session.id);
             }}
             title="Delete conversation"
-            className="opacity-0 group-hover:opacity-100 p-1 text-neutral-400 hover:text-red-500 rounded transition"
+            className="p-1 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-md transition"
           >
-            <Trash2 className="w-3 h-3" />
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
         )}
       </div>

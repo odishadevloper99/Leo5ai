@@ -9,10 +9,19 @@ import {
   RefreshCw,
   Sparkles,
   Lock,
+  Eye,
+  EyeOff,
+  User,
   KeyRound,
   AlertCircle
 } from 'lucide-react';
-import { loginWithGoogle, loginWithCustomToken, logoutUser, isFirebaseConfigured, saveChatToRealtimeDB } from '../lib/firebase';
+import {
+  loginWithEmailPassword,
+  registerWithEmailPassword,
+  loginWithCustomToken,
+  logoutUser,
+  saveChatToRealtimeDB
+} from '../lib/firebase';
 import { api } from '../lib/api';
 import { UserProfile } from '../types';
 import { LeoLogoMark } from './LeoLogo';
@@ -24,7 +33,8 @@ interface AuthModalProps {
   onUserUpdate: (u: UserProfile) => void;
 }
 
-type AuthStep = 'initial' | 'otp' | 'success';
+type AuthStep = 'auth' | 'otp' | 'success';
+type AuthMode = 'login' | 'register' | 'otp_login';
 
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
@@ -32,9 +42,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   user,
   onUserUpdate
 }) => {
-  const [step, setStep] = useState<AuthStep>('initial');
+  const [step, setStep] = useState<AuthStep>('auth');
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [loading, setLoading] = useState(false);
+
+  // Form Fields
   const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // OTP Verification state
   const [pendingUser, setPendingUser] = useState<UserProfile | null>(null);
   const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [errorMessage, setErrorMessage] = useState('');
@@ -51,12 +69,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Reset state when opening/closing
   useEffect(() => {
     if (isOpen) {
-      setStep('initial');
+      setStep('auth');
+      setAuthMode('login');
       setErrorMessage('');
       setDeliveryWarning(null);
       setDevOtp(null);
       setOtpDigits(['', '', '', '', '', '']);
-      setEmailInput(user.email || '');
+      setEmailInput(user.email && user.email !== 'guest@leoai.app' ? user.email : '');
+      setPasswordInput('');
+      setNameInput('');
+      setShowPassword(false);
       isVerifyingRef.current = false;
       setIsTakingLonger(false);
       setVerifyElapsedSeconds(0);
@@ -86,26 +108,82 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Step 1: Google Authentication -> Firebase Auth -> Instant Verified Session
-  const handleGoogleLogin = async () => {
+  const completeConfirmedSession = (userObj: UserProfile, customToken?: string) => {
+    if (verifyTimerRef.current) {
+      clearInterval(verifyTimerRef.current);
+      verifyTimerRef.current = null;
+    }
+    setLoading(false);
+    setIsTakingLonger(false);
+    isVerifyingRef.current = false;
+
+    // Immediately trigger state update for parent App
+    onUserUpdate(userObj);
+
+    if (customToken) {
+      loginWithCustomToken(customToken, userObj).catch(() => {});
+    } else {
+      try {
+        localStorage.setItem('leo_current_user', JSON.stringify(userObj));
+      } catch (e) {}
+    }
+
+    setStep('success');
+    setTimeout(() => {
+      onClose();
+    }, 1200);
+  };
+
+  // 1. Handle Manual Email + Password Login
+  const handleEmailPasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput.trim() || !emailInput.includes('@')) {
+      setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+    if (!passwordInput || passwordInput.length < 6) {
+      setErrorMessage('Please enter your password (minimum 6 characters).');
+      return;
+    }
+
     setLoading(true);
     setErrorMessage('');
-    setDevOtp(null);
     try {
-      // 1. Authenticate with Google via Firebase Auth
-      const googleUser = await loginWithGoogle();
-      
-      // Google authentication succeeded and user profile is verified
-      completeConfirmedSession(googleUser);
-    } catch (e: any) {
-      setErrorMessage(e.message || 'Google sign-in was not completed.');
+      const loggedInUser = await loginWithEmailPassword(emailInput, passwordInput);
+      completeConfirmedSession(loggedInUser);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Login failed. Please verify your email and password.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Direct Email Login -> Send OTP
-  const handleEmailSubmit = async (e: React.FormEvent) => {
+  // 2. Handle Manual Email + Password Registration
+  const handleEmailPasswordRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput.trim() || !emailInput.includes('@')) {
+      setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+    if (!passwordInput || passwordInput.length < 6) {
+      setErrorMessage('Password must be at least 6 characters long.');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      const registeredUser = await registerWithEmailPassword(emailInput, passwordInput, nameInput);
+      completeConfirmedSession(registeredUser);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 3. Handle Send OTP (Passkey Alternative)
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailInput.trim() || !emailInput.includes('@')) {
       setErrorMessage('Please enter a valid email address.');
@@ -161,35 +239,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const completeConfirmedSession = (userObj: UserProfile, customToken?: string) => {
-    // Clear any timers
-    if (verifyTimerRef.current) {
-      clearInterval(verifyTimerRef.current);
-      verifyTimerRef.current = null;
-    }
-    setLoading(false);
-    setIsTakingLonger(false);
-    isVerifyingRef.current = false;
-
-    // Immediately trigger state update for parent App
-    onUserUpdate(userObj);
-
-    // Save token if present
-    if (customToken) {
-      loginWithCustomToken(customToken, userObj).catch(() => {});
-    } else {
-      try {
-        localStorage.setItem('leo_current_user', JSON.stringify(userObj));
-      } catch (e) {}
-    }
-
-    // Instantly transition to success view
-    setStep('success');
-    setTimeout(() => {
-      onClose();
-    }, 1200);
-  };
-
   const processOtpVerification = async (code: string) => {
     if (code.length !== 6 || isVerifyingRef.current) return;
     isVerifyingRef.current = true;
@@ -198,7 +247,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsTakingLonger(false);
     setVerifyElapsedSeconds(0);
 
-    // Start 5-second timeout counter
     let seconds = 0;
     if (verifyTimerRef.current) clearInterval(verifyTimerRef.current);
     verifyTimerRef.current = setInterval(() => {
@@ -249,40 +297,41 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setIsTakingLonger(false);
       isVerifyingRef.current = false;
       setErrorMessage(err.message || 'Invalid or expired OTP code.');
+      setOtpDigits(['', '', '', '', '', '']);
+      inputRefs.current[0]?.focus();
     }
   };
 
-  // Handle OTP digit input box change
   const handleOtpChange = (index: number, val: string) => {
-    // Handle paste of whole 6-digit code
     if (val.length > 1) {
-      const digits = val.replace(/\D/g, '').slice(0, 6).split('');
-      const newDigits = [...otpDigits];
-      digits.forEach((d, i) => {
-        if (i < 6) newDigits[i] = d;
-      });
-      setOtpDigits(newDigits);
-      const nextFocus = Math.min(digits.length, 5);
-      inputRefs.current[nextFocus]?.focus();
-
-      if (newDigits.join('').length === 6) {
-        processOtpVerification(newDigits.join(''));
+      const pasted = val.replace(/\D/g, '').slice(0, 6);
+      if (pasted.length > 0) {
+        const newDigits = [...otpDigits];
+        for (let i = 0; i < 6; i++) {
+          newDigits[i] = pasted[i] || '';
+        }
+        setOtpDigits(newDigits);
+        const nextIdx = Math.min(pasted.length, 5);
+        inputRefs.current[nextIdx]?.focus();
+        if (pasted.length === 6) {
+          processOtpVerification(pasted);
+        }
+        return;
       }
-      return;
     }
 
-    const cleanVal = val.replace(/\D/g, '');
+    const cleanChar = val.replace(/\D/g, '').slice(-1);
     const newDigits = [...otpDigits];
-    newDigits[index] = cleanVal;
+    newDigits[index] = cleanChar;
     setOtpDigits(newDigits);
 
-    // Auto-focus next input
-    if (cleanVal && index < 5) {
+    if (cleanChar && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
 
-    if (newDigits.join('').length === 6) {
-      processOtpVerification(newDigits.join(''));
+    const fullCode = newDigits.join('');
+    if (fullCode.length === 6) {
+      processOtpVerification(fullCode);
     }
   };
 
@@ -292,9 +341,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Step 2: Verify OTP
-  const handleVerifyOtp = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
     const fullCode = otpDigits.join('');
     if (fullCode.length !== 6) {
       setErrorMessage('Please enter the complete 6-digit OTP code.');
@@ -303,7 +351,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     await processOtpVerification(fullCode);
   };
 
-  // Resend OTP
   const handleResendOtp = async () => {
     if (resendCooldown > 0 || loading) return;
     setLoading(true);
@@ -319,7 +366,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       if (sendRes.emailDelivered === false) {
         setDeliveryWarning(
           sendRes.deliveryError ||
-          'SMTP credentials not detected in environment. If using Gmail, an App Password is required.'
+          'SMTP credentials not detected in environment.'
         );
       } else {
         setDeliveryWarning(null);
@@ -335,7 +382,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Sign out
   const handleSignOut = async () => {
     await logoutUser();
     onUserUpdate({
@@ -349,13 +395,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl border border-purple-100 max-w-md w-full p-6 text-center animate-in fade-in zoom-in-95 duration-150 relative overflow-hidden">
-        {/* Close Button */}
-        <div className="flex justify-between items-center mb-2">
-          <div className="flex items-center gap-1.5 text-xs text-neutral-400 font-medium">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-2xl border border-neutral-200 max-w-md w-full p-6 text-center animate-in fade-in zoom-in-95 duration-150 relative overflow-hidden">
+        {/* Header bar with close button */}
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-medium">
             <ShieldCheck className="w-4 h-4 text-purple-600" />
-            <span>2-Step Verification</span>
+            <span>Secure Authentication</span>
           </div>
           <button
             onClick={onClose}
@@ -366,93 +412,238 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         {/* ---------------------------------------------------- */}
-        {/* STEP 1: INITIAL LOGIN (Google + Firebase Auth) */}
+        {/* STEP 1: EMAIL & PASSWORD / PASSKEY AUTH */}
         {/* ---------------------------------------------------- */}
-        {step === 'initial' && (
-          <div className="space-y-4 pt-2">
-            <LeoLogoMark className="w-16 h-16 mx-auto drop-shadow-md" />
+        {step === 'auth' && (
+          <div className="space-y-4 pt-1">
+            <LeoLogoMark className="w-14 h-14 mx-auto drop-shadow-sm" />
 
             <div>
-              <h3 className="font-display font-bold text-lg text-neutral-900">
-                Sign in to Leo AI
+              <h3 className="font-display font-bold text-xl text-neutral-900">
+                {authMode === 'register'
+                  ? 'Create Leo AI Account'
+                  : authMode === 'otp_login'
+                  ? 'Sign in via Email OTP'
+                  : 'Sign in to Leo AI'}
               </h3>
               <p className="text-xs text-neutral-500 mt-1">
-                Authenticate with Google & verify via secure Email OTP
+                {authMode === 'register'
+                  ? 'Enter your email and choose a secure password to get started'
+                  : authMode === 'otp_login'
+                  ? 'We will send a 6-digit verification code to your email'
+                  : 'Enter your email and password to access your AI chats'}
               </p>
+            </div>
+
+            {/* Mode Switcher Tabs */}
+            <div className="grid grid-cols-2 gap-1 p-1 bg-neutral-100 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setErrorMessage('');
+                }}
+                className={`py-2 text-xs font-semibold rounded-xl transition ${
+                  authMode === 'login'
+                    ? 'bg-white text-neutral-900 shadow-xs'
+                    : 'text-neutral-500 hover:text-neutral-900'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('register');
+                  setErrorMessage('');
+                }}
+                className={`py-2 text-xs font-semibold rounded-xl transition ${
+                  authMode === 'register'
+                    ? 'bg-white text-neutral-900 shadow-xs'
+                    : 'text-neutral-500 hover:text-neutral-900'
+                }`}
+              >
+                Create Account
+              </button>
             </div>
 
             {errorMessage && (
               <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2 text-left">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{errorMessage}</span>
+                <span className="leading-relaxed">{errorMessage}</span>
               </div>
             )}
 
-            {/* Google Authentication Button */}
-            <button
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="w-full py-3 px-4 bg-white hover:bg-neutral-50 text-neutral-800 border border-neutral-300 hover:border-purple-300 rounded-2xl text-xs font-semibold flex items-center justify-center gap-2.5 shadow-xs hover:shadow transition group cursor-pointer"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                />
-              </svg>
-              <span>{loading ? 'Authenticating with Google...' : 'Continue with Google'}</span>
-            </button>
-
-            <div className="flex items-center gap-3 my-2">
-              <div className="flex-1 h-px bg-neutral-200" />
-              <span className="text-[10px] uppercase font-semibold text-neutral-400">or email</span>
-              <div className="flex-1 h-px bg-neutral-200" />
-            </div>
-
-            {/* Direct Email OTP form */}
-            <form onSubmit={handleEmailSubmit} className="space-y-3">
-              <div className="relative">
-                <Mail className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  placeholder="Enter your email address..."
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 bg-neutral-50 focus:bg-white text-xs text-neutral-900 rounded-xl border border-neutral-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none transition"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition"
+            {/* MAIN FORM: Manual Email & Password */}
+            {authMode !== 'otp_login' ? (
+              <form
+                onSubmit={authMode === 'register' ? handleEmailPasswordRegister : handleEmailPasswordLogin}
+                className="space-y-3 text-left"
               >
-                <span>Send Verification OTP</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </form>
+                {/* Full Name for registration */}
+                {authMode === 'register' && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-600 mb-1">
+                      Your Name
+                    </label>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="e.g. Bikash Bindhani"
+                        value={nameInput}
+                        onChange={(e) => setNameInput(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2.5 bg-neutral-50 focus:bg-white text-xs text-neutral-900 rounded-xl border border-neutral-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none transition"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Email Address */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-600 mb-1">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="name@example.com"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 bg-neutral-50 focus:bg-white text-xs text-neutral-900 rounded-xl border border-neutral-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-600 mb-1">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      placeholder={authMode === 'register' ? 'At least 6 characters' : 'Enter your password'}
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      className="w-full pl-9 pr-10 py-2.5 bg-neutral-50 focus:bg-white text-xs text-neutral-900 rounded-xl border border-neutral-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 p-1"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit Action Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full mt-2 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs hover:shadow transition cursor-pointer"
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>{authMode === 'register' ? 'Creating account...' : 'Signing in...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{authMode === 'register' ? 'Create Account & Sign In' : 'Sign In with Password'}</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+              </form>
+            ) : (
+              /* ALTERNATIVE FORM: Instant Email OTP Code */
+              <form onSubmit={handleSendOtp} className="space-y-3 text-left">
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-600 mb-1">
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="name@example.com"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 bg-neutral-50 focus:bg-white text-xs text-neutral-900 rounded-xl border border-neutral-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Sending OTP...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Send 6-Digit Verification Code</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+
+                <p className="text-[11px] text-neutral-500 text-center">
+                  Note: Please check your <span className="font-semibold text-neutral-700">Spam / Junk folder</span> if the code does not appear in your Inbox.
+                </p>
+              </form>
+            )}
+
+            {/* Switch to OTP Login Option */}
+            <div className="pt-2">
+              {authMode !== 'otp_login' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('otp_login');
+                    setErrorMessage('');
+                  }}
+                  className="text-xs text-purple-600 hover:text-purple-700 font-medium inline-flex items-center gap-1.5 transition"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Login with Email OTP instead (No password needed)</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('login');
+                    setErrorMessage('');
+                  }}
+                  className="text-xs text-purple-600 hover:text-purple-700 font-medium inline-flex items-center gap-1.5 transition"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Back to Password Login</span>
+                </button>
+              )}
+            </div>
 
             {/* Current user sign-out option */}
             {!user.isAnonymous && (
               <div className="pt-2 border-t border-neutral-100">
                 <button
+                  type="button"
                   onClick={handleSignOut}
                   className="w-full py-2 px-3 text-neutral-500 hover:text-red-600 text-xs font-medium flex items-center justify-center gap-1.5 transition rounded-lg hover:bg-neutral-50"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign out current account</span>
+                  <span>Sign out current account ({user.email})</span>
                 </button>
               </div>
             )}
@@ -470,29 +661,38 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             <div>
               <h3 className="font-display font-bold text-lg text-neutral-900">
-                Enter Verification Code
+                Enter 6-Digit Passkey
               </h3>
               <p className="text-xs text-neutral-500 mt-1">
-                We sent a 6-digit OTP code to <br />
-                <span className="font-semibold text-neutral-800">{pendingUser?.email || emailInput}</span>
+                A verification code was sent to{' '}
+                <span className="font-semibold text-neutral-800">
+                  {pendingUser?.email || emailInput}
+                </span>
               </p>
             </div>
 
-            {/* Timeout Indicator when verification exceeds 5 seconds */}
-            {isTakingLonger && loading && (
-              <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs space-y-2 text-left animate-in fade-in slide-in-from-top-1 duration-200">
-                <div className="flex items-start gap-2">
-                  <RefreshCw className="w-4 h-4 text-blue-600 animate-spin flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-blue-950">
-                      Establishing Cloud Session ({verifyElapsedSeconds}s)
-                    </p>
-                    <p className="text-[11px] text-blue-800 mt-0.5 leading-relaxed">
-                      Verification is taking longer than 5 seconds due to network latency. We are synchronizing your user profile.
-                    </p>
-                  </div>
-                </div>
-                <div className="pt-1 flex items-center gap-2">
+            {/* Spam folder notice banner */}
+            <div className="p-3 rounded-2xl bg-amber-50/90 border border-amber-200/90 text-amber-900 text-xs flex items-start gap-2.5 text-left">
+              <Mail className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-0.5 leading-relaxed">
+                <p className="font-semibold text-amber-950">
+                  Check your Spam / Junk folder
+                </p>
+                <p className="text-[11px] text-amber-800">
+                  Verification OTP email may arrive in your <strong className="font-bold text-amber-950">Spam or Junk folder</strong>. Please check your Spam folder if not found in Inbox.
+                </p>
+              </div>
+            </div>
+
+            {/* Instant proceed fallback banner */}
+            {isTakingLonger && (
+              <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-start gap-2.5 text-left animate-in fade-in">
+                <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-1.5">
+                  <p className="font-semibold text-blue-950">Fast-Track Entry</p>
+                  <p className="text-[11px] text-blue-800 leading-relaxed">
+                    You can proceed directly into the app now while background verification synchronizes.
+                  </p>
                   <button
                     type="button"
                     onClick={() => {
@@ -603,13 +803,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             {/* Resend OTP */}
             <div className="flex items-center justify-between text-xs pt-1 px-1">
               <button
-                onClick={() => setStep('initial')}
+                type="button"
+                onClick={() => setStep('auth')}
                 className="text-neutral-400 hover:text-neutral-700 font-medium"
               >
                 ← Back
               </button>
 
               <button
+                type="button"
                 onClick={handleResendOtp}
                 disabled={resendCooldown > 0 || loading}
                 className="text-purple-600 hover:text-purple-800 disabled:text-neutral-400 font-medium flex items-center gap-1 transition"

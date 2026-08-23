@@ -6,6 +6,9 @@ import {
   signInWithRedirect,
   getRedirectResult,
   signInWithCustomToken,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
@@ -307,6 +310,127 @@ export async function loginWithCustomToken(customToken: string, userProfile: Use
   }
 
   return userProfile;
+}
+
+/**
+ * Sign in with Email and Password
+ */
+export async function loginWithEmailPassword(email: string, pass: string): Promise<UserProfile> {
+  try {
+    const cleanEmail = email.trim().toLowerCase();
+    const result = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+    const fbUser = result.user;
+
+    let userProfile: UserProfile = {
+      uid: fbUser.uid,
+      displayName: fbUser.displayName || cleanEmail.split('@')[0] || 'Leo Explorer',
+      email: cleanEmail,
+      photoURL:
+        fbUser.photoURL ||
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      isAnonymous: false,
+      role: 'user',
+      credits: 50,
+      createdAt: Date.now(),
+      lastLoginAt: Date.now(),
+      lastActive: Date.now(),
+      chatCount: 0,
+    };
+
+    // Synchronize user from Realtime Database
+    try {
+      const userRef = ref(database, `users/${fbUser.uid}`);
+      const snap = await get(userRef);
+      if (snap.exists()) {
+        const existingData = snap.val();
+        userProfile = {
+          ...userProfile,
+          ...existingData,
+          displayName: existingData.displayName || userProfile.displayName,
+          email: cleanEmail,
+          uid: fbUser.uid,
+        };
+      }
+      await set(userRef, {
+        ...userProfile,
+        lastLoginAt: Date.now(),
+        lastActive: Date.now(),
+        updatedAt: Date.now(),
+      });
+    } catch (e) {
+      console.warn('RTDB sync notice:', e);
+    }
+
+    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    return userProfile;
+  } catch (err: any) {
+    let msg = err.message || 'Invalid email or password.';
+    if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+      msg = 'Invalid email or password. Please check your credentials.';
+    } else if (err.code === 'auth/invalid-email') {
+      msg = 'Please enter a valid email address.';
+    } else if (err.code === 'auth/too-many-requests') {
+      msg = 'Too many failed login attempts. Please try again later or reset password.';
+    }
+    const customErr = new Error(msg);
+    (customErr as any).code = err.code;
+    throw customErr;
+  }
+}
+
+/**
+ * Register with Email and Password
+ */
+export async function registerWithEmailPassword(email: string, pass: string, name?: string): Promise<UserProfile> {
+  try {
+    const cleanEmail = email.trim().toLowerCase();
+    const result = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+    const fbUser = result.user;
+
+    const displayName = (name && name.trim()) || cleanEmail.split('@')[0] || 'Leo Explorer';
+
+    try {
+      await updateProfile(fbUser, { displayName });
+    } catch (e) {}
+
+    const userProfile: UserProfile = {
+      uid: fbUser.uid,
+      displayName,
+      email: cleanEmail,
+      photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      isAnonymous: false,
+      role: 'user',
+      credits: 50,
+      createdAt: Date.now(),
+      lastLoginAt: Date.now(),
+      lastActive: Date.now(),
+      chatCount: 0,
+    };
+
+    try {
+      await set(ref(database, `users/${fbUser.uid}`), {
+        ...userProfile,
+        updatedAt: Date.now(),
+      });
+    } catch (e) {
+      console.warn('RTDB register sync notice:', e);
+    }
+
+    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    return userProfile;
+  } catch (err: any) {
+    let msg = err.message || 'Registration failed.';
+    if (err.code === 'auth/email-already-in-use') {
+      msg = 'An account with this email already exists. Please sign in instead.';
+    } else if (err.code === 'auth/weak-password') {
+      msg = 'Password should be at least 6 characters long.';
+    } else if (err.code === 'auth/invalid-email') {
+      msg = 'Please enter a valid email address.';
+    }
+    const customErr = new Error(msg);
+    (customErr as any).code = err.code;
+    throw customErr;
+  }
 }
 
 /**

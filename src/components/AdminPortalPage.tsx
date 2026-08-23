@@ -477,37 +477,153 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                   </div>
 
                   <div>
-                    <h2 className="text-sm sm:text-base font-semibold text-white">AI Engine & Vision Configuration</h2>
+                    <h2 className="text-sm sm:text-base font-semibold text-white">AI Engine & Multi-Provider Configuration</h2>
                     <p className="text-xs text-neutral-400 mt-0.5">
-                      Configure your AICredits.in endpoints, cost-effective vision models, and inference parameters.
+                      Configure Tokenin (MYT) and AICredits providers with automatic fallback and unified system prompt enforcement.
                     </p>
                   </div>
 
+                  {/* Primary Provider Toggle */}
+                  <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-neutral-200 flex items-center gap-2">
+                        <Cpu className="w-4 h-4 text-purple-400" />
+                        Primary AI Provider
+                      </label>
+                      <span className="text-[10px] bg-purple-900/60 text-purple-300 border border-purple-700/60 px-2.5 py-0.5 rounded-full font-mono">
+                        Active: {config.aiProvider === 'aicredits' ? 'AICredits' : 'Tokenin'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setConfig({ ...config, aiProvider: 'tokenin' })}
+                        className={`p-3 rounded-xl border text-xs font-medium text-left transition flex items-center justify-between ${
+                          (config.aiProvider || 'tokenin') === 'tokenin'
+                            ? 'bg-blue-950/60 border-blue-500 text-blue-200 ring-1 ring-blue-500'
+                            : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold text-white">Tokenin (MYT)</div>
+                          <div className="text-[10px] text-neutral-400">tokenin.my.id/v1</div>
+                        </div>
+                        {(config.aiProvider || 'tokenin') === 'tokenin' && <Check className="w-4 h-4 text-blue-400" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setConfig({ ...config, aiProvider: 'aicredits' })}
+                        className={`p-3 rounded-xl border text-xs font-medium text-left transition flex items-center justify-between ${
+                          config.aiProvider === 'aicredits'
+                            ? 'bg-purple-950/60 border-purple-500 text-purple-200 ring-1 ring-purple-500'
+                            : 'bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold text-white">AICredits</div>
+                          <div className="text-[10px] text-neutral-400">aicredits.in/api/v1</div>
+                        </div>
+                        {config.aiProvider === 'aicredits' && <Check className="w-4 h-4 text-purple-400" />}
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                        Active Paid Flagship Model (via AICredits)
+                      </label>
+                      <select
+                        value={config.aiCreditsModel || config.visionModel || 'gemini-2.5-flash'}
+                        onChange={(e) => setConfig({ ...config, aiCreditsModel: e.target.value, visionModel: e.target.value })}
+                        className="w-full px-3 py-2.5 rounded-xl bg-neutral-900 border border-neutral-750 text-sm sm:text-xs text-white outline-none focus:border-purple-500 font-mono"
+                      >
+                        <optgroup label="Google Paid Flagships">
+                          <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Advanced - Flagship)</option>
+                          <option value="gemini-2.0-flash">gemini-2.0-flash (Ultra-Fast 2.0)</option>
+                          <option value="gemini-1.5-pro">gemini-1.5-pro (1M+ Long Context Pro)</option>
+                          <option value="gemini-1.5-flash">gemini-1.5-flash (High-Speed Multimodal)</option>
+                        </optgroup>
+                        <optgroup label="OpenAI Flagships">
+                          <option value="gpt-4o">gpt-4o (Omni Intelligence)</option>
+                          <option value="gpt-4o-mini">gpt-4o-mini (Fast Multimodal)</option>
+                        </optgroup>
+                        <optgroup label="Anthropic Flagships">
+                          <option value="claude-3-5-sonnet">claude-3-5-sonnet (Industry Coding & Reasoning)</option>
+                        </optgroup>
+                        <optgroup label="DeepSeek / Open Weights Reasoning">
+                          <option value="deepseek-reasoner">deepseek-reasoner (DeepSeek R1 Reasoning)</option>
+                          <option value="deepseek-chat">deepseek-chat (DeepSeek V3 Coding)</option>
+                          <option value="qwen-plus">qwen-plus (Alibaba Qwen 2.5 Plus)</option>
+                          <option value="glm-4-plus">glm-4-plus (Zhipu GLM 4 Plus)</option>
+                          <option value="grok-beta">grok-beta (xAI Grok 2)</option>
+                          <option value="moonshot-v1-32k">moonshot-v1-32k (Kimi Moonshot)</option>
+                          <option value="llama-3.3-70b-instruct">llama-3.3-70b-instruct (Meta Llama 70B)</option>
+                        </optgroup>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Tokenin Credentials */}
+                  <div className="p-4 rounded-2xl bg-neutral-950 border border-blue-950/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-blue-300">Tokenin API Configuration</span>
+                      <span className="text-[10px] text-blue-400 font-mono bg-blue-950 px-2 py-0.5 rounded">https://tokenin.my.id</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-neutral-300 mb-1">Tokenin API Key</label>
+                        <input
+                          type="password"
+                          placeholder="tokenin_key_..."
+                          value={config.tokeninApiKey || ''}
+                          onChange={(e) => setConfig({ ...config, tokeninApiKey: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-white outline-none focus:border-blue-500 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-neutral-300 mb-1">Tokenin Base URL</label>
+                        <input
+                          type="text"
+                          placeholder="https://tokenin.my.id/v1"
+                          value={config.tokeninBaseUrl || 'https://tokenin.my.id/v1'}
+                          onChange={(e) => setConfig({ ...config, tokeninBaseUrl: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-white outline-none focus:border-blue-500 font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* AICredits Credentials */}
+                  <div className="p-4 rounded-2xl bg-neutral-950 border border-neutral-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-purple-300">AICredits.in Configuration</span>
+                      <span className="text-[10px] text-purple-400 font-mono bg-purple-950 px-2 py-0.5 rounded">https://aicredits.in</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-neutral-300 mb-1">AICredits API Key</label>
+                        <input
+                          type="password"
+                          placeholder="sk-aicredits-..."
+                          value={config.aiCreditsApiKey || ''}
+                          onChange={(e) => setConfig({ ...config, aiCreditsApiKey: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-neutral-300 mb-1">AICredits Base URL</label>
+                        <input
+                          type="text"
+                          value={config.aiCreditsBaseUrl || 'https://api.aicredits.in/v1'}
+                          onChange={(e) => setConfig({ ...config, aiCreditsBaseUrl: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                        AICredits API Base URL
-                      </label>
-                      <input
-                        type="text"
-                        value={config.aiCreditsBaseUrl}
-                        onChange={(e) => setConfig({ ...config, aiCreditsBaseUrl: e.target.value })}
-                        className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm sm:text-xs text-white outline-none focus:border-purple-500 font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                        Cheapest Vision Model (Multimodal & OCR)
-                      </label>
-                      <input
-                        type="text"
-                        value={config.visionModel}
-                        onChange={(e) => setConfig({ ...config, visionModel: e.target.value })}
-                        className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm sm:text-xs text-white outline-none focus:border-purple-500 font-mono"
-                      />
-                    </div>
-
                     <div>
                       <label className="block text-xs font-medium text-neutral-300 mb-1.5">
                         Temperature ({config.temperature})
@@ -538,6 +654,18 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                         className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm sm:text-xs text-white outline-none focus:border-purple-500"
                       />
                     </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-neutral-300">
+                      <input
+                        type="checkbox"
+                        checked={config.enableProviderFallback ?? true}
+                        onChange={(e) => setConfig({ ...config, enableProviderFallback: e.target.checked })}
+                        className="rounded accent-purple-600"
+                      />
+                      <span className="font-semibold text-purple-400">Enable Automatic Provider Fallback (Tokenin ⇄ AICredits)</span>
+                    </label>
                   </div>
 
                   <div className="pt-4 border-t border-neutral-800 flex justify-end">

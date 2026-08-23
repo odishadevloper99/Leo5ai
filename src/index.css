@@ -18,6 +18,9 @@
     position: fixed;
     inset: 0;
     -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   body {
@@ -25,10 +28,13 @@
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
+    background-color: #faf9fe;
+    color: #18181b;
   }
   
   h1, h2, h3, h4, .font-display {
     font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+    letter-spacing: -0.02em;
   }
 
   code, pre, .font-mono {
@@ -50,16 +56,16 @@
   }
 }
 
-/* Custom smooth scrollbar */
+/* Custom ultra-smooth scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(147, 112, 219, 0.25);
+  background: rgba(147, 112, 219, 0.22);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
@@ -72,34 +78,40 @@
     transform: translateY(0px) scale(1);
   }
   50% {
-    transform: translateY(-6px) scale(1.02);
+    transform: translateY(-8px) scale(1.02);
   }
 }
 
 @keyframes pulseGlow {
   0%, 100% {
-    opacity: 0.8;
-    filter: drop-shadow(0 12px 24px rgba(168, 85, 247, 0.3));
+    opacity: 0.85;
+    filter: drop-shadow(0 14px 28px rgba(168, 85, 247, 0.35));
   }
   50% {
     opacity: 1;
-    filter: drop-shadow(0 16px 36px rgba(168, 85, 247, 0.45));
+    filter: drop-shadow(0 20px 42px rgba(168, 85, 247, 0.55));
   }
 }
 
 .animate-float-orb {
-  animation: floatOrb 6s ease-in-out infinite, pulseGlow 4s ease-in-out infinite;
+  animation: floatOrb 6s cubic-bezier(0.45, 0, 0.55, 1) infinite, pulseGlow 4s ease-in-out infinite;
 }
 
 /* Glass & Card styles */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
 }
 
 .glass-subtle {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Crisp selection styling */
+::selection {
+  background-color: rgba(147, 51, 234, 0.2);
+  color: #581c87;
 }
