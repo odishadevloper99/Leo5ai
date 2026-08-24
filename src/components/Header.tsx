@@ -10,12 +10,14 @@ import {
   Menu,
   Check,
   Crown,
-  Database,
-  BrainCircuit
+  Layers,
+  Search
 } from 'lucide-react';
-import { ChatSession } from '../types';
+import { ChatSession, AIModelDefinition } from '../types';
 import { api } from '../lib/api';
 import { LeoLogoMark } from './LeoLogo';
+import { ModelLogo } from './ModelLogo';
+import { AI_MODELS, DEFAULT_MODEL_ID } from '../data/models';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -25,6 +27,7 @@ interface HeaderProps {
   onShare: () => void;
   selectedModel: string;
   onSelectModel: (m: string) => void;
+  onOpenModelSelector?: () => void;
   userPlan?: string;
 }
 
@@ -36,23 +39,13 @@ export const Header: React.FC<HeaderProps> = ({
   onShare,
   selectedModel,
   onSelectModel,
+  onOpenModelSelector,
   userPlan
 }) => {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const [freeTokeninModels, setFreeTokeninModels] = useState<string[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.getModelAccess()
-      .then((data) => {
-        if (!cancelled) setFreeTokeninModels(data.freeTokeninModels || []);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -67,27 +60,28 @@ export const Header: React.FC<HeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const engineModes = [
-    { id: 'default', name: 'Leo AI Standard', desc: 'Optimized for conversation, writing, and everyday problem solving', icon: Sparkles, premium: false },
-    { id: 'vision', name: 'Leo AI Vision', desc: 'High-speed image understanding, OCR, and diagram reasoning', icon: Eye, premium: false },
-    { id: 'reasoning', name: 'Leo AI Deep Reasoner', desc: 'Extended cognitive synthesis for coding and complex logic', icon: Zap, premium: false },
-    { id: 'myt/grok-4.6-free', name: 'Grok 4.6', desc: 'Tokenin model', icon: Sparkles, premium: true },
-    { id: 'myt/kimi-k3-free', name: 'Kimi K3', desc: 'Tokenin model', icon: Sparkles, premium: true },
-    { id: 'myt/glm-5.3-free', name: 'GLM 5.3', desc: 'Tokenin model', icon: Sparkles, premium: true },
-    { id: 'myt/qwen3.8-max-free', name: 'Qwen 3.8 Max', desc: 'Tokenin model', icon: Zap, premium: true },
-    { id: 'myt/deepseek-v4-pro-free', name: 'DeepSeek V4 Pro', desc: 'Tokenin model', icon: BrainCircuit, premium: true },
-  ];
-  const currentMode = engineModes.find((m) => m.id === selectedModel) || engineModes[0];
-  const isPaidPlan = ['pro', 'ultra', 'premium', 'admin'].includes(String(userPlan || '').toLowerCase());
-  const isActuallyPremium = (mode: any) => mode.premium && !isPaidPlan && !freeTokeninModels.includes(mode.id);
-  const isPremium = isActuallyPremium(currentMode);
+  // Resolve current active model definition
+  const activeModelDef = AI_MODELS.find(
+    (m) => m.id === selectedModel || (selectedModel === 'default' && m.id === DEFAULT_MODEL_ID)
+  ) || {
+    id: selectedModel || DEFAULT_MODEL_ID,
+    name: selectedModel.replace('google/', '').replace('openai/', '').replace('deepseek/', '').replace('anthropic/', '').replace('mistralai/', '') || 'Gemini 2.0 Flash',
+    company: 'AI Engine',
+    category: 'vision',
+    badges: ['Active'],
+    iconKey: 'gemini',
+    description: 'Active model engine',
+    provider: 'aicredits'
+  };
+
+  const quickPriorityModels = AI_MODELS.slice(0, 7);
 
   return (
     <header
       id="main-app-header"
       className="h-16 px-4 md:px-6 flex items-center justify-between border-b border-purple-100/50 bg-white/80 backdrop-blur-md sticky top-0 z-30"
     >
-      {/* Left: Sidebar toggle (if closed or mobile) + Clean Model/Engine Selector */}
+      {/* Left: Sidebar toggle + Clean Model Selector */}
       <div className="flex items-center gap-3">
         {!isSidebarOpen && (
           <button
@@ -100,69 +94,86 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* Clean Model Selector dropdown matching mockup */}
+        {/* Clean Model Selector Dropdown & Modal Trigger */}
         <div className="relative" ref={dropdownRef}>
           <button
             id="header-model-selector-btn"
             onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-neutral-50 hover:bg-neutral-100/80 border border-neutral-200/70 rounded-xl text-xs font-medium text-neutral-800 transition"
+            className="flex items-center gap-2 px-3 py-1.5 bg-neutral-50 hover:bg-neutral-100/80 border border-neutral-200/70 rounded-xl text-xs font-medium text-neutral-800 transition shadow-xs group"
           >
-            <LeoLogoMark className="w-5 h-5 rounded-md" />
-            <span className="font-semibold text-neutral-900">Leo AI</span>
-            <span className="text-[11px] text-neutral-400 hidden sm:inline">
-              ({currentMode.name.replace('Leo AI ', '')})
+            <ModelLogo iconKey={activeModelDef.iconKey} modelId={activeModelDef.id} size="xs" />
+            <span className="font-semibold text-neutral-900 group-hover:text-purple-700 transition">
+              {activeModelDef.name}
             </span>
+            {activeModelDef.badges && activeModelDef.badges[0] && (
+              <span className="text-[10px] px-1.5 py-0.2 bg-purple-50 text-purple-700 border border-purple-200/60 rounded-full font-medium hidden sm:inline">
+                {activeModelDef.badges[0]}
+              </span>
+            )}
             <ChevronDown className="w-3.5 h-3.5 text-neutral-400 ml-0.5" />
           </button>
 
-          {/* Clean Engine Modes Dropdown */}
+          {/* Model Selection Dropdown Menu */}
           {modelDropdownOpen && (
-            <div className="absolute left-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-neutral-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
-              <div className="px-2 py-1.5 text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
-                Select Intelligence Mode
+            <div className="absolute left-0 mt-2 w-72 sm:w-80 bg-white rounded-2xl shadow-2xl border border-neutral-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="px-2.5 py-1.5 flex items-center justify-between text-[11px] font-semibold text-neutral-400 uppercase tracking-wider border-b border-neutral-100 mb-1">
+                <span>Select AI Model</span>
+                <span className="text-[10px] text-purple-600 font-normal">AICredits Hub</span>
               </div>
-              <div className="space-y-1">
-                {engineModes.map((mode) => {
-                  const Icon = mode.icon;
-                  const isSelected = selectedModel === mode.id;
+
+              <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+                {quickPriorityModels.map((m) => {
+                  const isSelected = selectedModel === m.id || (selectedModel === 'default' && m.id === DEFAULT_MODEL_ID);
                   return (
                     <button
-                      key={mode.id}
+                      key={m.id}
                       onClick={() => {
-                        if (isActuallyPremium(mode)) {
-                          window.open('https://t.me/Unknownboy1525', '_blank', 'noopener,noreferrer');
-                          return;
-                        }
-                        onSelectModel(mode.id);
+                        onSelectModel(m.id);
                         setModelDropdownOpen(false);
                       }}
-                      className={`w-full text-left p-2.5 rounded-xl flex items-start gap-2.5 transition ${
+                      className={`w-full text-left p-2 rounded-xl flex items-center justify-between gap-2.5 transition ${
                         isSelected
-                          ? 'bg-purple-50 text-purple-950 ring-1 ring-purple-200'
+                          ? 'bg-purple-50 text-purple-950 ring-1 ring-purple-200 font-medium'
                           : 'hover:bg-neutral-50 text-neutral-800'
                       }`}
                     >
-                      <div
-                        className={`p-1.5 rounded-lg mt-0.5 ${
-                          isSelected
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-neutral-100 text-neutral-600'
-                        }`}
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold">{mode.name}</span>
-                            {isActuallyPremium(mode) && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Premium</span>}
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <ModelLogo iconKey={m.iconKey} modelId={m.id} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold truncate">{m.name}</span>
+                            {m.isDefault && (
+                              <span className="text-[9px] px-1 bg-emerald-100 text-emerald-700 font-semibold rounded">
+                                Default
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-neutral-400 truncate">
+                            {m.company} • {m.totalCostPer1M ? `$${m.totalCostPer1M.toFixed(2)}/1M` : 'Standard'}
+                          </p>
                         </div>
-                        <p className="text-[11px] text-neutral-500 line-clamp-1">{mode.desc}</p>
                       </div>
-                      {isSelected && <Check className="w-4 h-4 text-purple-600 mt-1" />}
+                      {isSelected && <Check className="w-4 h-4 text-purple-600 shrink-0" />}
                     </button>
                   );
                 })}
               </div>
+
+              {/* View All Models Action Button */}
+              {onOpenModelSelector && (
+                <div className="pt-2 mt-1 border-t border-neutral-100">
+                  <button
+                    onClick={() => {
+                      setModelDropdownOpen(false);
+                      onOpenModelSelector();
+                    }}
+                    className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-medium flex items-center justify-center gap-2 shadow-xs transition"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Browse All Models & Details...</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

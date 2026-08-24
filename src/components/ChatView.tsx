@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { Message, UserProfile } from '../types';
 import { LeoLogoMark } from './LeoLogo';
+import { ModelLogo } from './ModelLogo';
+import { AI_MODELS, DEFAULT_MODEL_ID } from '../data/models';
 
 interface ChatViewProps {
   messages: Message[];
@@ -33,6 +35,8 @@ interface ChatViewProps {
   onRegenerate: () => void;
   user: UserProfile;
   onOpenSavedPrompts: () => void;
+  selectedModel?: string;
+  onOpenModelSelector?: () => void;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({
@@ -41,7 +45,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onSendMessage,
   onRegenerate,
   user,
-  onOpenSavedPrompts
+  onOpenSavedPrompts,
+  selectedModel,
+  onOpenModelSelector
 }) => {
   const [inputText, setInputText] = useState('');
   const [isDeepResearch, setIsDeepResearch] = useState(false);
@@ -56,6 +62,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Resolve active model definition
+  const activeModelDef = AI_MODELS.find(
+    (m) => m.id === selectedModel || (selectedModel === 'default' && m.id === DEFAULT_MODEL_ID)
+  ) || {
+    id: selectedModel || DEFAULT_MODEL_ID,
+    name: selectedModel ? selectedModel.split('/').pop() || 'Gemini 2.0 Flash' : 'Gemini 2.0 Flash',
+    iconKey: 'gemini',
+    provider: 'aicredits'
+  };
 
   // Auto scroll
   useEffect(() => {
@@ -543,7 +559,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
           {/* Bottom Bar Controls */}
           <div className="flex items-center justify-between mt-2 pt-2 border-t border-neutral-100">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {onOpenModelSelector && (
+                <button
+                  type="button"
+                  onClick={onOpenModelSelector}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-neutral-50 hover:bg-purple-50 text-neutral-800 hover:text-purple-900 border border-neutral-200/80 hover:border-purple-200 transition active:scale-95 group shadow-2xs"
+                  title="Change AI Model"
+                >
+                  <ModelLogo iconKey={activeModelDef.iconKey} modelId={activeModelDef.id} size="xs" />
+                  <span className="font-semibold max-w-[110px] truncate">{activeModelDef.name}</span>
+                  <ChevronDown className="w-3 h-3 text-neutral-400 group-hover:text-purple-600 transition" />
+                </button>
+              )}
+
               <button
                 onClick={() => setIsDeepResearch(!isDeepResearch)}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition active:scale-95 ${

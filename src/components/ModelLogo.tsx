@@ -38,6 +38,7 @@ export const ModelLogo: React.FC<ModelLogoProps> = ({
   const isDeepSeek = normalizedKey === 'deepseek' || normalizedId.includes('deepseek');
   const isOpenAI = normalizedKey === 'openai' || normalizedKey === 'gpt' || normalizedId.includes('gpt') || normalizedId.includes('openai');
   const isClaude = normalizedKey === 'claude' || normalizedId.includes('claude') || normalizedId.includes('anthropic');
+  const isMistral = normalizedKey === 'mistral' || normalizedId.includes('mistral') || normalizedId.includes('codestral');
   const isMeta = normalizedKey === 'llama' || normalizedId.includes('llama') || normalizedId.includes('meta');
 
   const baseSizeClass = sizeClasses[size] || sizeClasses.md;
@@ -285,6 +286,28 @@ export const ModelLogo: React.FC<ModelLogoProps> = ({
       );
     }
 
+    // 10. Mistral AI (Iconic Orange Stepped Pixel Chevron)
+    if (isMistral) {
+      return (
+        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1.2" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="mistral-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#FF7000" />
+              <stop offset="50%" stopColor="#FF9E00" />
+              <stop offset="100%" stopColor="#FFD000" />
+            </linearGradient>
+          </defs>
+          <g fill="url(#mistral-grad)">
+            <rect x="6" y="8" width="5" height="20" rx="1.5" />
+            <rect x="25" y="8" width="5" height="20" rx="1.5" />
+            <rect x="11" y="13" width="5" height="15" rx="1.5" />
+            <rect x="20" y="13" width="5" height="15" rx="1.5" />
+            <rect x="15.5" y="18" width="5" height="10" rx="1.5" />
+          </g>
+        </svg>
+      );
+    }
+
     // Default Fallback Star Sparkle
     return (
       <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1.5" xmlns="http://www.w3.org/2000/svg">
@@ -306,6 +329,7 @@ export const ModelLogo: React.FC<ModelLogoProps> = ({
     if (isQwen) return 'bg-gradient-to-br from-[#052631] via-[#072029] to-[#041820] border-cyan-500/40 text-cyan-300 shadow-cyan-950/60 ring-1 ring-cyan-400/20';
     if (isGlm) return 'bg-gradient-to-br from-[#0d1738] via-[#0d142d] to-[#090e21] border-blue-500/40 text-blue-300 shadow-blue-950/60 ring-1 ring-blue-400/20';
     if (isKimi) return 'bg-gradient-to-br from-[#240e3b] via-[#1c0b2f] to-[#140722] border-purple-500/40 text-purple-300 shadow-purple-950/60 ring-1 ring-purple-400/20';
+    if (isMistral) return 'bg-gradient-to-br from-[#2f1604] via-[#241103] to-[#170a02] border-amber-500/40 text-amber-300 shadow-amber-950/60 ring-1 ring-amber-400/20';
     if (isMeta) return 'bg-gradient-to-br from-[#06223b] via-[#081d30] to-[#051524] border-sky-500/40 text-sky-300 shadow-sky-950/60 ring-1 ring-sky-400/20';
     return 'bg-neutral-900 border-neutral-800 text-neutral-200 ring-1 ring-white/5';
   };

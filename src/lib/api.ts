@@ -1,4 +1,15 @@
-import { AIConfig, ChatSession, MemoMemoryItem, Message, SystemStats, UserProfile } from '../types';
+import {
+  AIConfig,
+  ChatSession,
+  DailyUsageLimitSettings,
+  MemoMemoryItem,
+  Message,
+  SystemStats,
+  UserProfile,
+  UserUsageStatus,
+  AdminUsageAnalytics,
+  DynamicModelsResponse
+} from '../types';
 
 const API_BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
 
@@ -95,6 +106,11 @@ export const api = {
     throw lastError || new Error('Failed to communicate with Leo AI engine');
   },
 
+  async getAvailableModels(): Promise<DynamicModelsResponse> {
+    const res = await fetch(`${API_BASE}/api/models`);
+    return safeFetchJson(res, 'Failed to fetch dynamic models from server');
+  },
+
   async getModelAccess(): Promise<{ freeTokeninModels: string[] }> {
     const res = await fetch(`${API_BASE}/api/models/access`);
     return safeFetchJson(res, 'Failed to load model access settings');
@@ -182,6 +198,57 @@ export const api = {
       headers: { Authorization: `Bearer ${adminAuthToken}` },
     });
     return safeFetchJson(res, 'Failed to reset daily usage');
+  },
+
+  async getAdminUsageSettings(): Promise<DailyUsageLimitSettings> {
+    const res = await fetch(`${API_BASE}/api/admin/usage/settings`, {
+      headers: {
+        Authorization: `Bearer ${adminAuthToken}`,
+      },
+    });
+    return safeFetchJson(res, 'Failed to load usage settings');
+  },
+
+  async saveAdminUsageSettings(settings: Partial<DailyUsageLimitSettings>): Promise<{ success: boolean; settings: DailyUsageLimitSettings }> {
+    const res = await fetch(`${API_BASE}/api/admin/usage/settings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminAuthToken}`,
+      },
+      body: JSON.stringify(settings),
+    });
+    return safeFetchJson(res, 'Failed to save usage settings');
+  },
+
+  async getAdminUsageStats(): Promise<AdminUsageAnalytics> {
+    const res = await fetch(`${API_BASE}/api/admin/usage/stats`, {
+      headers: {
+        Authorization: `Bearer ${adminAuthToken}`,
+      },
+    });
+    return safeFetchJson(res, 'Failed to load usage analytics');
+  },
+
+  async resetAllDailyUsage(): Promise<{ success: boolean; message: string; resetCount: number }> {
+    const res = await fetch(`${API_BASE}/api/admin/usage/reset-all`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminAuthToken}`,
+      },
+    });
+    return safeFetchJson(res, 'Failed to reset all daily usage');
+  },
+
+  async getUserUsage(userId?: string): Promise<UserUsageStatus> {
+    const token = localStorage.getItem('leo_auth_token') || '';
+    const res = await fetch(`${API_BASE}/api/usage/status?userId=${encodeURIComponent(userId || '')}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'x-user-id': userId || '',
+      },
+    });
+    return safeFetchJson(res, 'Failed to retrieve usage status');
   },
 
   async getMemories(userId = 'default-user'): Promise<MemoMemoryItem[]> {
@@ -408,6 +475,46 @@ export const api = {
       },
     });
     return safeFetchJson(res, 'Unauthenticated or user not found');
+  },
+
+  async createCashfreeOrder(params: {
+    planId: string;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    userId: string;
+  }): Promise<{
+    success: boolean;
+    orderId?: string;
+    paymentSessionId?: string;
+    isSimulated?: boolean;
+    env?: 'SANDBOX' | 'PRODUCTION';
+    message?: string;
+  }> {
+    const res = await fetch(`${API_BASE}/api/payment/cashfree/order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return safeFetchJson(res, 'Failed to create payment order');
+  },
+
+  async verifyCashfreeOrder(params: {
+    orderId: string;
+    userId: string;
+  }): Promise<{
+    success: boolean;
+    order?: any;
+    user?: UserProfile;
+    creditsAdded?: number;
+    message?: string;
+  }> {
+    const res = await fetch(`${API_BASE}/api/payment/cashfree/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return safeFetchJson(res, 'Failed to verify payment');
   },
 
   async getHealth() {

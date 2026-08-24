@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   X,
   Search,
@@ -6,16 +6,16 @@ import {
   Info,
   Sparkles,
   Zap,
-  Eye,
-  Code2,
-  BrainCircuit,
   Coins,
   ChevronRight,
-  SlidersHorizontal,
-  Star
+  ShieldCheck,
+  Tag,
+  DollarSign,
+  Layers
 } from 'lucide-react';
 import { AIModelDefinition } from '../types';
 import { AI_MODELS } from '../data/models';
+import { api } from '../lib/api';
 import { ModelLogo } from './ModelLogo';
 
 interface ModelSelectorModalProps {
@@ -32,29 +32,69 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
   onSelectModel,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState<'all' | 'text' | 'vision' | 'reasoning' | 'coding'>('all');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'cheap' | 'quality' | 'reasoning' | 'coding' | 'vision'>('all');
   const [hoveredInfoId, setHoveredInfoId] = useState<string | null>(null);
+  const [models, setModels] = useState<AIModelDefinition[]>(AI_MODELS);
+  const [defaultModelId, setDefaultModelId] = useState<string>('google/gemini-2.0-flash');
+  const [isLoadingDynamic, setIsLoadingDynamic] = useState(false);
 
-  const categories: { id: 'all' | 'text' | 'vision' | 'reasoning' | 'coding'; label: string }[] = [
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let isMounted = true;
+    const loadDynamicModels = async () => {
+      setIsLoadingDynamic(true);
+      try {
+        const res = await api.getAvailableModels();
+        if (isMounted && res && res.models && res.models.length > 0) {
+          setModels(res.models);
+          if (res.defaultModel) {
+            setDefaultModelId(res.defaultModel);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not load dynamic models, using static fallback:', err);
+      } finally {
+        if (isMounted) setIsLoadingDynamic(false);
+      }
+    };
+
+    loadDynamicModels();
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
+
+  const categories: { id: 'all' | 'cheap' | 'quality' | 'reasoning' | 'coding' | 'vision'; label: string }[] = [
     { id: 'all', label: 'All Models' },
-    { id: 'text', label: 'Text' },
-    { id: 'reasoning', label: 'Reasoning' },
-    { id: 'coding', label: 'Code' },
-    { id: 'vision', label: 'Vision' },
+    { id: 'cheap', label: '⚡ Cheap / Default' },
+    { id: 'quality', label: '✨ Better Quality' },
+    { id: 'reasoning', label: '🧠 Reasoning' },
+    { id: 'coding', label: '💻 Code' },
+    { id: 'vision', label: '👁️ Vision' },
   ];
 
   const filteredModels = useMemo(() => {
-    return AI_MODELS.filter((m) => {
-      const matchesCategory = activeCategory === 'all' || m.category === activeCategory;
+    return models.filter((m) => {
+      let matchesCategory = true;
+      if (activeCategory === 'cheap') {
+        matchesCategory = m.tier === 'cheap' || m.id.includes('mini') || m.id.includes('flash') || m.id.includes('small') || m.isDefault === true;
+      } else if (activeCategory === 'quality') {
+        matchesCategory = m.tier === 'quality' || m.id.includes('pro') || m.id.includes('r1') || m.id.includes('reasoner') || m.id.includes('sonnet') || (m.id.includes('gpt-4o') && !m.id.includes('mini'));
+      } else if (activeCategory !== 'all') {
+        matchesCategory = m.category === activeCategory;
+      }
+
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !q ||
         m.name.toLowerCase().includes(q) ||
         m.company.toLowerCase().includes(q) ||
-        m.description.toLowerCase().includes(q);
+        m.description.toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     });
-  }, [searchQuery, activeCategory]);
+  }, [models, searchQuery, activeCategory]);
 
   if (!isOpen) return null;
 
@@ -82,12 +122,12 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
           </button>
 
           <h2 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
-            <span>Models</span>
+            <span>Model Selection</span>
           </h2>
 
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-purple-950/60 border border-purple-700/40 text-purple-300">
-              AI Engines
+              AICredits Hub
             </span>
           </div>
         </div>
@@ -98,7 +138,7 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
             <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search models..."
+              placeholder="Search by model name or provider..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-2.5 bg-[#141b2d] border border-neutral-800 focus:border-purple-500 rounded-xl text-xs text-neutral-100 placeholder-neutral-500 outline-none transition focus:ring-2 focus:ring-purple-500/20"
@@ -144,6 +184,7 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
             filteredModels.map((model) => {
               const isSelected = selectedModelId === model.id;
               const isHovered = hoveredInfoId === model.id;
+              const isCheapestDefault = model.id === defaultModelId || model.isDefault;
 
               return (
                 <div
@@ -152,7 +193,7 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
                     onSelectModel(model.id);
                     onClose();
                   }}
-                  className={`pt-2 pb-2 px-3 rounded-2xl flex items-center justify-between gap-3 cursor-pointer transition group ${
+                  className={`pt-2.5 pb-2.5 px-3 rounded-2xl flex items-center justify-between gap-3 cursor-pointer transition group ${
                     isSelected
                       ? 'bg-purple-950/40 border border-purple-600/40 text-white'
                       : 'hover:bg-[#141b2d]/80 border border-transparent'
@@ -162,10 +203,15 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <ModelLogo iconKey={model.iconKey} modelId={model.id} size="lg" isNew={model.isNew} />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-sm text-neutral-100 group-hover:text-purple-200 transition">
                           {model.name}
                         </span>
+                        {isCheapestDefault && (
+                          <span className="text-[9px] px-1.5 py-0.5 bg-emerald-950/80 border border-emerald-600/40 text-emerald-400 font-bold rounded-full uppercase tracking-wider">
+                            Cheapest Default
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -178,41 +224,48 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
                           <Info className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      <p className="text-[11px] text-neutral-400 truncate">
-                        {model.company}
-                      </p>
+
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[11px] text-neutral-400 truncate font-mono">
+                          {model.id}
+                        </span>
+                        {model.totalCostPer1M !== undefined && (
+                          <span className="text-[10px] text-amber-400/90 font-medium">
+                            ~${model.totalCostPer1M.toFixed(2)}/1M tokens
+                          </span>
+                        )}
+                      </div>
+
                       {isHovered && (
-                        <p className="text-[10px] text-purple-300 mt-1 leading-relaxed bg-[#1b233a] p-1.5 rounded-lg border border-neutral-700/60">
-                          {model.description}
-                        </p>
+                        <div className="text-[10px] text-purple-300 mt-1 leading-relaxed bg-[#1b233a] p-2 rounded-lg border border-neutral-700/60 space-y-1">
+                          <p>{model.description}</p>
+                          {model.inputCostPer1M !== undefined && (
+                            <div className="flex items-center gap-3 text-neutral-300 pt-1 border-t border-neutral-700/40 font-mono">
+                              <span>In: ${model.inputCostPer1M.toFixed(3)}/1M</span>
+                              <span>Out: ${model.outputCostPer1M?.toFixed(3)}/1M</span>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
 
                   {/* Right: Badges & Select Indicator */}
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {model.badges.map((badge, idx) => (
+                    {model.badges.slice(0, 2).map((badge, idx) => (
                       <span
                         key={idx}
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                          badge === '50% off'
-                            ? 'bg-emerald-950/60 text-emerald-400 border-emerald-700/50'
-                            : badge === 'Anon'
-                            ? 'bg-sky-950/60 text-sky-300 border-sky-800/40'
-                            : badge === 'Private'
-                            ? 'bg-neutral-800/90 text-neutral-300 border-neutral-700'
-                            : badge === 'Uncensored'
-                            ? 'bg-amber-950/60 text-amber-300 border-amber-800/40'
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border hidden sm:inline-block ${
+                          badge.includes('Cheapest') || badge.includes('Cheap')
+                            ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/50'
+                            : badge.includes('Quality') || badge.includes('Flagship')
+                            ? 'bg-amber-950/60 text-amber-300 border-amber-700/50'
                             : 'bg-purple-950/60 text-purple-300 border-purple-800/40'
                         }`}
                       >
                         {badge}
                       </span>
                     ))}
-
-                    <div className="w-5 h-5 flex items-center justify-center text-amber-400/80 ml-0.5">
-                      <Coins className="w-3.5 h-3.5" />
-                    </div>
 
                     {isSelected ? (
                       <div className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-sm ml-1">
@@ -234,13 +287,14 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
         <div className="px-5 py-3 border-t border-neutral-800/60 bg-[#0c111e] flex items-center justify-between text-xs text-neutral-400">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Unified System Persona Active</span>
+            <span>Fallback Chain: Top 3 Auto-Recovery Active</span>
           </div>
-          <span className="text-[11px] text-neutral-500">
-            Powered by AICredits & Leo AI
+          <span className="text-[11px] text-neutral-500 font-medium">
+            Dynamic Pricing & Model Discovery
           </span>
         </div>
       </div>
     </div>
   );
 };
+

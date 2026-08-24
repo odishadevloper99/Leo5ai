@@ -10,7 +10,9 @@ import { ExportModal } from './components/ExportModal';
 import { ExploreModal } from './components/ExploreModal';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { HelpModal } from './components/HelpModal';
+import { ModelSelectorModal } from './components/ModelSelectorModal';
 import { INITIAL_CHAT_SESSIONS } from './lib/prompts';
+import { getStoredSessions, saveStoredSessions } from './lib/storage';
 import {
   auth,
   database,
@@ -57,13 +59,7 @@ export default function App() {
   }, []);
 
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    const saved = localStorage.getItem('leo_chat_sessions');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {}
-    }
-    return INITIAL_CHAT_SESSIONS;
+    return getStoredSessions();
   });
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -80,10 +76,11 @@ export default function App() {
   const [isExploreOpen, setIsExploreOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
 
-  // Sync sessions to localStorage
+  // Sync sessions safely to localStorage
   useEffect(() => {
-    localStorage.setItem('leo_chat_sessions', JSON.stringify(sessions));
+    saveStoredSessions(sessions);
   }, [sessions]);
 
   // Reactive Firebase Auth State Listener
@@ -202,19 +199,27 @@ export default function App() {
       console.warn('[Leo AI Auth] OAuth URL parse note:', e);
     }
 
-    // 1. Try Firebase Realtime Database
-    loadChatsFromRealtimeDB(user.uid).then((rtdbChats) => {
-      if (rtdbChats && rtdbChats.length > 0) {
-        setSessions(rtdbChats);
-        return;
-      }
-      // 2. Fallback to Express backend store
-      api.getChats(user.uid).then((backendChats) => {
-        if (backendChats && backendChats.length > 0) {
-          setSessions(backendChats);
+    // 1. Try Firebase Realtime Database with robust error handling
+    loadChatsFromRealtimeDB(user.uid)
+      .then((rtdbChats) => {
+        if (rtdbChats && rtdbChats.length > 0) {
+          setSessions(rtdbChats);
+          return;
         }
-      }).catch(() => {});
-    });
+        // 2. Fallback to Express backend store
+        api.getChats(user.uid)
+          .then((backendChats) => {
+            if (backendChats && backendChats.length > 0) {
+              setSessions(backendChats);
+            }
+          })
+          .catch((err) => {
+            console.warn('[Leo AI Backend chats notice]:', err?.message || err);
+          });
+      })
+      .catch((err) => {
+        console.warn('[Leo AI RTDB chats notice]:', err?.message || err);
+      });
   }, [user.uid]);
 
   // Global Keyboard Shortcut (⌘K / Ctrl+K)
@@ -233,24 +238,11 @@ export default function App() {
   const isLoggedIn = !user.isAnonymous;
 
   // Auto-open the login modal the first time a guest lands on the app.
-  // (Kept above the /admin early-return below so hook order stays stable.)
   useEffect(() => {
     if (!isLoggedIn && currentRoute !== '/admin') {
       setIsAuthOpen(true);
     }
   }, [isLoggedIn, currentRoute]);
-
-  // If user navigated directly to /admin, render the dedicated Admin Portal
-  if (currentRoute === '/admin') {
-    return (
-      <AdminPortalPage
-        onExit={() => {
-          window.history.pushState({}, '', '/');
-          setCurrentRoute('/');
-        }}
-      />
-    );
-  }
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
@@ -406,10 +398,11 @@ export default function App() {
 
   // Share Chat
   const handleShare = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
-      alert('🔗 Leo AI conversation link copied to clipboard!');
-    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(window.location.href).catch(() => {});
+      }
+    } catch (e) {}
   };
 
   if (currentRoute === '/admin') {
@@ -509,6 +502,7 @@ export default function App() {
             onShare={handleShare}
             selectedModel={selectedModel}
             onSelectModel={setSelectedModel}
+            onOpenModelSelector={() => setIsModelSelectorOpen(true)}
             userPlan={user.plan}
           />
 
@@ -522,6 +516,8 @@ export default function App() {
                 onOpenHelp={() => setIsHelpOpen(true)}
                 onOpenLanguage={() => alert('Leo AI supports over 95 languages automatically. Simply type in any language!')}
                 onOpenDiscord={() => window.open('https://discord.gg', '_blank')}
+                selectedModel={selectedModel}
+                onOpenModelSelector={() => setIsModelSelectorOpen(true)}
               />
             ) : (
               <ChatView
@@ -531,6 +527,8 @@ export default function App() {
                 onRegenerate={handleRegenerate}
                 user={user}
                 onOpenSavedPrompts={() => setIsPromptLibraryOpen(true)}
+                selectedModel={selectedModel}
+                onOpenModelSelector={() => setIsModelSelectorOpen(true)}
               />
             )}
           </main>
@@ -538,6 +536,16 @@ export default function App() {
       </div>
 
       {/* Modals for Users */}
+      <ModelSelectorModal
+        isOpen={isModelSelectorOpen}
+        onClose={() => setIsModelSelectorOpen(false)}
+        selectedModelId={selectedModel}
+        onSelectModel={(id) => {
+          setSelectedModel(id);
+          setIsModelSelectorOpen(false);
+        }}
+      />
+
       <PromptLibraryModal
         isOpen={isPromptLibraryOpen}
         onClose={() => setIsPromptLibraryOpen(false)}

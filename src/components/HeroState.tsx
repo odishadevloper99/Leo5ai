@@ -8,9 +8,12 @@ import {
   Languages,
   X,
   ArrowUp,
-  BrainCircuit
+  BrainCircuit,
+  ChevronDown
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { ModelLogo } from './ModelLogo';
+import { AI_MODELS, DEFAULT_MODEL_ID } from '../data/models';
 
 interface HeroStateProps {
   user: UserProfile;
@@ -19,6 +22,8 @@ interface HeroStateProps {
   onOpenHelp: () => void;
   onOpenLanguage: () => void;
   onOpenDiscord: () => void;
+  selectedModel?: string;
+  onOpenModelSelector?: () => void;
 }
 
 export const HeroState: React.FC<HeroStateProps> = ({
@@ -27,7 +32,9 @@ export const HeroState: React.FC<HeroStateProps> = ({
   onOpenSavedPrompts,
   onOpenHelp,
   onOpenLanguage,
-  onOpenDiscord
+  onOpenDiscord,
+  selectedModel,
+  onOpenModelSelector
 }) => {
   const [inputText, setInputText] = useState('');
   const [isDeepResearch, setIsDeepResearch] = useState(false);
@@ -38,7 +45,17 @@ export const HeroState: React.FC<HeroStateProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const firstName = user.displayName?.split(' ')[0] || 'Jackson';
+  const firstName = user.displayName?.split(' ')[0] || 'Explorer';
+
+  // Resolve active model
+  const activeModelDef = AI_MODELS.find(
+    (m) => m.id === selectedModel || (selectedModel === 'default' && m.id === DEFAULT_MODEL_ID)
+  ) || {
+    id: selectedModel || DEFAULT_MODEL_ID,
+    name: selectedModel ? selectedModel.split('/').pop() || 'Gemini 2.0 Flash' : 'Gemini 2.0 Flash',
+    iconKey: 'gemini',
+    provider: 'aicredits'
+  };
 
   // Handle Image Upload / Vision
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,8 +211,22 @@ export const HeroState: React.FC<HeroStateProps> = ({
 
           {/* Inner Controls Row */}
           <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-neutral-100">
-            {/* Left Controls: [✨ Deeper Research] [Image] [Globe] [Lightbulb] */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Left Controls: [Model Pill] [✨ Deeper Research] [Image] [Globe] [Lightbulb] */}
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              {onOpenModelSelector && (
+                <button
+                  id="hero-model-pill-btn"
+                  type="button"
+                  onClick={onOpenModelSelector}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-neutral-50 hover:bg-purple-50 text-neutral-800 hover:text-purple-900 border border-neutral-200/80 hover:border-purple-200 transition active:scale-95 shadow-2xs group"
+                  title="Select AI Model"
+                >
+                  <ModelLogo iconKey={activeModelDef.iconKey} modelId={activeModelDef.id} size="xs" />
+                  <span className="font-semibold max-w-[120px] truncate">{activeModelDef.name}</span>
+                  <ChevronDown className="w-3 h-3 text-neutral-400 group-hover:text-purple-600 transition" />
+                </button>
+              )}
+
               <button
                 id="toggle-deep-research-btn"
                 onClick={() => setIsDeepResearch(!isDeepResearch)}

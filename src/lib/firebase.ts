@@ -24,6 +24,17 @@ import {
   off,
   Database
 } from 'firebase/database';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  runTransaction,
+  serverTimestamp,
+  getDocFromServer,
+  Firestore
+} from 'firebase/firestore';
 import { ChatSession, UserProfile, Message, MemoMemoryItem } from '../types';
 import { api } from './api';
 import appletConfig from '../../firebase-applet-config.json';
@@ -37,6 +48,7 @@ const authDomain = metaEnv.VITE_FIREBASE_AUTH_DOMAIN || appletConfig.authDomain 
 const storageBucket = metaEnv.VITE_FIREBASE_STORAGE_BUCKET || appletConfig.storageBucket || `${projectId}.firebasestorage.app`;
 const messagingSenderId = metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || appletConfig.messagingSenderId || '387156119079';
 const appId = metaEnv.VITE_FIREBASE_APP_ID || appletConfig.appId || '1:387156119079:web:e624ae1f226a56f590c802';
+const firestoreDatabaseId = metaEnv.VITE_FIRESTORE_DATABASE_ID || appletConfig.firestoreDatabaseId || 'ai-studio-leoai-434fd984-e3fa-4bcf-9e8d-e03e334f487d';
 
 // Configure Realtime Database URL
 const rtdbUrl =
@@ -62,6 +74,67 @@ if (!getApps().length) {
 
 export const auth: Auth = getAuth(app);
 export const database: Database = getDatabase(app, rtdbUrl);
+export const db: Firestore = getFirestore(app, firestoreDatabaseId);
+
+// Test Firestore Connection
+async function testFirestoreConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn('Firebase Firestore test connection note: client appears offline.');
+    }
+  }
+}
+testFirestoreConnection();
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo:
+        auth.currentUser?.providerData?.map((provider) => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 // Configure Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
@@ -149,8 +222,12 @@ export async function loginWithGoogle(): Promise<UserProfile> {
       console.warn('[Realtime Database User Sync Note]:', dbErr);
     }
 
-    // 3. Persist profile to LocalStorage
-    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    // 3. Persist profile to LocalStorage safely
+    try {
+      localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    } catch (storageErr) {
+      console.warn('[Leo AI Storage] User profile storage notice:', storageErr);
+    }
 
     return userProfile;
   } catch (err: any) {
@@ -261,7 +338,9 @@ export async function checkRedirectResult(): Promise<UserProfile | null> {
       console.warn('[Realtime Database User Sync Note]:', dbErr);
     }
 
-    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    try {
+      localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    } catch (e) {}
     return userProfile;
   } catch (err: any) {
     console.warn('[Google Redirect Auth Check Notice]:', err?.message || err);
@@ -361,7 +440,9 @@ export async function loginWithEmailPassword(email: string, pass: string): Promi
       console.warn('RTDB sync notice:', e);
     }
 
-    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    try {
+      localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    } catch (e) {}
     return userProfile;
   } catch (err: any) {
     let msg = err.message || 'Invalid email or password.';
@@ -416,7 +497,9 @@ export async function registerWithEmailPassword(email: string, pass: string, nam
       console.warn('RTDB register sync notice:', e);
     }
 
-    localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    try {
+      localStorage.setItem('leo_current_user', JSON.stringify(userProfile));
+    } catch (e) {}
     return userProfile;
   } catch (err: any) {
     let msg = err.message || 'Registration failed.';
@@ -576,3 +659,141 @@ export function subscribeToRealtimeChats(
     off(userChatsRef, 'value', listener);
   };
 }
+
+export interface DailyUsageCheckResult {
+  allowed: boolean;
+  currentUsage: number;
+  limit: number;
+  remaining: number;
+  date: string;
+  reason?: string;
+}
+
+/**
+ * Checks a user's daily usage counter in Firestore against global and user-specific limits,
+ * and atomically increments the counter if permitted.
+ *
+ * Document paths:
+ * - Daily Usage: `users/{userId}/dailyUsage/{YYYY-MM-DD}`
+ * - Global Settings: `settings/usage`
+ * - User Profile: `users/{userId}`
+ *
+ * @param userId Unique user identifier
+ * @param date Optional date string in YYYY-MM-DD format (defaults to current UTC/local date)
+ * @param incrementAmount Amount to increment if permitted (default: 1)
+ * @returns DailyUsageCheckResult object indicating if request is permitted and current stats
+ */
+export async function checkAndIncrementDailyUsage(
+  userId: string,
+  date?: string,
+  incrementAmount: number = 1
+): Promise<DailyUsageCheckResult> {
+  const dateKey = date || new Date().toISOString().split('T')[0];
+  const usageDocPath = `users/${userId}/dailyUsage/${dateKey}`;
+
+  if (!userId) {
+    return {
+      allowed: false,
+      currentUsage: 0,
+      limit: 0,
+      remaining: 0,
+      date: dateKey,
+      reason: 'User ID is missing or invalid.',
+    };
+  }
+
+  const usageDocRef = doc(db, 'users', userId, 'dailyUsage', dateKey);
+  const settingsDocRef = doc(db, 'settings', 'usage');
+  const userDocRef = doc(db, 'users', userId);
+
+  try {
+    return await runTransaction(db, async (transaction) => {
+      // 1. Fetch Global limit from settings/usage
+      let globalLimit = 50; // Fallback default
+      try {
+        const settingsSnap = await transaction.get(settingsDocRef);
+        if (settingsSnap.exists()) {
+          const settingsData = settingsSnap.data();
+          if (typeof settingsData.defaultDailyLimit === 'number') {
+            globalLimit = settingsData.defaultDailyLimit;
+          } else if (typeof settingsData.dailyLimit === 'number') {
+            globalLimit = settingsData.dailyLimit;
+          } else if (typeof settingsData.limit === 'number') {
+            globalLimit = settingsData.limit;
+          }
+        }
+      } catch (err) {
+        console.warn('[Firestore] settings/usage read notice:', err);
+      }
+
+      // 2. Fetch User-specific limit from users/{userId}
+      let effectiveLimit = globalLimit;
+      try {
+        const userSnap = await transaction.get(userDocRef);
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          if (typeof userData.customDailyLimit === 'number') {
+            effectiveLimit = userData.customDailyLimit;
+          } else if (typeof userData.dailyMessageLimitOverride === 'number') {
+            effectiveLimit = userData.dailyMessageLimitOverride;
+          } else if (typeof userData.dailyLimit === 'number') {
+            effectiveLimit = userData.dailyLimit;
+          } else if (userData.role === 'admin') {
+            effectiveLimit = 10000;
+          } else if (['pro', 'ultra', 'premium'].includes(String(userData.plan || '').toLowerCase())) {
+            effectiveLimit = Math.max(globalLimit, 500);
+          }
+        }
+      } catch (err) {
+        console.warn('[Firestore] users/{userId} limit read notice:', err);
+      }
+
+      // 3. Fetch current daily usage from users/{userId}/dailyUsage/{YYYY-MM-DD}
+      const usageSnap = await transaction.get(usageDocRef);
+      const currentUsage = usageSnap.exists() ? (usageSnap.data().count || 0) : 0;
+
+      // 4. Compare current usage + incrementAmount against effective limit
+      const projectedUsage = currentUsage + incrementAmount;
+
+      if (projectedUsage <= effectiveLimit) {
+        // Permitted: atomically increment the counter
+        if (usageSnap.exists()) {
+          transaction.update(usageDocRef, {
+            count: projectedUsage,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          transaction.set(usageDocRef, {
+            userId,
+            date: dateKey,
+            count: projectedUsage,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        return {
+          allowed: true,
+          currentUsage: projectedUsage,
+          limit: effectiveLimit,
+          remaining: Math.max(0, effectiveLimit - projectedUsage),
+          date: dateKey,
+        };
+      } else {
+        // Not permitted: do NOT increment
+        return {
+          allowed: false,
+          currentUsage,
+          limit: effectiveLimit,
+          remaining: Math.max(0, effectiveLimit - currentUsage),
+          date: dateKey,
+          reason: `Daily usage limit reached (${currentUsage}/${effectiveLimit} requests used).`,
+        };
+      }
+    });
+  } catch (error) {
+    console.error(`[checkAndIncrementDailyUsage] Error on ${usageDocPath}:`, error);
+    handleFirestoreError(error, OperationType.WRITE, usageDocPath);
+  }
+}
+

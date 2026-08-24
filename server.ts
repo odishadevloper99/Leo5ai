@@ -69,6 +69,11 @@ interface UserRecord {
   plan?: string;
   dailyMessageLimitOverride?: number;
   dailyMessageCount?: number;
+  dailyUsage?: {
+    date: string;
+    count: number;
+    limit: number;
+  };
   subscriptionActive?: boolean;
   subscriptionExpiresAt?: number;
 }
@@ -150,44 +155,263 @@ CRITICAL DIRECTIVES:
   enableVision: true,
   enableMemory: true,
   fallbackToGemini: true,
+  freeTokeninModels: [] as string[],
   // Daily Message Limit: max /api/chat messages per user per day. 0 = unlimited.
-  dailyMessageLimit: Number(process.env.DAILY_MESSAGE_LIMIT) || 0,
+  dailyMessageLimit: Number(process.env.DAILY_MESSAGE_LIMIT || process.env.DAILY_LIMIT) || 50,
   mongoDbConfigured: Boolean(process.env.MONGODB_URI),
   firebaseConfigured: Boolean(process.env.FIREBASE_API_KEY || process.env.FIREBASE_PROJECT_ID)
 };
 
-// Tracks how many chat messages each user has sent today, for the Admin Panel's
-// Daily Message Limit setting. Resets automatically whenever the date changes.
-const dailyMessageCounts: Map<string, { date: string; count: number }> = new Map();
-
-function todayDateKey(): string {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+// ----------------------------------------------------
+// Daily Usage Limit System (Admin Controlled & Backend Enforced)
+// ----------------------------------------------------
+interface DailyUsageLimitSettings {
+  enabled: boolean;
+  limit: number;
+  limitType: 'requests' | 'credits';
+  timezone: string;
+  warningThresholdPercent: number;
 }
 
-// Returns null if the user is still within the limit (and records the message),
-// or an object describing the limit if it has been reached.
-function checkAndRecordDailyMessage(userId: string): { limit: number; used: number } | null {
-  const limit = effectiveDailyLimit(userId);
-  if (!limit || limit <= 0) return null; // unlimited
+interface UserUsageStatus {
+  userId: string;
+  date: string;
+  used: number;
+  limit: number;
+  remaining: number;
+  enabled: boolean;
+  limitType: 'requests' | 'credits';
+  isOverride: boolean;
+  overrideLimit?: number | null;
+  isAdmin: boolean;
+  isNearLimit: boolean;
+  isLimitReached: boolean;
+  resetsAt: number;
+  timezone: string;
+}
 
-  const today = todayDateKey();
-  const existing = dailyMessageCounts.get(userId);
+interface UserDailyUsageRecord {
+  userId: string;
+  date: string;
+  count: number;
+  lastUpdated: number;
+  lastModel?: string;
+}
 
-  if (!existing || existing.date !== today) {
-    dailyMessageCounts.set(userId, { date: today, count: 1 });
-    const user = userStore.get(userId);
-    if (user) user.dailyMessageCount = 1;
-    return null;
+let dailyUsageSettings: DailyUsageLimitSettings = {
+  enabled: process.env.DAILY_LIMIT_ENABLED !== 'false',
+  limit: Number(process.env.DAILY_LIMIT || process.env.DAILY_MESSAGE_LIMIT) || 50,
+  limitType: (process.env.LIMIT_TYPE as any) || 'requests',
+  timezone: process.env.DAILY_LIMIT_TIMEZONE || 'Asia/Kolkata',
+  warningThresholdPercent: 80
+};
+
+// Ensure currentConfig.dailyMessageLimit reflects the initial limit
+currentConfig.dailyMessageLimit = dailyUsageSettings.limit;
+
+// In-memory atomic usage registry: `${userId}_${dateKey}` -> record
+const userDailyUsageMap: Map<string, UserDailyUsageRecord> = new Map();
+// Concurrency serialization lock per user
+const userUsageLocks: Map<string, Promise<void>> = new Map();
+
+function getDateKey(tz: string = dailyUsageSettings.timezone || 'Asia/Kolkata'): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date()); // Outputs YYYY-MM-DD
+  } catch {
+    return new Date().toISOString().slice(0, 10);
   }
+}
 
-  if (existing.count >= limit) {
-    return { limit, used: existing.count };
+function getNextResetTimestamp(tz: string = dailyUsageSettings.timezone || 'Asia/Kolkata'): number {
+  try {
+    const now = new Date();
+    // Calculate tomorrow's date in target timezone
+    const tomorrow = new Date(now.getTime() + 86400000);
+    const tomorrowStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(tomorrow);
+
+    // Midnight timestamp of next day
+    const nextMidnightUtc = new Date(`${tomorrowStr}T00:00:00.000Z`).getTime();
+    return nextMidnightUtc;
+  } catch {
+    const tomorrow = new Date();
+    tomorrow.setUTCHours(24, 0, 0, 0);
+    return tomorrow.getTime();
   }
+}
 
-  existing.count += 1;
+function getUserUsageStatus(userId: string, isCallerAdmin = false): UserUsageStatus {
+  const date = getDateKey();
+  const cacheKey = `${userId}_${date}`;
+  const record = userDailyUsageMap.get(cacheKey);
+  const used = record ? record.count : 0;
+
   const user = userStore.get(userId);
-  if (user) user.dailyMessageCount = existing.count;
-  return null;
+  const isAdmin = isCallerAdmin || user?.role === 'admin';
+  const hasOverride = typeof user?.dailyMessageLimitOverride === 'number';
+  const overrideLimit = hasOverride ? user!.dailyMessageLimitOverride : null;
+
+  let effectiveLimit = dailyUsageSettings.limit;
+  if (isAdmin) {
+    effectiveLimit = 0; // 0 implies unlimited
+  } else if (hasOverride && overrideLimit !== null) {
+    effectiveLimit = Math.max(0, overrideLimit);
+  } else if (!dailyUsageSettings.enabled) {
+    effectiveLimit = 0; // unlimited when global toggle is OFF
+  }
+
+  const isUnlimited = isAdmin || !dailyUsageSettings.enabled || effectiveLimit <= 0;
+  const remaining = isUnlimited ? 999999 : Math.max(0, effectiveLimit - used);
+  const isLimitReached = !isUnlimited && used >= effectiveLimit;
+  const warningPct = dailyUsageSettings.warningThresholdPercent || 80;
+  const isNearLimit = !isUnlimited && !isLimitReached && (used / effectiveLimit) >= (warningPct / 100);
+
+  return {
+    userId,
+    date,
+    used,
+    limit: isUnlimited ? 0 : effectiveLimit,
+    remaining,
+    enabled: dailyUsageSettings.enabled,
+    limitType: dailyUsageSettings.limitType,
+    isOverride: hasOverride,
+    overrideLimit,
+    isAdmin,
+    isNearLimit,
+    isLimitReached,
+    resetsAt: getNextResetTimestamp(),
+    timezone: dailyUsageSettings.timezone || 'Asia/Kolkata'
+  };
+}
+
+async function checkAndIncrementDailyUsage(
+  userId: string,
+  isCallerAdmin = false,
+  cost = 1,
+  modelUsed = ''
+): Promise<{ allowed: boolean; status: UserUsageStatus }> {
+  // Concurrency serialization lock per user to avoid race conditions
+  const currentLock = userUsageLocks.get(userId) || Promise.resolve();
+  let releaseLock: () => void = () => {};
+  const nextLock = new Promise<void>((resolve) => { releaseLock = resolve; });
+  userUsageLocks.set(userId, nextLock);
+
+  await currentLock;
+
+  try {
+    const statusBefore = getUserUsageStatus(userId, isCallerAdmin);
+
+    // If limit is active and reached, reject request
+    if (statusBefore.isLimitReached) {
+      return { allowed: false, status: statusBefore };
+    }
+
+    // Register increment
+    const date = getDateKey();
+    const cacheKey = `${userId}_${date}`;
+    const existing = userDailyUsageMap.get(cacheKey);
+    const newCount = (existing ? existing.count : 0) + cost;
+    const now = Date.now();
+
+    const record: UserDailyUsageRecord = {
+      userId,
+      date,
+      count: newCount,
+      lastUpdated: now,
+      lastModel: modelUsed
+    };
+
+    userDailyUsageMap.set(cacheKey, record);
+
+    // Update in-memory user record
+    const user = userStore.get(userId);
+    if (user) {
+      user.dailyMessageCount = newCount;
+      user.dailyUsage = {
+        date,
+        count: newCount,
+        limit: statusBefore.limit
+      };
+      user.lastActive = now;
+      userStore.set(userId, user);
+    }
+
+    // Asynchronously persist to Firebase RTDB for durable tracking
+    setRtdbData(`usage_daily/${date}/${userId}`, record).catch(() => {});
+    if (user) {
+      setRtdbData(`users/${userId}/dailyUsage`, {
+        date,
+        count: newCount,
+        limit: statusBefore.limit,
+        updatedAt: now
+      }).catch(() => {});
+    }
+
+    const statusAfter = getUserUsageStatus(userId, isCallerAdmin);
+    return { allowed: true, status: statusAfter };
+  } finally {
+    releaseLock();
+  }
+}
+
+async function resetUserDailyUsage(userId: string): Promise<UserUsageStatus> {
+  const date = getDateKey();
+  const cacheKey = `${userId}_${date}`;
+  userDailyUsageMap.delete(cacheKey);
+
+  const user = userStore.get(userId);
+  if (user) {
+    user.dailyMessageCount = 0;
+    user.dailyUsage = {
+      date,
+      count: 0,
+      limit: effectiveDailyLimit(userId)
+    };
+    userStore.set(userId, user);
+  }
+
+  await deleteRtdbData(`usage_daily/${date}/${userId}`);
+  if (user) {
+    await setRtdbData(`users/${userId}/dailyUsage`, {
+      date,
+      count: 0,
+      limit: effectiveDailyLimit(userId),
+      updatedAt: Date.now()
+    });
+  }
+
+  return getUserUsageStatus(userId, false);
+}
+
+async function resetAllDailyUsage(): Promise<number> {
+  const date = getDateKey();
+  let count = 0;
+  for (const [key, val] of userDailyUsageMap.entries()) {
+    if (val.date === date) {
+      userDailyUsageMap.delete(key);
+      count++;
+    }
+  }
+
+  for (const [uid, user] of userStore.entries()) {
+    user.dailyMessageCount = 0;
+    if (user.dailyUsage) {
+      user.dailyUsage.count = 0;
+    }
+    userStore.set(uid, user);
+  }
+
+  await deleteRtdbData(`usage_daily/${date}`);
+  return count;
 }
 
 const TOKENIN_MODELS = [
@@ -196,8 +420,8 @@ const TOKENIN_MODELS = [
   { id: 'myt/glm-5.3-free', name: 'GLM 5.3', premium: true },
   { id: 'myt/qwen3.8-max-free', name: 'Qwen 3.8 Max', premium: true },
   { id: 'myt/deepseek-v4-pro-free', name: 'DeepSeek V4 Pro', premium: true },
-] as const;
-const TOKENIN_MODEL_IDS = new Set(TOKENIN_MODELS.map(m => m.id));
+];
+const TOKENIN_MODEL_IDS = new Set<string>(TOKENIN_MODELS.map(m => m.id));
 
 function isTokeninModel(model: string): boolean {
   return TOKENIN_MODEL_IDS.has(model);
@@ -206,7 +430,7 @@ function isTokeninModel(model: string): boolean {
 function effectiveDailyLimit(userId: string): number {
   const user = userStore.get(userId);
   if (typeof user?.dailyMessageLimitOverride === 'number') return Math.max(0, user.dailyMessageLimitOverride);
-  return currentConfig.dailyMessageLimit;
+  return dailyUsageSettings.enabled ? dailyUsageSettings.limit : 0;
 }
 
 function userCanUsePremiumModel(userId: string, model?: string): boolean {
@@ -221,8 +445,353 @@ function getTokeninEndpoint(): string {
   return base.endsWith('/chat/completions') ? base : `${base}/chat/completions`;
 }
 
-// Helper to determine the EXACT model to use based on the client selection or Admin/Environment defaults
+// ----------------------------------------------------
+// Dynamic AICredits Model Discovery & Cost Optimization Engine
+// ----------------------------------------------------
+interface AICreditsRawModel {
+  id: string;
+  name: string;
+  description?: string;
+  input_cost_per_token?: number;
+  output_cost_per_token?: number;
+  cached_input_cost_per_token?: number;
+  input_cost_per_1m?: number;
+  output_cost_per_1m?: number;
+  context_length?: number;
+  is_active?: boolean;
+  is_free?: boolean;
+  short_name?: string;
+  input_modalities?: string[];
+  output_modalities?: string[];
+  tags?: string[];
+}
 
+export interface EnrichedAIModel {
+  id: string;
+  name: string;
+  company: string;
+  category: 'text' | 'vision' | 'reasoning' | 'coding';
+  description: string;
+  badges: string[];
+  iconKey: string;
+  provider: 'aicredits' | 'tokenin' | 'gemini';
+  isNew?: boolean;
+  tier: 'cheap' | 'quality' | 'standard';
+  inputCostPer1M: number;
+  outputCostPer1M: number;
+  totalCostPer1M: number;
+  isDefault?: boolean;
+  contextLength?: number;
+}
+
+// Preferred candidates in priority order (used ONLY if actually returned by the API)
+const CHEAP_CANDIDATE_PATTERNS = [
+  'openai/gpt-4o-mini',
+  'deepseek/deepseek-chat',
+  'google/gemini-2.0-flash',
+  'mistral/mistral-small',
+  'mistralai/mistral-small-24b-instruct-2501',
+  'mistralai/mistral-small-3.2-24b-instruct',
+  'mistralai/mistral-small-2603'
+];
+
+const QUALITY_CANDIDATE_PATTERNS = [
+  'openai/gpt-4o',
+  'anthropic/claude-sonnet-4.5',
+  'deepseek/deepseek-reasoner',
+  'deepseek/deepseek-r1',
+  'google/gemini-2.5-pro'
+];
+
+let dynamicModelsCache: {
+  models: EnrichedAIModel[];
+  cheapCandidates: EnrichedAIModel[];
+  qualityCandidates: EnrichedAIModel[];
+  defaultModel: string;
+  fallbackChain: string[];
+  lastUpdated: number;
+} | null = null;
+
+let isFetchingDynamicModels = false;
+
+function detectCompanyAndIcon(id: string, name: string): { company: string; iconKey: string } {
+  const lowerId = id.toLowerCase();
+  const lowerName = name.toLowerCase();
+  if (lowerId.startsWith('openai/') || lowerName.includes('openai') || lowerName.includes('gpt')) {
+    return { company: 'OpenAI', iconKey: 'openai' };
+  }
+  if (lowerId.startsWith('deepseek/') || lowerName.includes('deepseek')) {
+    return { company: 'DeepSeek', iconKey: 'deepseek' };
+  }
+  if (lowerId.startsWith('google/') || lowerName.includes('gemini') || lowerName.includes('google')) {
+    return { company: 'Google', iconKey: 'gemini' };
+  }
+  if (lowerId.startsWith('anthropic/') || lowerName.includes('claude') || lowerName.includes('anthropic')) {
+    return { company: 'Anthropic', iconKey: 'claude' };
+  }
+  if (lowerId.startsWith('mistral') || lowerName.includes('mistral') || lowerName.includes('codestral')) {
+    return { company: 'Mistral AI', iconKey: 'mistral' };
+  }
+  if (lowerId.startsWith('z-ai/') || lowerName.includes('glm') || lowerName.includes('zhipu')) {
+    return { company: 'Zhipu AI', iconKey: 'glm' };
+  }
+  if (lowerId.startsWith('qwen/') || lowerId.startsWith('alibaba/') || lowerName.includes('qwen')) {
+    return { company: 'Alibaba Cloud', iconKey: 'qwen' };
+  }
+  if (lowerId.startsWith('x-ai/') || lowerName.includes('grok')) {
+    return { company: 'xAI', iconKey: 'grok' };
+  }
+  if (lowerId.startsWith('moonshot/') || lowerName.includes('kimi')) {
+    return { company: 'Moonshot AI', iconKey: 'kimi' };
+  }
+  if (lowerId.startsWith('meta/') || lowerName.includes('llama')) {
+    return { company: 'Meta', iconKey: 'llama' };
+  }
+  const prefix = id.split('/')[0];
+  const formattedCompany = prefix ? prefix.charAt(0).toUpperCase() + prefix.slice(1) : 'AI';
+  return { company: formattedCompany, iconKey: 'sparkles' };
+}
+
+function detectCategory(id: string, name: string, inputModalities: string[] = []): 'text' | 'vision' | 'reasoning' | 'coding' {
+  const s = (id + ' ' + name).toLowerCase();
+  if (s.includes('vision') || s.includes('pixtral') || s.includes('4o') || inputModalities.includes('image')) {
+    return 'vision';
+  }
+  if (s.includes('reason') || s.includes('r1') || s.includes('think') || s.includes('pro') || s.includes('sonnet')) {
+    return 'reasoning';
+  }
+  if (s.includes('code') || s.includes('coder') || s.includes('devstral')) {
+    return 'coding';
+  }
+  return 'text';
+}
+
+async function fetchDynamicAiCreditsModels(forceRefresh = false): Promise<{
+  models: EnrichedAIModel[];
+  cheapCandidates: EnrichedAIModel[];
+  qualityCandidates: EnrichedAIModel[];
+  defaultModel: string;
+  fallbackChain: string[];
+  lastUpdated: number;
+}> {
+  const now = Date.now();
+  // Cache for 10 minutes
+  if (!forceRefresh && dynamicModelsCache && (now - dynamicModelsCache.lastUpdated < 10 * 60 * 1000)) {
+    return dynamicModelsCache;
+  }
+
+  if (isFetchingDynamicModels && dynamicModelsCache) {
+    return dynamicModelsCache;
+  }
+
+  isFetchingDynamicModels = true;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch('https://api.aicredits.in/api/models', {
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error(`AICredits models API returned HTTP ${res.status}`);
+    }
+
+    const rawData = await res.json();
+    const rawList: AICreditsRawModel[] = Array.isArray(rawData) ? rawData : (rawData?.data || []);
+
+    // Filter strictly to models returned by the API that are active
+    const activeModels = rawList.filter((m) => m && typeof m.id === 'string' && m.is_active !== false);
+
+    // Enrich models with cost calculations
+    const enrichedList: EnrichedAIModel[] = activeModels.map((m) => {
+      const inputCostPer1M = typeof m.input_cost_per_1m === 'number'
+        ? m.input_cost_per_1m
+        : typeof m.input_cost_per_token === 'number'
+        ? m.input_cost_per_token * 1_000_000
+        : 0;
+
+      const outputCostPer1M = typeof m.output_cost_per_1m === 'number'
+        ? m.output_cost_per_1m
+        : typeof m.output_cost_per_token === 'number'
+        ? m.output_cost_per_token * 1_000_000
+        : 0;
+
+      const totalCostPer1M = inputCostPer1M + outputCostPer1M;
+      const { company, iconKey } = detectCompanyAndIcon(m.id, m.name || m.id);
+      const category = detectCategory(m.id, m.name || m.id, m.input_modalities || []);
+
+      const badges: string[] = [];
+      if (m.input_modalities?.includes('image') || m.id.includes('vision') || m.id.includes('4o')) {
+        badges.push('Vision');
+      }
+      if (category === 'reasoning') badges.push('Reasoning');
+      if (category === 'coding') badges.push('Code');
+      if (totalCostPer1M > 0 && totalCostPer1M <= 1.0) badges.push('Budget-Friendly');
+      if (totalCostPer1M >= 10.0) badges.push('High-Precision');
+
+      // Check tier
+      let tier: 'cheap' | 'quality' | 'standard' = 'standard';
+      const isCheapCandidate = CHEAP_CANDIDATE_PATTERNS.some((pat) => pat === m.id || m.id.includes(pat));
+      const isQualityCandidate = QUALITY_CANDIDATE_PATTERNS.some((pat) => pat === m.id || m.id.includes(pat));
+
+      if (isCheapCandidate) {
+        tier = 'cheap';
+      } else if (isQualityCandidate) {
+        tier = 'quality';
+      }
+
+      return {
+        id: m.id,
+        name: m.short_name || m.name || m.id,
+        company,
+        category,
+        description: m.description || `High-performance multimodal model from ${company}.`,
+        badges,
+        iconKey,
+        provider: 'aicredits',
+        tier,
+        inputCostPer1M: Math.round(inputCostPer1M * 1000) / 1000,
+        outputCostPer1M: Math.round(outputCostPer1M * 1000) / 1000,
+        totalCostPer1M: Math.round(totalCostPer1M * 1000) / 1000,
+        contextLength: m.context_length
+      };
+    });
+
+    // Extract available cheap candidate models that were actually returned
+    const cheapCandidates = enrichedList
+      .filter((m) => CHEAP_CANDIDATE_PATTERNS.some((pat) => pat === m.id || m.id.includes(pat)))
+      // Sort strictly by actual input_cost_per_1m + output_cost_per_1m ascending
+      .sort((a, b) => a.totalCostPer1M - b.totalCostPer1M);
+
+    // Extract available quality candidate models that were actually returned
+    const qualityCandidates = enrichedList
+      .filter((m) => QUALITY_CANDIDATE_PATTERNS.some((pat) => pat === m.id || m.id.includes(pat)))
+      .sort((a, b) => a.totalCostPer1M - b.totalCostPer1M);
+
+    // Automatically select the cheapest available model as default
+    let defaultModel = 'google/gemini-2.0-flash';
+    if (cheapCandidates.length > 0) {
+      defaultModel = cheapCandidates[0].id;
+    } else if (enrichedList.length > 0) {
+      // Sort all available active models by cost and take cheapest
+      const sortedAll = [...enrichedList].sort((a, b) => a.totalCostPer1M - b.totalCostPer1M);
+      defaultModel = sortedAll[0].id;
+    }
+
+    // Build the 3-model fallback chain from the available models
+    const fallbackChain: string[] = [];
+    for (const c of cheapCandidates) {
+      if (!fallbackChain.includes(c.id)) {
+        fallbackChain.push(c.id);
+      }
+      if (fallbackChain.length >= 3) break;
+    }
+
+    // If cheap candidates < 3, fill from other available active models sorted by cost
+    if (fallbackChain.length < 3) {
+      const sortedByCost = [...enrichedList].sort((a, b) => a.totalCostPer1M - b.totalCostPer1M);
+      for (const m of sortedByCost) {
+        if (!fallbackChain.includes(m.id)) {
+          fallbackChain.push(m.id);
+        }
+        if (fallbackChain.length >= 3) break;
+      }
+    }
+
+    // Mark isDefault on the chosen default model
+    enrichedList.forEach((m) => {
+      m.isDefault = m.id === defaultModel;
+    });
+
+    dynamicModelsCache = {
+      models: enrichedList,
+      cheapCandidates,
+      qualityCandidates,
+      defaultModel,
+      fallbackChain,
+      lastUpdated: Date.now()
+    };
+
+    console.log(
+      `[DYNAMIC MODELS] Loaded ${enrichedList.length} models from AICredits API. ` +
+      `Cheapest Default: "${defaultModel}" (total cost: $${cheapCandidates[0]?.totalCostPer1M || 0}/M). ` +
+      `Fallback Chain (up to 3): ${JSON.stringify(fallbackChain)}`
+    );
+
+    return dynamicModelsCache;
+  } catch (err: any) {
+    console.warn('[DYNAMIC MODELS] Could not fetch fresh models from https://api.aicredits.in/api/models:', err.message);
+    if (dynamicModelsCache) {
+      return dynamicModelsCache;
+    }
+
+    // Fallback static dataset if first boot happens offline
+    const fallbackDefault = 'google/gemini-2.0-flash';
+    const fallbackChain = ['google/gemini-2.0-flash', 'openai/gpt-4o-mini', 'deepseek/deepseek-chat'];
+    const fallbackResult = {
+      models: [
+        {
+          id: 'google/gemini-2.0-flash',
+          name: 'Gemini 2.0 Flash',
+          company: 'Google',
+          category: 'vision' as const,
+          description: 'Ultra-fast low-latency multimodal intelligence.',
+          badges: ['Vision', 'Fast', 'Cheapest'],
+          iconKey: 'gemini',
+          provider: 'aicredits' as const,
+          tier: 'cheap' as const,
+          inputCostPer1M: 0.1,
+          outputCostPer1M: 0.4,
+          totalCostPer1M: 0.5,
+          isDefault: true
+        },
+        {
+          id: 'openai/gpt-4o-mini',
+          name: 'GPT-4o Mini',
+          company: 'OpenAI',
+          category: 'text' as const,
+          description: 'Fast, cost-efficient multimodal reasoning.',
+          badges: ['Vision', 'Fast'],
+          iconKey: 'openai',
+          provider: 'aicredits' as const,
+          tier: 'cheap' as const,
+          inputCostPer1M: 0.15,
+          outputCostPer1M: 0.6,
+          totalCostPer1M: 0.75
+        },
+        {
+          id: 'deepseek/deepseek-chat',
+          name: 'DeepSeek V3',
+          company: 'DeepSeek',
+          category: 'coding' as const,
+          description: 'Top-tier code generation and technical reasoning.',
+          badges: ['Coding', 'Speed'],
+          iconKey: 'deepseek',
+          provider: 'aicredits' as const,
+          tier: 'cheap' as const,
+          inputCostPer1M: 0.257,
+          outputCostPer1M: 1.029,
+          totalCostPer1M: 1.286
+        }
+      ],
+      cheapCandidates: [],
+      qualityCandidates: [],
+      defaultModel: fallbackDefault,
+      fallbackChain,
+      lastUpdated: Date.now()
+    };
+    return fallbackResult;
+  } finally {
+    isFetchingDynamicModels = false;
+  }
+}
+
+// Initial fetch on server start
+fetchDynamicAiCreditsModels().catch(() => {});
+
+// Helper to determine the EXACT model to use based on the client selection or dynamic cheapest default
 function getTargetAiModel(): string {
   const envModel =
     process.env.MODEL_ID ||
@@ -236,11 +805,24 @@ function getTargetAiModel(): string {
   if (envModel && envModel.trim().length > 0) {
     return envModel.replace(/^["']|["']$/g, '').trim();
   }
-  if (currentConfig.visionModel && currentConfig.visionModel.trim().length > 0) {
+  if (currentConfig.visionModel && currentConfig.visionModel.trim().length > 0 && currentConfig.visionModel !== 'gemini-3.7-flash') {
     return currentConfig.visionModel.replace(/^["']|["']$/g, '').trim();
   }
-  return 'gemini-3.7-flash';
+  if (dynamicModelsCache?.defaultModel) {
+    return dynamicModelsCache.defaultModel;
+  }
+  return 'google/gemini-2.0-flash';
 }
+
+// GET /api/models - Returns dynamically fetched, cost-sorted models, default model, and 3-model fallback chain
+app.get('/api/models', async (_req, res) => {
+  try {
+    const data = await fetchDynamicAiCreditsModels();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to retrieve available models: ' + err.message });
+  }
+});
 
 // Public model-access list. It exposes only model IDs that the Admin has marked free.
 app.get('/api/models/access', (_req, res) => {
@@ -355,12 +937,26 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
         tokeninModel: process.env.TOKENIN_MODEL || currentConfig.tokeninModel,
         visionModel: process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || savedConfig.visionModel || currentConfig.visionModel
       };
+      if (typeof savedConfig.dailyMessageLimit === 'number') {
+        dailyUsageSettings.limit = savedConfig.dailyMessageLimit;
+      }
       memoService.updateConfig({
         apiKey: currentConfig.memoApiKey,
         apiUrl: currentConfig.memoApiUrl,
         isEnabled: currentConfig.enableMemory
       });
       console.log('✓ [CONFIG] Synced system prompt & model config from Firebase Realtime DB');
+    }
+
+    // Sync dedicated Usage Limit settings
+    const savedUsageSettings = await getRtdbData('system/usage_settings');
+    if (savedUsageSettings && typeof savedUsageSettings === 'object') {
+      dailyUsageSettings = {
+        ...dailyUsageSettings,
+        ...savedUsageSettings
+      };
+      currentConfig.dailyMessageLimit = dailyUsageSettings.limit;
+      console.log('✓ [USAGE SETTINGS] Synced usage limits from Firebase RTDB:', dailyUsageSettings);
     }
   } catch (e: any) {
     console.warn('[CONFIG SYNC WARNING]:', e.message);
@@ -588,12 +1184,8 @@ app.post('/api/admin/users/:uid/reset-daily', async (req, res) => {
   const uid = String(req.params.uid);
   const user = userStore.get(uid);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  dailyMessageCounts.delete(uid);
-  user.dailyMessageCount = 0;
-  user.lastActive = Date.now();
-  userStore.set(uid, user);
-  await setRtdbData(`users/${uid}`, { ...user, updatedAt: Date.now() });
-  res.json({ success: true, user });
+  await resetUserDailyUsage(uid);
+  res.json({ success: true, user: userStore.get(uid) });
 });
 
 
@@ -1908,13 +2500,13 @@ app.post('/api/chat', async (req, res) => {
 
     // Admin Panel "Daily Message Limit" enforcement (skipped for authenticated admins)
     if (!isAuthorizedAdmin(req)) {
-      const limitHit = checkAndRecordDailyMessage(userId);
-      if (limitHit) {
+      const usageResult = await checkAndIncrementDailyUsage(userId, false, 1, requestedModel);
+      if (!usageResult.allowed) {
         return res.status(429).json({
-          error: `Daily message limit reached (${limitHit.used}/${limitHit.limit}). Please try again tomorrow.`,
+          error: `Daily message limit reached (${usageResult.status.used}/${usageResult.status.limit}). Please try again tomorrow.`,
           limitReached: true,
-          limit: limitHit.limit,
-          used: limitHit.used
+          limit: usageResult.status.limit,
+          used: usageResult.status.used
         });
       }
     }
@@ -2023,21 +2615,52 @@ app.post('/api/chat', async (req, res) => {
       formattedMessages.push({ role: 'user', content: latestUserMessage.content });
     }
 
-    // 2a. Try AICredits (primary)
+    // 2a. Try AICredits with up to 3 models in the dynamic fallback chain
     if (aiCreditsDiag.configured) {
-      const aiCreditsModel = currentConfig.aiCreditsModel || targetModel;
-      const result = await callOpenAiCompatibleProvider({
-        label: 'aicredits',
-        baseUrl: currentConfig.aiCreditsBaseUrl,
-        apiKey: currentConfig.aiCreditsApiKey,
-        model: aiCreditsModel,
-        messages: formattedMessages
-      });
-      providerDiagnostics.push({ provider: 'aicredits', ok: result.ok, status: result.status ?? null, error: result.error ?? null });
-      if (result.ok && result.content) {
-        selectedProvider = 'aicredits';
-        finalReply = result.content;
-        finalModelUsed = aiCreditsModel;
+      const dynamicInfo = await fetchDynamicAiCreditsModels();
+      const userChosenModel = (targetModel && targetModel !== 'default' && targetModel !== 'vision' && targetModel !== 'reasoning') ? targetModel : null;
+      const primaryModel = userChosenModel || currentConfig.aiCreditsModel || dynamicInfo.defaultModel;
+      
+      // Build candidate chain: primary model first, followed by available fallback models (up to 3 models total)
+      const modelCandidates: string[] = [primaryModel];
+      for (const fb of dynamicInfo.fallbackChain) {
+        if (!modelCandidates.includes(fb)) {
+          modelCandidates.push(fb);
+        }
+        if (modelCandidates.length >= 3) break;
+      }
+
+      for (let i = 0; i < modelCandidates.length; i++) {
+        const candidateModel = modelCandidates[i];
+        const result = await callOpenAiCompatibleProvider({
+          label: 'aicredits',
+          baseUrl: currentConfig.aiCreditsBaseUrl,
+          apiKey: currentConfig.aiCreditsApiKey,
+          model: candidateModel,
+          messages: formattedMessages
+        });
+
+        providerDiagnostics.push({
+          provider: 'aicredits',
+          model: candidateModel,
+          ok: result.ok,
+          status: result.status ?? null,
+          error: result.error ?? null,
+          fallbackChainIndex: i
+        });
+
+        if (result.ok && result.content) {
+          selectedProvider = 'aicredits';
+          finalReply = result.content;
+          finalModelUsed = candidateModel;
+          if (i > 0) {
+            fallbackUsed = true;
+            console.log(`[AICREDITS FALLBACK] Successfully served response with fallback candidate "${candidateModel}" (attempt ${i + 1}/${modelCandidates.length})`);
+          }
+          break;
+        } else {
+          console.warn(`[AICREDITS FALLBACK] Attempt ${i + 1}/${modelCandidates.length} failed with model "${candidateModel}": ${result.error || result.status}`);
+        }
       }
     } else {
       providerDiagnostics.push({ provider: 'aicredits', ok: false, status: null, error: 'AICREDITS_API_KEY is not configured.' });

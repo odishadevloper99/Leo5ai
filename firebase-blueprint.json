@@ -143,12 +143,66 @@
         }
       },
       "required": ["memoryId", "userId", "text", "category", "createdAt"]
+    },
+    "DailyUsage": {
+      "title": "DailyUsage",
+      "description": "Stores user daily message/request count and timestamp for quota enforcement.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Owner user ID."
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Date in YYYY-MM-DD format."
+        },
+        "count": {
+          "type": "number",
+          "description": "Number of requests or messages consumed today."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last incremented timestamp."
+        }
+      },
+      "required": ["userId", "date", "count"]
+    },
+    "UsageSettings": {
+      "title": "UsageSettings",
+      "description": "Global usage and quota settings across the platform.",
+      "type": "object",
+      "properties": {
+        "defaultDailyLimit": {
+          "type": "number",
+          "description": "Default daily request limit per user."
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last updated timestamp."
+        }
+      },
+      "required": ["defaultDailyLimit"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
       "description": "Stores user profile data."
+    },
+    "/users/{userId}/dailyUsage/{date}": {
+      "schema": { "$ref": "#/entities/DailyUsage" },
+      "description": "Stores daily usage statistics per user."
+    },
+    "/settings/usage": {
+      "schema": { "$ref": "#/entities/UsageSettings" },
+      "description": "Global system usage limits."
     },
     "/chat_sessions/{sessionId}": {
       "schema": { "$ref": "#/entities/ChatSession" },
