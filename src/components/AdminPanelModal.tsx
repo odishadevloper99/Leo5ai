@@ -469,18 +469,67 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                          AICredits Model
+                    <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200/80 mb-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                          Backend Active AI Model (Real Global Active Model)
                         </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. gpt-4o-mini"
-                          value={(config as any).aiCreditsModel || ''}
-                          onChange={(e) => setConfig({ ...config, aiCreditsModel: e.target.value } as any)}
-                          className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono"
-                        />
+                        <span className="text-[10px] font-mono bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 rounded-md font-semibold">
+                          Live: {config.activeModelId || (config as any).aiCreditsModel || config.visionModel || 'google/gemini-2.0-flash'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                            Preset Flagship Models
+                          </label>
+                          <select
+                            value={config.activeModelId || (config as any).aiCreditsModel || config.visionModel || 'google/gemini-2.0-flash'}
+                            onChange={(e) => setConfig({ ...config, activeModelId: e.target.value, aiCreditsModel: e.target.value, visionModel: e.target.value } as any)}
+                            className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs bg-white font-mono"
+                          >
+                            <optgroup label="Google Paid Flagships">
+                              <option value="google/gemini-2.0-flash">google/gemini-2.0-flash (Cheapest Dynamic Default)</option>
+                              <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Advanced - Flagship)</option>
+                              <option value="gemini-2.0-flash">gemini-2.0-flash (Ultra-Fast 2.0)</option>
+                              <option value="gemini-1.5-pro">gemini-1.5-pro (1M+ Long Context Pro)</option>
+                              <option value="gemini-1.5-flash">gemini-1.5-flash (High-Speed Multimodal)</option>
+                            </optgroup>
+                            <optgroup label="OpenAI Flagships">
+                              <option value="openai/gpt-4o-mini">openai/gpt-4o-mini (Cost-Efficient Flagship)</option>
+                              <option value="gpt-4o">gpt-4o (Omni Intelligence)</option>
+                              <option value="gpt-4o-mini">gpt-4o-mini (Fast Multimodal)</option>
+                            </optgroup>
+                            <optgroup label="Anthropic Flagships">
+                              <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet (Flagship Reasoning)</option>
+                              <option value="claude-3-5-sonnet">claude-3-5-sonnet (Industry Coding & Reasoning)</option>
+                            </optgroup>
+                            <optgroup label="DeepSeek / Open Weights Reasoning">
+                              <option value="deepseek/deepseek-chat">deepseek/deepseek-chat (DeepSeek V3)</option>
+                              <option value="deepseek-reasoner">deepseek-reasoner (DeepSeek R1 Reasoning)</option>
+                              <option value="mistralai/mistral-small-24b-instruct-2501">mistralai/mistral-small (Mistral Small)</option>
+                              <option value="qwen-plus">qwen-plus (Alibaba Qwen 2.5 Plus)</option>
+                              <option value="glm-4-plus">glm-4-plus (Zhipu GLM 4 Plus)</option>
+                              <option value="grok-beta">grok-beta (xAI Grok 2)</option>
+                              <option value="llama-3.3-70b-instruct">llama-3.3-70b-instruct (Meta Llama 70B)</option>
+                            </optgroup>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                            Exact Model ID Override
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. google/gemini-2.0-flash"
+                            value={config.activeModelId || (config as any).aiCreditsModel || ''}
+                            onChange={(e) => setConfig({ ...config, activeModelId: e.target.value, aiCreditsModel: e.target.value, visionModel: e.target.value } as any)}
+                            className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono bg-white"
+                          />
+                        </div>
                       </div>
                     </div>
 

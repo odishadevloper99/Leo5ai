@@ -529,38 +529,68 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                       </button>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                        Active Paid Flagship Model (via AICredits)
-                      </label>
-                      <select
-                        value={config.aiCreditsModel || config.visionModel || 'gemini-2.5-flash'}
-                        onChange={(e) => setConfig({ ...config, aiCreditsModel: e.target.value, visionModel: e.target.value })}
-                        className="w-full px-3 py-2.5 rounded-xl bg-neutral-900 border border-neutral-750 text-sm sm:text-xs text-white outline-none focus:border-purple-500 font-mono"
-                      >
-                        <optgroup label="Google Paid Flagships">
-                          <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Advanced - Flagship)</option>
-                          <option value="gemini-2.0-flash">gemini-2.0-flash (Ultra-Fast 2.0)</option>
-                          <option value="gemini-1.5-pro">gemini-1.5-pro (1M+ Long Context Pro)</option>
-                          <option value="gemini-1.5-flash">gemini-1.5-flash (High-Speed Multimodal)</option>
-                        </optgroup>
-                        <optgroup label="OpenAI Flagships">
-                          <option value="gpt-4o">gpt-4o (Omni Intelligence)</option>
-                          <option value="gpt-4o-mini">gpt-4o-mini (Fast Multimodal)</option>
-                        </optgroup>
-                        <optgroup label="Anthropic Flagships">
-                          <option value="claude-3-5-sonnet">claude-3-5-sonnet (Industry Coding & Reasoning)</option>
-                        </optgroup>
-                        <optgroup label="DeepSeek / Open Weights Reasoning">
-                          <option value="deepseek-reasoner">deepseek-reasoner (DeepSeek R1 Reasoning)</option>
-                          <option value="deepseek-chat">deepseek-chat (DeepSeek V3 Coding)</option>
-                          <option value="qwen-plus">qwen-plus (Alibaba Qwen 2.5 Plus)</option>
-                          <option value="glm-4-plus">glm-4-plus (Zhipu GLM 4 Plus)</option>
-                          <option value="grok-beta">grok-beta (xAI Grok 2)</option>
-                          <option value="moonshot-v1-32k">moonshot-v1-32k (Kimi Moonshot)</option>
-                          <option value="llama-3.3-70b-instruct">llama-3.3-70b-instruct (Meta Llama 70B)</option>
-                        </optgroup>
-                      </select>
+                    <div className="p-4 rounded-2xl bg-neutral-900/60 border border-purple-900/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                          Backend Active Model (Real Global AI Model)
+                        </label>
+                        <span className="text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded-md">
+                          Live: {config.activeModelId || config.aiCreditsModel || config.visionModel || 'gemini-2.0-flash'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-neutral-400 mb-1">
+                          Select from Known Models
+                        </label>
+                        <select
+                          value={config.activeModelId || config.aiCreditsModel || config.visionModel || 'gemini-2.0-flash'}
+                          onChange={(e) => setConfig({ ...config, activeModelId: e.target.value, aiCreditsModel: e.target.value, visionModel: e.target.value })}
+                          className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm sm:text-xs text-white outline-none focus:border-purple-500 font-mono"
+                        >
+                          <optgroup label="Google Paid Flagships">
+                            <option value="google/gemini-2.0-flash">google/gemini-2.0-flash (Cheapest Dynamic Default)</option>
+                            <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Advanced - Flagship)</option>
+                            <option value="gemini-2.0-flash">gemini-2.0-flash (Ultra-Fast 2.0)</option>
+                            <option value="gemini-1.5-pro">gemini-1.5-pro (1M+ Long Context Pro)</option>
+                            <option value="gemini-1.5-flash">gemini-1.5-flash (High-Speed Multimodal)</option>
+                          </optgroup>
+                          <optgroup label="OpenAI Flagships">
+                            <option value="openai/gpt-4o-mini">openai/gpt-4o-mini (Cost-Efficient Flagship)</option>
+                            <option value="gpt-4o">gpt-4o (Omni Intelligence)</option>
+                            <option value="gpt-4o-mini">gpt-4o-mini (Fast Multimodal)</option>
+                          </optgroup>
+                          <optgroup label="Anthropic Flagships">
+                            <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet (Flagship Reasoning)</option>
+                            <option value="claude-3-5-sonnet">claude-3-5-sonnet (Industry Coding & Reasoning)</option>
+                          </optgroup>
+                          <optgroup label="DeepSeek / Open Weights Reasoning">
+                            <option value="deepseek/deepseek-chat">deepseek/deepseek-chat (DeepSeek V3)</option>
+                            <option value="deepseek-reasoner">deepseek-reasoner (DeepSeek R1 Reasoning)</option>
+                            <option value="deepseek-chat">deepseek-chat (DeepSeek V3 Coding)</option>
+                            <option value="mistralai/mistral-small-24b-instruct-2501">mistralai/mistral-small (Mistral Small)</option>
+                            <option value="qwen-plus">qwen-plus (Alibaba Qwen 2.5 Plus)</option>
+                            <option value="glm-4-plus">glm-4-plus (Zhipu GLM 4 Plus)</option>
+                            <option value="grok-beta">grok-beta (xAI Grok 2)</option>
+                            <option value="moonshot-v1-32k">moonshot-v1-32k (Kimi Moonshot)</option>
+                            <option value="llama-3.3-70b-instruct">llama-3.3-70b-instruct (Meta Llama 70B)</option>
+                          </optgroup>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-medium text-neutral-400 mb-1">
+                          Or Enter Exact Model Identifier (Overrides Default)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. google/gemini-2.0-flash or anthropic/claude-3-5-sonnet"
+                          value={config.activeModelId || config.aiCreditsModel || ''}
+                          onChange={(e) => setConfig({ ...config, activeModelId: e.target.value, aiCreditsModel: e.target.value, visionModel: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                        />
+                      </div>
                     </div>
                   </div>
 

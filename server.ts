@@ -123,6 +123,7 @@ let globalStats = {
 
 // System AI Configuration (Configurable via Admin Panel and Persisted in Firebase)
 let currentConfig = {
+  activeModelId: (process.env.ACTIVE_MODEL_ID || process.env.AICREDITS_MODEL || '').replace(/^["']|["']$/g, '').trim(),
   aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
   aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
   aiCreditsModel: (process.env.AICREDITS_MODEL || '').replace(/^["']|["']$/g, '').trim(),
@@ -791,9 +792,24 @@ async function fetchDynamicAiCreditsModels(forceRefresh = false): Promise<{
 // Initial fetch on server start
 fetchDynamicAiCreditsModels().catch(() => {});
 
-// Helper to determine the EXACT model to use based on the client selection or dynamic cheapest default
+// Helper to determine the EXACT model to use based on the Admin-selected active model or fallback hierarchy
 function getTargetAiModel(): string {
+  // 1. Admin-selected active model (highest priority)
+  if (currentConfig.activeModelId && currentConfig.activeModelId.trim().length > 0) {
+    const selected = currentConfig.activeModelId.replace(/^["']|["']$/g, '').trim();
+    return selected;
+  }
+
+  // 2. aiCreditsModel if configured by admin
+  if (currentConfig.aiCreditsModel && currentConfig.aiCreditsModel.trim().length > 0) {
+    const configured = currentConfig.aiCreditsModel.replace(/^["']|["']$/g, '').trim();
+    return configured;
+  }
+
+  // 3. Fallback system: Environment variable override if specified
   const envModel =
+    process.env.ACTIVE_MODEL_ID ||
+    process.env.AICREDITS_MODEL ||
     process.env.MODEL_ID ||
     process.env.GEMINI_MODEL_ID ||
     process.env.GEMINI_MODEL ||
@@ -805,20 +821,30 @@ function getTargetAiModel(): string {
   if (envModel && envModel.trim().length > 0) {
     return envModel.replace(/^["']|["']$/g, '').trim();
   }
+
+  // 4. visionModel if configured
   if (currentConfig.visionModel && currentConfig.visionModel.trim().length > 0 && currentConfig.visionModel !== 'gemini-3.7-flash') {
     return currentConfig.visionModel.replace(/^["']|["']$/g, '').trim();
   }
+
+  // 5. Dynamic cheapest suitable model from AICredits API
   if (dynamicModelsCache?.defaultModel) {
     return dynamicModelsCache.defaultModel;
   }
+
   return 'google/gemini-2.0-flash';
 }
 
-// GET /api/models - Returns dynamically fetched, cost-sorted models, default model, and 3-model fallback chain
+// GET /api/models - Returns dynamically fetched, cost-sorted models, default model, active model, and 3-model fallback chain
 app.get('/api/models', async (_req, res) => {
   try {
     const data = await fetchDynamicAiCreditsModels();
-    res.json(data);
+    const activeModel = getTargetAiModel();
+    res.json({
+      ...data,
+      activeModelId: activeModel,
+      configuredActiveModel: currentConfig.activeModelId || currentConfig.aiCreditsModel || ''
+    });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve available models: ' + err.message });
   }
@@ -923,19 +949,24 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
   try {
     const savedConfig = await getRtdbData('system/config');
     if (savedConfig && typeof savedConfig === 'object') {
+      const savedActiveModel = typeof savedConfig.activeModelId === 'string' && savedConfig.activeModelId.trim()
+        ? savedConfig.activeModelId.trim()
+        : typeof savedConfig.aiCreditsModel === 'string' && savedConfig.aiCreditsModel.trim()
+        ? savedConfig.aiCreditsModel.trim()
+        : '';
+
       currentConfig = {
         ...currentConfig,
         ...savedConfig,
-        // Always preserve Render's explicit environment variable overrides if
-        // present. Provider SECRETS (API keys) must never be overwritten by
-        // whatever the Admin Panel previously persisted to Firebase RTDB —
-        // Render env vars always win for these.
+        // Admin-persisted active model in RTDB takes priority over generic static env defaults
+        activeModelId: savedActiveModel || currentConfig.activeModelId,
+        aiCreditsModel: savedActiveModel || savedConfig.aiCreditsModel || currentConfig.aiCreditsModel,
+        visionModel: savedActiveModel || savedConfig.visionModel || currentConfig.visionModel,
+        // Always preserve Render's explicit environment variable overrides for secrets if present:
         aiCreditsApiKey: process.env.AICREDITS_API_KEY || currentConfig.aiCreditsApiKey,
         tokeninApiKey: process.env.TOKENIN_API_KEY || currentConfig.tokeninApiKey,
         tokeninBaseUrl: process.env.TOKENIN_BASE_URL || savedConfig.tokeninBaseUrl || currentConfig.tokeninBaseUrl,
-        aiCreditsModel: process.env.AICREDITS_MODEL || currentConfig.aiCreditsModel,
-        tokeninModel: process.env.TOKENIN_MODEL || currentConfig.tokeninModel,
-        visionModel: process.env.GEMINI_MODEL || process.env.AI_MODEL || process.env.MODEL || process.env.AICREDITS_VISION_MODEL || savedConfig.visionModel || currentConfig.visionModel
+        tokeninModel: process.env.TOKENIN_MODEL || savedConfig.tokeninModel || currentConfig.tokeninModel,
       };
       if (typeof savedConfig.dailyMessageLimit === 'number') {
         dailyUsageSettings.limit = savedConfig.dailyMessageLimit;
@@ -945,7 +976,7 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
         apiUrl: currentConfig.memoApiUrl,
         isEnabled: currentConfig.enableMemory
       });
-      console.log('✓ [CONFIG] Synced system prompt & model config from Firebase Realtime DB');
+      console.log('✓ [CONFIG] Synced system prompt & model config from Firebase Realtime DB. Active model:', currentConfig.activeModelId || currentConfig.aiCreditsModel || 'default');
     }
 
     // Sync dedicated Usage Limit settings
@@ -1055,6 +1086,7 @@ app.post('/api/admin/config', async (req, res) => {
   }
 
   const {
+    activeModelId,
     aiCreditsBaseUrl,
     aiCreditsModel,
     tokeninBaseUrl,
@@ -1075,8 +1107,21 @@ app.post('/api/admin/config', async (req, res) => {
 
   // Provider SECRETS (aiCreditsApiKey / tokeninApiKey) are intentionally NOT
   // accepted here — they are Render-environment-only.
+  if (activeModelId !== undefined) {
+    const sanitizedActiveModel = String(activeModelId).trim();
+    currentConfig.activeModelId = sanitizedActiveModel;
+    currentConfig.aiCreditsModel = sanitizedActiveModel;
+    currentConfig.visionModel = sanitizedActiveModel;
+    console.log('[AI MODEL] Admin set active model ID:', sanitizedActiveModel);
+  }
   if (aiCreditsBaseUrl !== undefined) currentConfig.aiCreditsBaseUrl = aiCreditsBaseUrl;
-  if (aiCreditsModel !== undefined) currentConfig.aiCreditsModel = String(aiCreditsModel).trim();
+  if (aiCreditsModel !== undefined && activeModelId === undefined) {
+    const sanitizedModel = String(aiCreditsModel).trim();
+    currentConfig.aiCreditsModel = sanitizedModel;
+    currentConfig.activeModelId = sanitizedModel;
+    currentConfig.visionModel = sanitizedModel;
+    console.log('[AI MODEL] Admin set aiCreditsModel ID:', sanitizedModel);
+  }
   if (tokeninBaseUrl !== undefined) currentConfig.tokeninBaseUrl = String(tokeninBaseUrl).trim().replace(/\/+$/, '');
   if (tokeninModel !== undefined) currentConfig.tokeninModel = String(tokeninModel).trim();
   if (freeTokeninModels !== undefined) {
@@ -2529,8 +2574,18 @@ app.post('/api/chat', async (req, res) => {
     globalStats.totalMessages += 2;
     globalStats.estimatedTokens += 650;
 
-    // Resolve the exact model requested by Render Environment Variables or Admin Settings
-    const targetModel = typeof requestedModel === 'string' && requestedModel.trim() ? requestedModel.trim() : getTargetAiModel();
+    // Resolve the exact model: Admin active model / requested model / fallback hierarchy
+    const activeAdminModel = getTargetAiModel();
+    const isSpecificClientModel = typeof requestedModel === 'string' &&
+      requestedModel.trim().length > 0 &&
+      requestedModel.trim() !== 'default' &&
+      requestedModel.trim() !== 'vision' &&
+      requestedModel.trim() !== 'reasoning';
+
+    const targetModel = isSpecificClientModel ? requestedModel.trim() : activeAdminModel;
+
+    console.log(`[AI MODEL] Requested active model: ${activeAdminModel}`);
+    console.log(`[AI MODEL] Using model for request: ${targetModel}`);
 
     if (isTokeninModel(targetModel) && !userCanUsePremiumModel(userId, targetModel)) {
       return res.status(403).json({
@@ -2619,7 +2674,9 @@ app.post('/api/chat', async (req, res) => {
     if (aiCreditsDiag.configured) {
       const dynamicInfo = await fetchDynamicAiCreditsModels();
       const userChosenModel = (targetModel && targetModel !== 'default' && targetModel !== 'vision' && targetModel !== 'reasoning') ? targetModel : null;
-      const primaryModel = userChosenModel || currentConfig.aiCreditsModel || dynamicInfo.defaultModel;
+      const primaryModel = userChosenModel || currentConfig.activeModelId || currentConfig.aiCreditsModel || dynamicInfo.defaultModel;
+      
+      console.log(`[AI MODEL] Primary AICredits payload model: "${primaryModel}"`);
       
       // Build candidate chain: primary model first, followed by available fallback models (up to 3 models total)
       const modelCandidates: string[] = [primaryModel];
