@@ -109,6 +109,9 @@ export interface MemoMemoryItem {
 }
 
 export interface AIConfig {
+  defaultAiModel?: string;
+  visionAiModel?: string;
+  codeAiModel?: string;
   activeModelId?: string;
   aiCreditsBaseUrl: string;
   aiCreditsApiKey?: string;

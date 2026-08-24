@@ -123,22 +123,52 @@ let globalStats = {
 
 // System AI Configuration (Configurable via Admin Panel and Persisted in Firebase)
 let currentConfig = {
-  activeModelId: (process.env.ACTIVE_MODEL_ID || process.env.AICREDITS_MODEL || '').replace(/^["']|["']$/g, '').trim(),
+  // 1. DEFAULT MODEL: Primary model for normal text conversation, writing, and explanations
+  defaultAiModel: (
+    process.env.DEFAULT_AI_MODEL ||
+    process.env.ACTIVE_MODEL_ID ||
+    process.env.AICREDITS_MODEL ||
+    'google/gemini-2.0-flash'
+  ).replace(/^["']|["']$/g, '').trim(),
+
+  // 2. VISION MODEL: Multimodal model for photos, screenshots, and visual reasoning
+  visionAiModel: (
+    process.env.VISION_AI_MODEL ||
+    process.env.AICREDITS_VISION_MODEL ||
+    process.env.VISION_MODEL ||
+    'google/gemini-2.0-flash'
+  ).replace(/^["']|["']$/g, '').trim(),
+
+  // 3. CODE MODEL: Technical model for programming, code debugging, and software architecture
+  codeAiModel: (
+    process.env.CODE_AI_MODEL ||
+    process.env.AICREDITS_CODE_MODEL ||
+    'deepseek/deepseek-chat'
+  ).replace(/^["']|["']$/g, '').trim(),
+
+  // Legacy / Compatibility aliases
+  activeModelId: (
+    process.env.DEFAULT_AI_MODEL ||
+    process.env.ACTIVE_MODEL_ID ||
+    process.env.AICREDITS_MODEL ||
+    'google/gemini-2.0-flash'
+  ).replace(/^["']|["']$/g, '').trim(),
   aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
   aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
-  aiCreditsModel: (process.env.AICREDITS_MODEL || '').replace(/^["']|["']$/g, '').trim(),
+  aiCreditsModel: (
+    process.env.DEFAULT_AI_MODEL ||
+    process.env.ACTIVE_MODEL_ID ||
+    process.env.AICREDITS_MODEL ||
+    'google/gemini-2.0-flash'
+  ).replace(/^["']|["']$/g, '').trim(),
   tokeninApiKey: process.env.TOKENIN_API_KEY || '',
   tokeninBaseUrl: (process.env.TOKENIN_BASE_URL || 'https://tokenin.my.id/api/v1').trim().replace(/\/+$/, ''),
   tokeninModel: (process.env.TOKENIN_MODEL || '').replace(/^["']|["']$/g, '').trim(),
   visionModel: (
-    process.env.MODEL_ID ||
-    process.env.GEMINI_MODEL_ID ||
-    process.env.GEMINI_MODEL ||
-    process.env.MODEL ||
-    process.env.AI_MODEL ||
+    process.env.VISION_AI_MODEL ||
     process.env.AICREDITS_VISION_MODEL ||
     process.env.VISION_MODEL ||
-    'gemini-3.7-flash'
+    'google/gemini-2.0-flash'
   ).replace(/^["']|["']$/g, '').trim(),
   temperature: 0.7,
   maxTokens: 4096,
@@ -792,58 +822,420 @@ async function fetchDynamicAiCreditsModels(forceRefresh = false): Promise<{
 // Initial fetch on server start
 fetchDynamicAiCreditsModels().catch(() => {});
 
-// Helper to determine the EXACT model to use based on the Admin-selected active model or fallback hierarchy
-function getTargetAiModel(): string {
-  // 1. Admin-selected active model (highest priority)
-  if (currentConfig.activeModelId && currentConfig.activeModelId.trim().length > 0) {
-    const selected = currentConfig.activeModelId.replace(/^["']|["']$/g, '').trim();
-    return selected;
-  }
+// ============================================================================
+// AIModelRouter - Smart AI Model Routing Service
+// Enforces intelligent routing across:
+// 1. VISION MODEL (Image requests) -> Verified vision-capable model
+// 2. CODE MODEL (Programming requests) -> Technical coding/reasoning model
+// 3. DEFAULT MODEL (Normal text) -> General conversation & text model
+// ============================================================================
 
-  // 2. aiCreditsModel if configured by admin
-  if (currentConfig.aiCreditsModel && currentConfig.aiCreditsModel.trim().length > 0) {
-    const configured = currentConfig.aiCreditsModel.replace(/^["']|["']$/g, '').trim();
-    return configured;
-  }
-
-  // 3. Fallback system: Environment variable override if specified
-  const envModel =
-    process.env.ACTIVE_MODEL_ID ||
-    process.env.AICREDITS_MODEL ||
-    process.env.MODEL_ID ||
-    process.env.GEMINI_MODEL_ID ||
-    process.env.GEMINI_MODEL ||
-    process.env.MODEL ||
-    process.env.AI_MODEL ||
-    process.env.AICREDITS_VISION_MODEL ||
-    process.env.VISION_MODEL;
-
-  if (envModel && envModel.trim().length > 0) {
-    return envModel.replace(/^["']|["']$/g, '').trim();
-  }
-
-  // 4. visionModel if configured
-  if (currentConfig.visionModel && currentConfig.visionModel.trim().length > 0 && currentConfig.visionModel !== 'gemini-3.7-flash') {
-    return currentConfig.visionModel.replace(/^["']|["']$/g, '').trim();
-  }
-
-  // 5. Dynamic cheapest suitable model from AICredits API
-  if (dynamicModelsCache?.defaultModel) {
-    return dynamicModelsCache.defaultModel;
-  }
-
-  return 'google/gemini-2.0-flash';
+export interface AIModelRouterRequest {
+  messages: any[];
+  images?: any[];
+  prompt?: string;
+  requestedModel?: string;
 }
 
-// GET /api/models - Returns dynamically fetched, cost-sorted models, default model, active model, and 3-model fallback chain
+export interface RoutedAIRequest {
+  inputType: 'vision' | 'code' | 'text';
+  selectedModel: string;
+  configuredModel: string;
+  isFallback: boolean;
+  fallbackReason?: string;
+  candidates: string[];
+}
+
+export const AIModelRouter = {
+  /**
+   * Detects if the request contains image/visual inputs across:
+   * - Uploaded images array (base64 or URLs)
+   * - Multimodal message content parts (type: 'image_url' or type: 'image')
+   * - Inline base64 data URIs (data:image/...)
+   * - Direct image URLs
+   */
+  isImageRequest(req: { messages?: any[]; images?: any[]; prompt?: string }): boolean {
+    if (Array.isArray(req.images) && req.images.length > 0) {
+      return true;
+    }
+    if (Array.isArray(req.messages)) {
+      for (const m of req.messages) {
+        if (Array.isArray(m?.images) && m.images.length > 0) return true;
+        if (Array.isArray(m?.content)) {
+          for (const part of m.content) {
+            if (part?.type === 'image_url' || part?.type === 'image' || part?.image_url) return true;
+          }
+        } else if (typeof m?.content === 'string') {
+          if (m.content.includes('data:image/')) return true;
+        }
+      }
+    }
+    if (typeof req.prompt === 'string' && req.prompt.includes('data:image/')) {
+      return true;
+    }
+    return false;
+  },
+
+  /**
+   * Detects if the request is clearly coding/technical development related.
+   * Matches code blocks, programming questions, bug fixes, refactoring, API integration, etc.
+   */
+  isCodingRequest(text: string): boolean {
+    if (!text || typeof text !== 'string') return false;
+    const trimmed = text.trim();
+    if (trimmed.length === 0) return false;
+
+    // 1. Markdown code fences or inline backtick blocks
+    if (/```[a-zA-Z0-9_-]*[\s\S]*?```/.test(trimmed) || /`[^`\n]{3,}`/.test(trimmed)) {
+      return true;
+    }
+
+    // 2. Explicit coding intent verbs & phrases
+    const codingIntentRegex = /\b(?:write\s+(?:the\s+)?code|debug|fix\s+(?:this\s+)?(?:error|bug|issue|exception|crash)|refactor|explain\s+(?:this\s+|the\s+)?code|create\s+(?:a\s+)?(?:react|flutter|vue|nextjs|svelte|angular|node(?:\.js)?|express|fastapi|django|flask|spring|laravel|tailwind|typescript|python|javascript|sql|html|css|c\+\+|c#|java|rust|go|golang|bash|php)\s+(?:app|component|page|script|server|api|endpoint|service|function|database|table|query|hook|layout)|write\s+(?:a\s+)?(?:script|function|query|algorithm|unit\s+test|regex|dockerfile|makefile|cron\s+job)|implement\s+(?:a\s+)?(?:function|class|method|component|hook|endpoint|interface|schema|algorithm|auth)|code\s+(?:review|generator|snippet|challenge)|programming\s+architecture)\b/i;
+
+    if (codingIntentRegex.test(trimmed)) {
+      return true;
+    }
+
+    // 3. Technical code syntax tokens & language constructs
+    const syntaxTokensRegex = /\b(?:function\s+\w+\s*\(|const\s+\w+\s*=|let\s+\w+\s*=|var\s+\w+\s*=|def\s+\w+\s*\(|class\s+\w+|import\s+.*?from\s+['"]|export\s+(?:default\s+)?(?:function|const|class)|public\s+static\s+void|async\s+function|SELECT\s+[\s\S]*?\s+FROM|INSERT\s+INTO|UPDATE\s+[\s\S]*?\s+SET|CREATE\s+TABLE|<\/?(?:div|span|button|input|form|template|script|style|h[1-6]|p)\b|console\.log\(|System\.out\.println\(|print\(|npm\s+install|yarn\s+add|pip\s+install|cargo\s+build|git\s+(?:commit|push|pull|merge|checkout|branch)|docker\s+run)\b/;
+
+    if (syntaxTokensRegex.test(trimmed)) {
+      return true;
+    }
+
+    // 4. Stack traces & compiler/runtime error signatures
+    const stackTraceRegex = /\b(?:SyntaxError|TypeError|ReferenceError|NullPointerException|IndexOutOfBoundsException|Traceback\s+\(most\s+recent\s+call\s+last\)|Uncaught\s+Error|failed\s+to\s+compile|build\s+failed|segmentation\s+fault|npm\s+ERR!|FATAL\s+ERROR)\b/i;
+
+    if (stackTraceRegex.test(trimmed)) {
+      return true;
+    }
+
+    return false;
+  },
+
+  /**
+   * Determine overall input type following strict priority:
+   * 1. IMAGE -> 'vision'
+   * 2. CODING -> 'code'
+   * 3. NORMAL -> 'text'
+   */
+  detectInputType(req: { messages?: any[]; images?: any[]; prompt?: string }): 'vision' | 'code' | 'text' {
+    if (this.isImageRequest(req)) {
+      return 'vision';
+    }
+
+    let latestText = req.prompt || '';
+    if (!latestText && Array.isArray(req.messages) && req.messages.length > 0) {
+      const last = req.messages[req.messages.length - 1];
+      if (typeof last?.content === 'string') {
+        latestText = last.content;
+      } else if (Array.isArray(last?.content)) {
+        latestText = last.content
+          .filter((p: any) => p?.type === 'text' && typeof p.text === 'string')
+          .map((p: any) => p.text)
+          .join('\n');
+      }
+    }
+
+    if (this.isCodingRequest(latestText)) {
+      return 'code';
+    }
+
+    return 'text';
+  },
+
+  /**
+   * Returns the configured Default Model (from Admin or Render env var)
+   */
+  getDefaultModel(): string {
+    const configured =
+      (currentConfig.defaultAiModel && currentConfig.defaultAiModel.trim()) ||
+      (currentConfig.activeModelId && currentConfig.activeModelId.trim()) ||
+      (currentConfig.aiCreditsModel && currentConfig.aiCreditsModel.trim()) ||
+      process.env.DEFAULT_AI_MODEL ||
+      process.env.ACTIVE_MODEL_ID ||
+      process.env.AICREDITS_MODEL ||
+      'google/gemini-2.0-flash';
+    return configured.replace(/^["']|["']$/g, '').trim();
+  },
+
+  /**
+   * Returns the configured Vision Model (from Admin or Render env var)
+   */
+  getVisionModel(): string {
+    const configured =
+      (currentConfig.visionAiModel && currentConfig.visionAiModel.trim()) ||
+      (currentConfig.visionModel && currentConfig.visionModel.trim() && currentConfig.visionModel !== 'gemini-3.7-flash' ? currentConfig.visionModel : '') ||
+      process.env.VISION_AI_MODEL ||
+      process.env.AICREDITS_VISION_MODEL ||
+      process.env.VISION_MODEL ||
+      'google/gemini-2.0-flash';
+    return configured.replace(/^["']|["']$/g, '').trim();
+  },
+
+  /**
+   * Returns the configured Code Model (from Admin or Render env var)
+   */
+  getCodeModel(): string {
+    const configured =
+      (currentConfig.codeAiModel && currentConfig.codeAiModel.trim()) ||
+      process.env.CODE_AI_MODEL ||
+      process.env.AICREDITS_CODE_MODEL ||
+      'deepseek/deepseek-chat';
+    return configured.replace(/^["']|["']$/g, '').trim();
+  },
+
+  /**
+   * Validates whether a model is currently available and compatible with the required modality.
+   */
+  validateModel(
+    modelId: string,
+    requiredModality: 'vision' | 'code' | 'text' = 'text',
+    catalog?: EnrichedAIModel[]
+  ): { valid: boolean; reason?: string } {
+    if (!modelId || typeof modelId !== 'string' || modelId.trim().length === 0) {
+      return { valid: false, reason: 'Empty model identifier.' };
+    }
+
+    const cleanId = modelId.toLowerCase().trim();
+
+    if (requiredModality === 'vision') {
+      // Known text-only models that DO NOT support images
+      const knownTextOnlyPatterns = [
+        'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner', 'deepseek-r1', 'deepseek-v3',
+        'llama-3', 'llama-2', 'codestral', 'mistral-small', 'mistral-large', 'qwen-2.5-coder',
+        'qwen-2.5-72b-instruct', 'gpt-3.5', 'glm-4-plus', 'moonshot-v1'
+      ];
+      const isKnownTextOnly = knownTextOnlyPatterns.some((pat) => cleanId.includes(pat));
+      if (isKnownTextOnly) {
+        return { valid: false, reason: `Model "${modelId}" is text-only and does not support image/vision input.` };
+      }
+
+      // Check catalog metadata if present
+      const catalogItem = catalog?.find((m) => m.id.toLowerCase() === cleanId || m.id.toLowerCase().endsWith('/' + cleanId) || cleanId.endsWith('/' + m.id.toLowerCase()));
+      if (catalogItem) {
+        const hasVisionBadge = catalogItem.badges?.includes('Vision') || catalogItem.category === 'vision';
+        if (!hasVisionBadge && !cleanId.includes('gemini') && !cleanId.includes('4o') && !cleanId.includes('vision') && !cleanId.includes('pixtral') && !cleanId.includes('claude-3')) {
+          return { valid: false, reason: `Model "${modelId}" does not support image modality in catalog.` };
+        }
+      }
+      return { valid: true };
+    }
+
+    if (requiredModality === 'code') {
+      return { valid: true };
+    }
+
+    return { valid: true };
+  },
+
+  /**
+   * Finds the best available vision-capable fallback model.
+   */
+  selectVisionFallback(catalog?: EnrichedAIModel[]): string {
+    const preferredVisionFallbacks = [
+      'google/gemini-2.0-flash',
+      'openai/gpt-4o-mini',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'google/gemini-1.5-flash',
+      'gemini-1.5-flash',
+      'openai/gpt-4o',
+      'gpt-4o',
+      'gpt-4o-mini',
+      'anthropic/claude-3.5-sonnet',
+      'anthropic/claude-3-5-sonnet',
+      'claude-3-5-sonnet',
+      'mistralai/pixtral-12b-2409'
+    ];
+
+    if (catalog && catalog.length > 0) {
+      for (const pref of preferredVisionFallbacks) {
+        const found = catalog.find((m) => m.id.toLowerCase() === pref.toLowerCase());
+        if (found) return found.id;
+      }
+      const anyVision = catalog.find((m) => m.badges?.includes('Vision') || m.category === 'vision' || m.id.includes('vision') || m.id.includes('gemini') || m.id.includes('4o'));
+      if (anyVision) return anyVision.id;
+    }
+
+    return 'google/gemini-2.0-flash';
+  },
+
+  /**
+   * Finds the best available coding-capable fallback model.
+   */
+  selectCodeFallback(catalog?: EnrichedAIModel[]): string {
+    const preferredCodeFallbacks = [
+      'deepseek/deepseek-chat',
+      'deepseek-chat',
+      'deepseek-reasoner',
+      'qwen/qwen-2.5-coder-32b-instruct',
+      'mistralai/codestral-2501',
+      'anthropic/claude-3.5-sonnet',
+      'anthropic/claude-3-5-sonnet',
+      'claude-3-5-sonnet',
+      'openai/gpt-4o-mini',
+      'google/gemini-2.0-flash'
+    ];
+
+    if (catalog && catalog.length > 0) {
+      for (const pref of preferredCodeFallbacks) {
+        const found = catalog.find((m) => m.id.toLowerCase() === pref.toLowerCase());
+        if (found) return found.id;
+      }
+      const anyCoding = catalog.find((m) => m.category === 'coding' || m.category === 'reasoning' || m.badges?.includes('Code'));
+      if (anyCoding) return anyCoding.id;
+    }
+
+    return 'deepseek/deepseek-chat';
+  },
+
+  /**
+   * Finds the best available normal text fallback model.
+   */
+  selectDefaultFallback(catalog?: EnrichedAIModel[]): string {
+    if (dynamicModelsCache?.cheapCandidates && dynamicModelsCache.cheapCandidates.length > 0) {
+      return dynamicModelsCache.cheapCandidates[0].id;
+    }
+    if (dynamicModelsCache?.defaultModel) {
+      return dynamicModelsCache.defaultModel;
+    }
+    if (catalog && catalog.length > 0) {
+      return catalog[0].id;
+    }
+    return 'google/gemini-2.0-flash';
+  },
+
+  /**
+   * Main Router: Evaluates input, applies priority order, validates capability,
+   * handles fallbacks, logs safely, and returns the chosen model and candidates.
+   */
+  async routeRequest(req: AIModelRouterRequest): Promise<RoutedAIRequest> {
+    const catalogData = await fetchDynamicAiCreditsModels().catch(() => null);
+    const catalog = catalogData?.models;
+
+    // 1. Detect Input Type (VISION > CODE > TEXT)
+    const inputType = this.detectInputType(req);
+
+    // If client explicitly requested a specific concrete model (not a generic alias)
+    const clientSpecifiedModel = typeof req.requestedModel === 'string' &&
+      req.requestedModel.trim().length > 0 &&
+      req.requestedModel.trim() !== 'default' &&
+      req.requestedModel.trim() !== 'vision' &&
+      req.requestedModel.trim() !== 'reasoning' &&
+      req.requestedModel.trim() !== 'code'
+        ? req.requestedModel.trim()
+        : null;
+
+    let selectedModel = '';
+    let configuredModel = '';
+    let isFallback = false;
+    let fallbackReason: string | undefined = undefined;
+    const candidates: string[] = [];
+
+    // --- ROUTE 1: VISION (IMAGE REQUEST) ---
+    if (inputType === 'vision') {
+      configuredModel = clientSpecifiedModel || this.getVisionModel();
+      const validation = this.validateModel(configuredModel, 'vision', catalog);
+
+      if (validation.valid) {
+        selectedModel = configuredModel;
+      } else {
+        isFallback = true;
+        fallbackReason = validation.reason;
+        selectedModel = this.selectVisionFallback(catalog);
+        console.warn(`[AI ROUTER] Configured model "${configuredModel}" unavailable or incompatible with input type "vision" (${validation.reason}).`);
+        console.log(`[AI ROUTER] Using fallback model: "${selectedModel}"`);
+      }
+
+      candidates.push(selectedModel);
+      const secondaryVision = this.selectVisionFallback(catalog);
+      if (!candidates.includes(secondaryVision)) candidates.push(secondaryVision);
+      if (!candidates.includes('google/gemini-2.0-flash')) candidates.push('google/gemini-2.0-flash');
+      if (!candidates.includes('openai/gpt-4o-mini')) candidates.push('openai/gpt-4o-mini');
+    }
+
+    // --- ROUTE 2: CODE (CODING REQUEST) ---
+    else if (inputType === 'code') {
+      configuredModel = clientSpecifiedModel || this.getCodeModel();
+      const validation = this.validateModel(configuredModel, 'code', catalog);
+
+      if (validation.valid) {
+        selectedModel = configuredModel;
+      } else {
+        isFallback = true;
+        fallbackReason = validation.reason;
+        selectedModel = this.selectCodeFallback(catalog);
+        console.warn(`[AI ROUTER] Configured model "${configuredModel}" unavailable. Using fallback model: "${selectedModel}"`);
+      }
+
+      candidates.push(selectedModel);
+      const secondaryCode = this.selectCodeFallback(catalog);
+      if (!candidates.includes(secondaryCode)) candidates.push(secondaryCode);
+      const defaultMod = this.getDefaultModel();
+      if (!candidates.includes(defaultMod)) candidates.push(defaultMod);
+      if (!candidates.includes('deepseek/deepseek-chat')) candidates.push('deepseek/deepseek-chat');
+    }
+
+    // --- ROUTE 3: DEFAULT (NORMAL TEXT REQUEST) ---
+    else {
+      configuredModel = clientSpecifiedModel || this.getDefaultModel();
+      const validation = this.validateModel(configuredModel, 'text', catalog);
+
+      if (validation.valid) {
+        selectedModel = configuredModel;
+      } else {
+        isFallback = true;
+        fallbackReason = validation.reason;
+        selectedModel = this.selectDefaultFallback(catalog);
+        console.warn(`[AI ROUTER] Configured model "${configuredModel}" unavailable. Using fallback model: "${selectedModel}"`);
+      }
+
+      candidates.push(selectedModel);
+      if (catalogData?.fallbackChain) {
+        for (const fb of catalogData.fallbackChain) {
+          if (!candidates.includes(fb)) candidates.push(fb);
+        }
+      }
+      if (!candidates.includes('google/gemini-2.0-flash')) candidates.push('google/gemini-2.0-flash');
+      if (!candidates.includes('openai/gpt-4o-mini')) candidates.push('openai/gpt-4o-mini');
+    }
+
+    // Safe Backend Logging (never logging sensitive credentials, keys, or passwords)
+    console.log(`[AI ROUTER] Input type: ${inputType}`);
+    console.log(`[AI ROUTER] Selected model: ${selectedModel}`);
+
+    return {
+      inputType,
+      selectedModel,
+      configuredModel,
+      isFallback,
+      fallbackReason,
+      candidates: candidates.slice(0, 4)
+    };
+  }
+};
+
+// Helper to determine the default active model for admin / system inspection
+function getTargetAiModel(): string {
+  return AIModelRouter.getDefaultModel();
+}
+
+// GET /api/models - Returns dynamically fetched models, role routing information, and active configurations
 app.get('/api/models', async (_req, res) => {
   try {
     const data = await fetchDynamicAiCreditsModels();
-    const activeModel = getTargetAiModel();
+    const defaultModel = AIModelRouter.getDefaultModel();
+    const visionModel = AIModelRouter.getVisionModel();
+    const codeModel = AIModelRouter.getCodeModel();
     res.json({
       ...data,
-      activeModelId: activeModel,
-      configuredActiveModel: currentConfig.activeModelId || currentConfig.aiCreditsModel || ''
+      activeModelId: defaultModel,
+      defaultAiModel: defaultModel,
+      visionAiModel: visionModel,
+      codeAiModel: codeModel,
+      configuredActiveModel: currentConfig.defaultAiModel || currentConfig.activeModelId || currentConfig.aiCreditsModel || ''
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve available models: ' + err.message });
@@ -949,19 +1341,34 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
   try {
     const savedConfig = await getRtdbData('system/config');
     if (savedConfig && typeof savedConfig === 'object') {
-      const savedActiveModel = typeof savedConfig.activeModelId === 'string' && savedConfig.activeModelId.trim()
+      const savedDefaultModel = typeof savedConfig.defaultAiModel === 'string' && savedConfig.defaultAiModel.trim()
+        ? savedConfig.defaultAiModel.trim()
+        : typeof savedConfig.activeModelId === 'string' && savedConfig.activeModelId.trim()
         ? savedConfig.activeModelId.trim()
         : typeof savedConfig.aiCreditsModel === 'string' && savedConfig.aiCreditsModel.trim()
         ? savedConfig.aiCreditsModel.trim()
         : '';
 
+      const savedVisionModel = typeof savedConfig.visionAiModel === 'string' && savedConfig.visionAiModel.trim()
+        ? savedConfig.visionAiModel.trim()
+        : typeof savedConfig.visionModel === 'string' && savedConfig.visionModel.trim()
+        ? savedConfig.visionModel.trim()
+        : '';
+
+      const savedCodeModel = typeof savedConfig.codeAiModel === 'string' && savedConfig.codeAiModel.trim()
+        ? savedConfig.codeAiModel.trim()
+        : '';
+
       currentConfig = {
         ...currentConfig,
         ...savedConfig,
-        // Admin-persisted active model in RTDB takes priority over generic static env defaults
-        activeModelId: savedActiveModel || currentConfig.activeModelId,
-        aiCreditsModel: savedActiveModel || savedConfig.aiCreditsModel || currentConfig.aiCreditsModel,
-        visionModel: savedActiveModel || savedConfig.visionModel || currentConfig.visionModel,
+        // Admin-persisted model roles take precedence
+        defaultAiModel: savedDefaultModel || currentConfig.defaultAiModel,
+        visionAiModel: savedVisionModel || currentConfig.visionAiModel,
+        codeAiModel: savedCodeModel || currentConfig.codeAiModel,
+        activeModelId: savedDefaultModel || currentConfig.activeModelId,
+        aiCreditsModel: savedDefaultModel || savedConfig.aiCreditsModel || currentConfig.aiCreditsModel,
+        visionModel: savedVisionModel || savedConfig.visionModel || currentConfig.visionModel,
         // Always preserve Render's explicit environment variable overrides for secrets if present:
         aiCreditsApiKey: process.env.AICREDITS_API_KEY || currentConfig.aiCreditsApiKey,
         tokeninApiKey: process.env.TOKENIN_API_KEY || currentConfig.tokeninApiKey,
@@ -976,7 +1383,7 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
         apiUrl: currentConfig.memoApiUrl,
         isEnabled: currentConfig.enableMemory
       });
-      console.log('✓ [CONFIG] Synced system prompt & model config from Firebase Realtime DB. Active model:', currentConfig.activeModelId || currentConfig.aiCreditsModel || 'default');
+      console.log(`✓ [CONFIG] Synced model routing config from Firebase Realtime DB. Default: "${currentConfig.defaultAiModel}", Vision: "${currentConfig.visionAiModel}", Code: "${currentConfig.codeAiModel}"`);
     }
 
     // Sync dedicated Usage Limit settings
@@ -1086,6 +1493,9 @@ app.post('/api/admin/config', async (req, res) => {
   }
 
   const {
+    defaultAiModel,
+    visionAiModel,
+    codeAiModel,
     activeModelId,
     aiCreditsBaseUrl,
     aiCreditsModel,
@@ -1107,20 +1517,38 @@ app.post('/api/admin/config', async (req, res) => {
 
   // Provider SECRETS (aiCreditsApiKey / tokeninApiKey) are intentionally NOT
   // accepted here — they are Render-environment-only.
-  if (activeModelId !== undefined) {
+  if (defaultAiModel !== undefined) {
+    const sanitizedDefault = String(defaultAiModel).trim();
+    currentConfig.defaultAiModel = sanitizedDefault;
+    currentConfig.activeModelId = sanitizedDefault;
+    currentConfig.aiCreditsModel = sanitizedDefault;
+    console.log('[AI ROUTER] Admin set defaultAiModel ID:', sanitizedDefault);
+  }
+  if (visionAiModel !== undefined) {
+    const sanitizedVision = String(visionAiModel).trim();
+    currentConfig.visionAiModel = sanitizedVision;
+    currentConfig.visionModel = sanitizedVision;
+    console.log('[AI ROUTER] Admin set visionAiModel ID:', sanitizedVision);
+  }
+  if (codeAiModel !== undefined) {
+    const sanitizedCode = String(codeAiModel).trim();
+    currentConfig.codeAiModel = sanitizedCode;
+    console.log('[AI ROUTER] Admin set codeAiModel ID:', sanitizedCode);
+  }
+  if (activeModelId !== undefined && defaultAiModel === undefined) {
     const sanitizedActiveModel = String(activeModelId).trim();
+    currentConfig.defaultAiModel = sanitizedActiveModel;
     currentConfig.activeModelId = sanitizedActiveModel;
     currentConfig.aiCreditsModel = sanitizedActiveModel;
-    currentConfig.visionModel = sanitizedActiveModel;
-    console.log('[AI MODEL] Admin set active model ID:', sanitizedActiveModel);
+    console.log('[AI ROUTER] Admin set active model ID:', sanitizedActiveModel);
   }
   if (aiCreditsBaseUrl !== undefined) currentConfig.aiCreditsBaseUrl = aiCreditsBaseUrl;
-  if (aiCreditsModel !== undefined && activeModelId === undefined) {
+  if (aiCreditsModel !== undefined && activeModelId === undefined && defaultAiModel === undefined) {
     const sanitizedModel = String(aiCreditsModel).trim();
+    currentConfig.defaultAiModel = sanitizedModel;
     currentConfig.aiCreditsModel = sanitizedModel;
     currentConfig.activeModelId = sanitizedModel;
-    currentConfig.visionModel = sanitizedModel;
-    console.log('[AI MODEL] Admin set aiCreditsModel ID:', sanitizedModel);
+    console.log('[AI ROUTER] Admin set aiCreditsModel ID:', sanitizedModel);
   }
   if (tokeninBaseUrl !== undefined) currentConfig.tokeninBaseUrl = String(tokeninBaseUrl).trim().replace(/\/+$/, '');
   if (tokeninModel !== undefined) currentConfig.tokeninModel = String(tokeninModel).trim();
@@ -2557,7 +2985,17 @@ app.post('/api/chat', async (req, res) => {
     }
 
     const latestUserMessage = messages[messages.length - 1];
-    const hasImages = Array.isArray(images) && images.length > 0;
+
+    // 1. Run AIModelRouter to determine the exact model role & modality
+    const routeResult = await AIModelRouter.routeRequest({
+      messages,
+      images,
+      prompt: latestUserMessage?.content,
+      requestedModel
+    });
+
+    const targetModel = routeResult.selectedModel;
+    const isVisionInput = routeResult.inputType === 'vision' || (Array.isArray(images) && images.length > 0);
 
     // Construct the authoritative system prompt containing the defined persona & relevant memories
     const finalSystemPrompt = await buildUnifiedSystemPrompt(
@@ -2565,27 +3003,16 @@ app.post('/api/chat', async (req, res) => {
       latestUserMessage.content || '',
       systemPromptOverride,
       Boolean(isDeepResearch),
-      hasImages
+      isVisionInput
     );
 
-    if (hasImages) {
+    if (isVisionInput) {
       globalStats.totalVisionQueries++;
     }
     globalStats.totalMessages += 2;
     globalStats.estimatedTokens += 650;
 
-    // Resolve the exact model: Admin active model / requested model / fallback hierarchy
-    const activeAdminModel = getTargetAiModel();
-    const isSpecificClientModel = typeof requestedModel === 'string' &&
-      requestedModel.trim().length > 0 &&
-      requestedModel.trim() !== 'default' &&
-      requestedModel.trim() !== 'vision' &&
-      requestedModel.trim() !== 'reasoning';
-
-    const targetModel = isSpecificClientModel ? requestedModel.trim() : activeAdminModel;
-
-    console.log(`[AI MODEL] Requested active model: ${activeAdminModel}`);
-    console.log(`[AI MODEL] Using model for request: ${targetModel}`);
+    console.log(`[AI CHAT] Routing: ${routeResult.inputType} | Model: "${targetModel}" | Deep Research: ${isDeepResearch}`);
 
     if (isTokeninModel(targetModel) && !userCanUsePremiumModel(userId, targetModel)) {
       return res.status(403).json({
@@ -2594,7 +3021,6 @@ app.post('/api/chat', async (req, res) => {
         contact: '@Unknownboy1525'
       });
     }
-    console.log(`[AI CHAT] Using Model: "${targetModel}" | Deep Research: ${isDeepResearch} | Has Images: ${hasImages}`);
 
     // 1. Tokenin models ALWAYS route through Tokenin and never consume AICredits.
     if (isTokeninModel(targetModel)) {
@@ -2609,7 +3035,7 @@ app.post('/api/chat', async (req, res) => {
         if (m.role === 'system') continue;
         formattedMessages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
       }
-      if (hasImages) {
+      if (isVisionInput) {
         const parts: any[] = [{ type: 'text', text: latestUserMessage.content || 'Analyze this image.' }];
         for (const img of images) parts.push({ type: 'image_url', image_url: { url: img } });
         formattedMessages.push({ role: 'user', content: parts });
@@ -2634,7 +3060,7 @@ app.post('/api/chat', async (req, res) => {
         const reply = data?.choices?.[0]?.message?.content;
         if (!reply) return res.status(502).json({ error: 'Tokenin returned no response content.' });
         memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
-        return res.json({ content: reply, model: targetModel, provider: 'tokenin', isDeepResearch, hasVision: hasImages });
+        return res.json({ content: reply, model: targetModel, provider: 'tokenin', isDeepResearch, hasVision: isVisionInput, inputType: routeResult.inputType });
       } catch (err: any) {
         console.error('[TOKENIN] Request failed:', err.message);
         return res.status(502).json({ error: 'Unable to reach the Tokenin provider. Please try again.' });
@@ -2647,13 +3073,13 @@ app.post('/api/chat', async (req, res) => {
     const tokeninDiag = getTokeninDiagnostics();
     const providerDiagnostics: any[] = [];
     let selectedProvider: 'aicredits' | 'tokenin' | null = null;
-    let fallbackUsed = false;
+    let fallbackUsed = routeResult.isFallback;
     let finalReply: string | null = null;
     let finalModelUsed = targetModel;
 
     console.log(
-      `[PROVIDERS] aicredits.configured=${aiCreditsDiag.configured} model="${aiCreditsDiag.model}" baseUrl="${aiCreditsDiag.baseUrl}" | ` +
-      `tokenin.configured=${tokeninDiag.configured} model="${tokeninDiag.model}" baseUrl="${tokeninDiag.baseUrl}"`
+      `[PROVIDERS] aicredits.configured=${aiCreditsDiag.configured} activeModel="${targetModel}" (${routeResult.inputType}) | ` +
+      `tokenin.configured=${tokeninDiag.configured} model="${tokeninDiag.model}"`
     );
 
     const formattedMessages: any[] = [{ role: 'system', content: finalSystemPrompt }];
@@ -2662,7 +3088,7 @@ app.post('/api/chat', async (req, res) => {
       if (m.role === 'system') continue;
       formattedMessages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
     }
-    if (hasImages) {
+    if (isVisionInput) {
       const contentParts: any[] = [{ type: 'text', text: latestUserMessage.content || 'Analyze this image.' }];
       for (const img of images) contentParts.push({ type: 'image_url', image_url: { url: img } });
       formattedMessages.push({ role: 'user', content: contentParts });
@@ -2670,21 +3096,11 @@ app.post('/api/chat', async (req, res) => {
       formattedMessages.push({ role: 'user', content: latestUserMessage.content });
     }
 
-    // 2a. Try AICredits with up to 3 models in the dynamic fallback chain
+    // 2a. Try AICredits with the candidates determined by AIModelRouter
     if (aiCreditsDiag.configured) {
-      const dynamicInfo = await fetchDynamicAiCreditsModels();
-      const userChosenModel = (targetModel && targetModel !== 'default' && targetModel !== 'vision' && targetModel !== 'reasoning') ? targetModel : null;
-      const primaryModel = userChosenModel || currentConfig.activeModelId || currentConfig.aiCreditsModel || dynamicInfo.defaultModel;
-      
-      console.log(`[AI MODEL] Primary AICredits payload model: "${primaryModel}"`);
-      
-      // Build candidate chain: primary model first, followed by available fallback models (up to 3 models total)
-      const modelCandidates: string[] = [primaryModel];
-      for (const fb of dynamicInfo.fallbackChain) {
-        if (!modelCandidates.includes(fb)) {
-          modelCandidates.push(fb);
-        }
-        if (modelCandidates.length >= 3) break;
+      const modelCandidates: string[] = [...routeResult.candidates];
+      if (!modelCandidates.includes(targetModel)) {
+        modelCandidates.unshift(targetModel);
       }
 
       for (let i = 0; i < modelCandidates.length; i++) {

@@ -529,66 +529,103 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                       </button>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-neutral-900/60 border border-purple-900/40 space-y-3">
+                    <div className="p-4 rounded-2xl bg-neutral-900/60 border border-purple-900/40 space-y-4">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
                           <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                          Backend Active Model (Real Global AI Model)
+                          Smart Model Roles & Intelligent Routing
                         </label>
                         <span className="text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded-md">
-                          Live: {config.activeModelId || config.aiCreditsModel || config.visionModel || 'gemini-2.0-flash'}
+                          Live Active
                         </span>
                       </div>
 
-                      <div>
-                        <label className="block text-[11px] font-medium text-neutral-400 mb-1">
-                          Select from Known Models
-                        </label>
+                      {/* 1. DEFAULT MODEL */}
+                      <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-medium text-purple-200">
+                            1. Default Model (Normal Text & General Q&A)
+                          </label>
+                          <span className="text-[10px] text-neutral-400 font-mono">DEFAULT_AI_MODEL</span>
+                        </div>
                         <select
-                          value={config.activeModelId || config.aiCreditsModel || config.visionModel || 'gemini-2.0-flash'}
-                          onChange={(e) => setConfig({ ...config, activeModelId: e.target.value, aiCreditsModel: e.target.value, visionModel: e.target.value })}
-                          className="w-full px-3 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm sm:text-xs text-white outline-none focus:border-purple-500 font-mono"
+                          value={config.defaultAiModel || config.activeModelId || config.aiCreditsModel || 'google/gemini-2.0-flash'}
+                          onChange={(e) => setConfig({ ...config, defaultAiModel: e.target.value, activeModelId: e.target.value, aiCreditsModel: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-750 text-xs text-white outline-none focus:border-purple-500 font-mono"
                         >
-                          <optgroup label="Google Paid Flagships">
-                            <option value="google/gemini-2.0-flash">google/gemini-2.0-flash (Cheapest Dynamic Default)</option>
-                            <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Advanced - Flagship)</option>
-                            <option value="gemini-2.0-flash">gemini-2.0-flash (Ultra-Fast 2.0)</option>
-                            <option value="gemini-1.5-pro">gemini-1.5-pro (1M+ Long Context Pro)</option>
-                            <option value="gemini-1.5-flash">gemini-1.5-flash (High-Speed Multimodal)</option>
-                          </optgroup>
-                          <optgroup label="OpenAI Flagships">
-                            <option value="openai/gpt-4o-mini">openai/gpt-4o-mini (Cost-Efficient Flagship)</option>
-                            <option value="gpt-4o">gpt-4o (Omni Intelligence)</option>
-                            <option value="gpt-4o-mini">gpt-4o-mini (Fast Multimodal)</option>
-                          </optgroup>
-                          <optgroup label="Anthropic Flagships">
-                            <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet (Flagship Reasoning)</option>
-                            <option value="claude-3-5-sonnet">claude-3-5-sonnet (Industry Coding & Reasoning)</option>
-                          </optgroup>
-                          <optgroup label="DeepSeek / Open Weights Reasoning">
-                            <option value="deepseek/deepseek-chat">deepseek/deepseek-chat (DeepSeek V3)</option>
-                            <option value="deepseek-reasoner">deepseek-reasoner (DeepSeek R1 Reasoning)</option>
-                            <option value="deepseek-chat">deepseek-chat (DeepSeek V3 Coding)</option>
-                            <option value="mistralai/mistral-small-24b-instruct-2501">mistralai/mistral-small (Mistral Small)</option>
-                            <option value="qwen-plus">qwen-plus (Alibaba Qwen 2.5 Plus)</option>
-                            <option value="glm-4-plus">glm-4-plus (Zhipu GLM 4 Plus)</option>
-                            <option value="grok-beta">grok-beta (xAI Grok 2)</option>
-                            <option value="moonshot-v1-32k">moonshot-v1-32k (Kimi Moonshot)</option>
-                            <option value="llama-3.3-70b-instruct">llama-3.3-70b-instruct (Meta Llama 70B)</option>
-                          </optgroup>
+                          <option value="google/gemini-2.0-flash">google/gemini-2.0-flash (Cheapest Dynamic Default)</option>
+                          <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Advanced - Flagship)</option>
+                          <option value="gemini-2.0-flash">gemini-2.0-flash (Ultra-Fast 2.0)</option>
+                          <option value="gemini-1.5-pro">gemini-1.5-pro (1M+ Long Context Pro)</option>
+                          <option value="openai/gpt-4o-mini">openai/gpt-4o-mini (Cost-Efficient Flagship)</option>
+                          <option value="gpt-4o">gpt-4o (Omni Intelligence)</option>
+                          <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet</option>
                         </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-medium text-neutral-400 mb-1">
-                          Or Enter Exact Model Identifier (Overrides Default)
-                        </label>
                         <input
                           type="text"
-                          placeholder="e.g. google/gemini-2.0-flash or anthropic/claude-3-5-sonnet"
-                          value={config.activeModelId || config.aiCreditsModel || ''}
-                          onChange={(e) => setConfig({ ...config, activeModelId: e.target.value, aiCreditsModel: e.target.value, visionModel: e.target.value })}
-                          className="w-full px-3 py-2 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                          placeholder="Or custom model ID (e.g. google/gemini-2.0-flash)"
+                          value={config.defaultAiModel || config.activeModelId || ''}
+                          onChange={(e) => setConfig({ ...config, defaultAiModel: e.target.value, activeModelId: e.target.value, aiCreditsModel: e.target.value })}
+                          className="w-full px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[11px] text-white outline-none focus:border-purple-500 font-mono"
+                        />
+                      </div>
+
+                      {/* 2. VISION MODEL */}
+                      <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-medium text-purple-200">
+                            2. Vision Model (Image & Screenshot Analysis)
+                          </label>
+                          <span className="text-[10px] text-neutral-400 font-mono">VISION_AI_MODEL</span>
+                        </div>
+                        <select
+                          value={config.visionAiModel || config.visionModel || 'google/gemini-2.0-flash'}
+                          onChange={(e) => setConfig({ ...config, visionAiModel: e.target.value, visionModel: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-750 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                        >
+                          <option value="google/gemini-2.0-flash">google/gemini-2.0-flash (Recommended Multimodal)</option>
+                          <option value="openai/gpt-4o-mini">openai/gpt-4o-mini (Fast Multimodal)</option>
+                          <option value="gemini-2.5-flash">gemini-2.5-flash (Google Multimodal Flagship)</option>
+                          <option value="gpt-4o">gpt-4o (Omni Multimodal Intelligence)</option>
+                          <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet (High-Res Multimodal)</option>
+                          <option value="mistralai/pixtral-12b-2409">mistralai/pixtral-12b-2409 (Pixtral Vision)</option>
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="Or custom vision model ID (e.g. google/gemini-2.0-flash)"
+                          value={config.visionAiModel || config.visionModel || ''}
+                          onChange={(e) => setConfig({ ...config, visionAiModel: e.target.value, visionModel: e.target.value })}
+                          className="w-full px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[11px] text-white outline-none focus:border-purple-500 font-mono"
+                        />
+                      </div>
+
+                      {/* 3. CODE MODEL */}
+                      <div className="p-3 rounded-xl bg-neutral-950/80 border border-neutral-800 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-medium text-purple-200">
+                            3. Code Model (Programming, Debugging & Dev)
+                          </label>
+                          <span className="text-[10px] text-neutral-400 font-mono">CODE_AI_MODEL</span>
+                        </div>
+                        <select
+                          value={config.codeAiModel || 'deepseek/deepseek-chat'}
+                          onChange={(e) => setConfig({ ...config, codeAiModel: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-750 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                        >
+                          <option value="deepseek/deepseek-chat">deepseek/deepseek-chat (DeepSeek V3 Coding Flagship)</option>
+                          <option value="deepseek-reasoner">deepseek-reasoner (DeepSeek R1 Deep Reasoning)</option>
+                          <option value="qwen/qwen-2.5-coder-32b-instruct">qwen/qwen-2.5-coder-32b-instruct (Alibaba Coder)</option>
+                          <option value="mistralai/codestral-2501">mistralai/codestral-2501 (Mistral Codestral)</option>
+                          <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet (Claude 3.5 Sonnet)</option>
+                          <option value="openai/gpt-4o-mini">openai/gpt-4o-mini (GPT-4o Mini)</option>
+                          <option value="google/gemini-2.0-flash">google/gemini-2.0-flash (Gemini 2.0)</option>
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="Or custom code model ID (e.g. deepseek/deepseek-chat)"
+                          value={config.codeAiModel || ''}
+                          onChange={(e) => setConfig({ ...config, codeAiModel: e.target.value })}
+                          className="w-full px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-[11px] text-white outline-none focus:border-purple-500 font-mono"
                         />
                       </div>
                     </div>
