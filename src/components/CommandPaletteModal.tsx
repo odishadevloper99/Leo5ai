@@ -42,20 +42,20 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-20 p-4">
-      <div className="bg-white rounded-3xl shadow-2xl border border-purple-100 max-w-xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-start justify-center pt-20 p-4">
+      <div className="bg-[#1e1f20] text-[#e3e3e3] rounded-3xl shadow-2xl border border-[#333538] max-w-xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-100">
         {/* Search input */}
-        <div className="relative p-4 border-b border-neutral-100 flex items-center">
-          <Search className="w-5 h-5 text-neutral-400 mr-3" />
+        <div className="relative p-4 border-b border-[#333538] flex items-center">
+          <Search className="w-5 h-5 text-[#8e918f] mr-3" />
           <input
             type="text"
             autoFocus
             placeholder="Type a command or search chats..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full text-sm outline-none text-neutral-800 placeholder-neutral-400"
+            className="w-full text-sm outline-none text-white placeholder-[#8e918f] bg-transparent"
           />
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-700">
+          <button onClick={onClose} className="p-1 text-[#8e918f] hover:text-white rounded-lg cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -63,7 +63,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         {/* Quick actions & chat results */}
         <div className="max-h-80 overflow-y-auto p-2 space-y-1">
           {query.length === 0 && (
-            <div className="p-2 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
+            <div className="p-2 text-[10px] font-semibold text-[#8e918f] uppercase tracking-wider">
               Quick Actions
             </div>
           )}
@@ -73,9 +73,9 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
               onNewChat();
               onClose();
             }}
-            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-neutral-800 hover:bg-purple-50 hover:text-purple-900 rounded-xl transition text-left"
+            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-[#e3e3e3] hover:bg-[#28292c] hover:text-white rounded-xl transition text-left cursor-pointer"
           >
-            <Plus className="w-4 h-4 text-purple-600" />
+            <Plus className="w-4 h-4 text-purple-400" />
             <span>Create New Chat</span>
           </button>
 
@@ -84,15 +84,15 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
               onOpenSavedPrompts();
               onClose();
             }}
-            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-neutral-800 hover:bg-purple-50 hover:text-purple-900 rounded-xl transition text-left"
+            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-[#e3e3e3] hover:bg-[#28292c] hover:text-white rounded-xl transition text-left cursor-pointer"
           >
-            <Sparkles className="w-4 h-4 text-purple-600" />
+            <Sparkles className="w-4 h-4 text-purple-400" />
             <span>Open Saved Prompt Presets</span>
           </button>
 
           {filteredSessions.length > 0 && (
             <>
-              <div className="p-2 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider pt-3">
+              <div className="p-2 text-[10px] font-semibold text-[#8e918f] uppercase tracking-wider pt-3">
                 Chat History
               </div>
               {filteredSessions.map((session) => (
@@ -102,9 +102,9 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
                     onSelectSession(session.id);
                     onClose();
                   }}
-                  className="w-full flex items-center gap-3 px-3 py-2 text-xs text-neutral-700 hover:bg-neutral-100 rounded-xl transition text-left"
+                  className="w-full flex items-center gap-3 px-3 py-2 text-xs text-[#c4c7c5] hover:text-white hover:bg-[#28292c] rounded-xl transition text-left cursor-pointer"
                 >
-                  <MessageSquare className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0" />
+                  <MessageSquare className="w-3.5 h-3.5 text-[#8e918f] flex-shrink-0" />
                   <span className="truncate">{session.title}</span>
                 </button>
               ))}

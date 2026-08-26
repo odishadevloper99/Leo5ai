@@ -79,16 +79,16 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header
       id="main-app-header"
-      className="h-16 px-4 md:px-6 flex items-center justify-between border-b border-purple-100/50 bg-white/80 backdrop-blur-md sticky top-0 z-30"
+      className="h-14 md:h-16 px-3 md:px-6 flex items-center justify-between border-b border-[#212124] bg-[#131314] text-[#e3e3e3] sticky top-0 z-30 transition-all"
     >
       {/* Left: Sidebar toggle + Clean Model Selector */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
         {!isSidebarOpen && (
           <button
             id="header-sidebar-toggle-btn"
             onClick={onToggleSidebar}
             title="Open sidebar"
-            className="p-2 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-xl transition"
+            className="p-2 text-[#c4c7c5] hover:text-white hover:bg-[#212124] rounded-xl transition cursor-pointer"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -98,27 +98,28 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="relative" ref={dropdownRef}>
           <button
             id="header-model-selector-btn"
-            onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-neutral-50 hover:bg-neutral-100/80 border border-neutral-200/70 rounded-xl text-xs font-medium text-neutral-800 transition shadow-xs group"
+            onClick={() => {
+              if (onOpenModelSelector) {
+                onOpenModelSelector();
+              } else {
+                setModelDropdownOpen(!modelDropdownOpen);
+              }
+            }}
+            className="flex items-center gap-2 px-3.5 py-1.5 bg-[#1e1f20] hover:bg-[#28292c] border border-[#333538] rounded-full text-xs md:text-sm font-medium text-[#e3e3e3] hover:text-white transition shadow-xs group cursor-pointer"
           >
             <ModelLogo iconKey={activeModelDef.iconKey} modelId={activeModelDef.id} size="xs" />
-            <span className="font-semibold text-neutral-900 group-hover:text-purple-700 transition">
+            <span className="font-medium text-[#e3e3e3] group-hover:text-white truncate max-w-[140px] sm:max-w-[220px]">
               {activeModelDef.name}
             </span>
-            {activeModelDef.badges && activeModelDef.badges[0] && (
-              <span className="text-[10px] px-1.5 py-0.2 bg-purple-50 text-purple-700 border border-purple-200/60 rounded-full font-medium hidden sm:inline">
-                {activeModelDef.badges[0]}
-              </span>
-            )}
-            <ChevronDown className="w-3.5 h-3.5 text-neutral-400 ml-0.5" />
+            <ChevronDown className="w-3.5 h-3.5 text-neutral-400 group-hover:text-white ml-0.5" />
           </button>
 
           {/* Model Selection Dropdown Menu */}
           {modelDropdownOpen && (
-            <div className="absolute left-0 mt-2 w-72 sm:w-80 bg-white rounded-2xl shadow-2xl border border-neutral-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
-              <div className="px-2.5 py-1.5 flex items-center justify-between text-[11px] font-semibold text-neutral-400 uppercase tracking-wider border-b border-neutral-100 mb-1">
+            <div className="absolute left-0 mt-2 w-72 sm:w-80 bg-[#1e1f20] rounded-2xl shadow-2xl border border-[#333538] p-2 z-50 animate-in fade-in zoom-in-95 duration-100 text-[#e3e3e3]">
+              <div className="px-2.5 py-1.5 flex items-center justify-between text-[11px] font-semibold text-[#8e918f] uppercase tracking-wider border-b border-[#333538] mb-1">
                 <span>Select AI Model</span>
-                <span className="text-[10px] text-purple-600 font-normal">AICredits Hub</span>
+                <span className="text-[10px] text-purple-400 font-normal">AICredits Hub</span>
               </div>
 
               <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
@@ -131,29 +132,29 @@ export const Header: React.FC<HeaderProps> = ({
                         onSelectModel(m.id);
                         setModelDropdownOpen(false);
                       }}
-                      className={`w-full text-left p-2 rounded-xl flex items-center justify-between gap-2.5 transition ${
+                      className={`w-full text-left p-2 rounded-xl flex items-center justify-between gap-2.5 transition cursor-pointer ${
                         isSelected
-                          ? 'bg-purple-50 text-purple-950 ring-1 ring-purple-200 font-medium'
-                          : 'hover:bg-neutral-50 text-neutral-800'
+                          ? 'bg-[#28292c] text-white border border-[#444746]'
+                          : 'hover:bg-[#28292c] text-[#c4c7c5]'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <ModelLogo iconKey={m.iconKey} modelId={m.id} size="sm" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-semibold truncate">{m.name}</span>
+                            <span className="text-xs font-semibold truncate text-[#e3e3e3]">{m.name}</span>
                             {m.isDefault && (
-                              <span className="text-[9px] px-1 bg-emerald-100 text-emerald-700 font-semibold rounded">
+                              <span className="text-[9px] px-1 bg-emerald-950 text-emerald-400 border border-emerald-800 font-semibold rounded">
                                 Default
                               </span>
                             )}
                           </div>
-                          <p className="text-[10px] text-neutral-400 truncate">
-                            {m.company} • {m.totalCostPer1M ? `$${m.totalCostPer1M.toFixed(2)}/1M` : 'Standard'}
+                          <p className="text-[10px] text-[#8e918f] truncate">
+                            {m.company}
                           </p>
                         </div>
                       </div>
-                      {isSelected && <Check className="w-4 h-4 text-purple-600 shrink-0" />}
+                      {isSelected && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
                     </button>
                   );
                 })}
@@ -161,13 +162,13 @@ export const Header: React.FC<HeaderProps> = ({
 
               {/* View All Models Action Button */}
               {onOpenModelSelector && (
-                <div className="pt-2 mt-1 border-t border-neutral-100">
+                <div className="pt-2 mt-1 border-t border-[#333538]">
                   <button
                     onClick={() => {
                       setModelDropdownOpen(false);
                       onOpenModelSelector();
                     }}
-                    className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-medium flex items-center justify-center gap-2 shadow-xs transition"
+                    className="w-full py-2 px-3 bg-[#28292c] hover:bg-[#333538] text-white rounded-xl text-xs font-medium flex items-center justify-center gap-2 border border-[#444746] transition cursor-pointer"
                   >
                     <Search className="w-3.5 h-3.5" />
                     <span>Browse All Models & Details...</span>
@@ -180,26 +181,26 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Right Controls matching mockup: [...] [🔗] [Export chat] [Upgrade] */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2">
         {/* More Menu */}
         <div className="relative" ref={moreRef}>
           <button
             id="header-more-btn"
             onClick={() => setMoreMenuOpen(!moreMenuOpen)}
             title="More actions"
-            className="p-2 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100 rounded-xl transition"
+            className="p-2 text-[#c4c7c5] hover:text-white hover:bg-[#212124] rounded-xl transition cursor-pointer"
           >
             <MoreHorizontal className="w-4 h-4" />
           </button>
 
           {moreMenuOpen && (
-            <div className="absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-neutral-100 p-1.5 z-50">
+            <div className="absolute right-0 mt-2 w-44 bg-[#1e1f20] rounded-2xl shadow-2xl border border-[#333538] p-1.5 z-50 text-[#e3e3e3]">
               <button
                 onClick={() => {
                   onShare();
                   setMoreMenuOpen(false);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-neutral-700 hover:bg-neutral-50 rounded-xl text-left"
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[#c4c7c5] hover:text-white hover:bg-[#28292c] rounded-xl text-left cursor-pointer"
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span>Share Chat</span>
@@ -209,7 +210,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onOpenExport();
                   setMoreMenuOpen(false);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-neutral-700 hover:bg-neutral-50 rounded-xl text-left"
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[#c4c7c5] hover:text-white hover:bg-[#28292c] rounded-xl text-left cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Export Chat</span>
@@ -223,7 +224,7 @@ export const Header: React.FC<HeaderProps> = ({
           id="header-share-btn"
           onClick={onShare}
           title="Copy share link"
-          className="p-2 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100 rounded-xl transition"
+          className="p-2 text-[#c4c7c5] hover:text-white hover:bg-[#212124] rounded-xl transition cursor-pointer"
         >
           <Share2 className="w-4 h-4" />
         </button>
@@ -232,22 +233,11 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           id="header-export-btn"
           onClick={onOpenExport}
-          className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-neutral-700 hover:text-neutral-900 bg-neutral-100/80 hover:bg-neutral-200/80 rounded-xl transition"
+          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#c4c7c5] hover:text-white bg-[#1e1f20] hover:bg-[#28292c] border border-[#333538] rounded-xl transition cursor-pointer"
         >
-          <Download className="w-3.5 h-3.5 text-neutral-500" />
-          <span>Export chat</span>
+          <Download className="w-3.5 h-3.5 text-neutral-400" />
+          <span>Export</span>
         </button>
-
-        {/* Pro/Ultra Plan Badge (display only — purchase flow removed) */}
-        {(userPlan === 'pro' || userPlan === 'ultra') && (
-          <span
-            id="header-plan-badge"
-            className="bg-gradient-to-r from-purple-900 to-neutral-950 border border-purple-400/40 text-white text-xs font-medium px-4 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5"
-          >
-            <Crown className="w-3.5 h-3.5 text-amber-400" />
-            <span>Pro Member</span>
-          </span>
-        )}
       </div>
     </header>
   );

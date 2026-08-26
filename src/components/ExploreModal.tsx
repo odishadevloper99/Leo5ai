@@ -42,22 +42,22 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({ isOpen, onClose, onS
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl border border-purple-100 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="px-6 py-4 border-b border-purple-100 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-[#1e1f20] text-[#e3e3e3] rounded-3xl shadow-2xl border border-[#333538] max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="px-6 py-4 border-b border-[#333538] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-purple-50 text-purple-600">
+            <div className="p-1.5 rounded-lg bg-[#28292c] text-purple-400">
               <Compass className="w-4 h-4" />
             </div>
-            <h2 className="font-display font-semibold text-base text-neutral-900">Explore Leo AI Intelligence</h2>
+            <h2 className="font-display font-semibold text-base text-white">Explore Leo AI Intelligence</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 text-neutral-400 hover:text-neutral-700 rounded-lg transition">
+          <button onClick={onClose} className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#28292c] rounded-lg transition cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-6 overflow-y-auto space-y-3">
-          <p className="text-xs text-neutral-500 mb-2">
+          <p className="text-xs text-[#8e918f] mb-2">
             Pre-configured cognitive engines tailored for complex enterprise workflows:
           </p>
 
@@ -71,19 +71,19 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({ isOpen, onClose, onS
                     onSelectWorkflow(wf.prompt);
                     onClose();
                   }}
-                  className="p-4 rounded-2xl border border-purple-100 hover:border-purple-300 hover:bg-purple-50/40 transition cursor-pointer group flex flex-col justify-between"
+                  className="p-4 rounded-2xl border border-[#333538] hover:border-neutral-500 bg-[#131314] hover:bg-[#28292c] transition cursor-pointer group flex flex-col justify-between"
                 >
                   <div>
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${wf.color}`}>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3 bg-[#28292c] text-purple-400">
                       <Icon className="w-4 h-4" />
                     </div>
-                    <h3 className="text-xs font-semibold text-neutral-900 group-hover:text-purple-900">
+                    <h3 className="text-xs font-semibold text-white group-hover:text-purple-300">
                       {wf.title}
                     </h3>
-                    <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed">{wf.desc}</p>
+                    <p className="text-[11px] text-[#8e918f] mt-1 leading-relaxed">{wf.desc}</p>
                   </div>
 
-                  <div className="flex items-center gap-1 text-[11px] text-purple-600 font-medium mt-3">
+                  <div className="flex items-center gap-1 text-[11px] text-purple-400 font-medium mt-3">
                     <span>Activate workflow</span>
                     <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
                   </div>

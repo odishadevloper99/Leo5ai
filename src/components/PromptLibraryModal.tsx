@@ -61,36 +61,36 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl border border-purple-100 max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-[#1e1f20] text-[#e3e3e3] rounded-3xl shadow-2xl border border-[#333538] max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-purple-100 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-[#333538] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-purple-50 text-purple-600">
+            <div className="p-1.5 rounded-lg bg-[#28292c] text-purple-400">
               <Sparkles className="w-4 h-4" />
             </div>
-            <h2 className="font-display font-semibold text-base text-neutral-900">
+            <h2 className="font-display font-semibold text-base text-white">
               Leo AI Saved Prompts & Intelligence Presets
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-neutral-400 hover:text-neutral-700 rounded-lg transition"
+            className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#28292c] rounded-lg transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Search & Category Filter */}
-        <div className="p-4 border-b border-neutral-100 space-y-3">
+        <div className="p-4 border-b border-[#333538] space-y-3">
           <div className="relative">
-            <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-[#8e918f] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search prompt templates..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs focus:bg-white focus:border-purple-500 outline-none"
+              className="w-full pl-9 pr-4 py-2 rounded-xl bg-[#131314] border border-[#333538] text-xs text-[#e3e3e3] placeholder-[#8e918f] focus:border-neutral-500 outline-none"
             />
           </div>
 
@@ -99,10 +99,10 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1 rounded-xl text-xs font-medium transition ${
+                className={`px-3 py-1 rounded-xl text-xs font-medium transition cursor-pointer ${
                   selectedCategory === cat
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+                    ? 'bg-white text-black font-semibold'
+                    : 'bg-[#131314] hover:bg-[#28292c] text-[#c4c7c5] border border-[#333538]'
                 }`}
               >
                 {cat}
@@ -120,31 +120,31 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
                 onSelectPrompt(item.prompt);
                 onClose();
               }}
-              className="group p-3.5 rounded-2xl border border-purple-100/80 hover:border-purple-300 hover:bg-purple-50/40 hover:shadow-xs transition cursor-pointer flex items-start justify-between gap-3"
+              className="group p-3.5 rounded-2xl border border-[#333538] hover:border-neutral-500 bg-[#131314] hover:bg-[#28292c] hover:shadow-xs transition cursor-pointer flex items-start justify-between gap-3"
             >
               <div className="flex items-start gap-3">
-                <div className="p-2 rounded-xl bg-neutral-50 group-hover:bg-white transition mt-0.5">
+                <div className="p-2 rounded-xl bg-[#28292c] group-hover:bg-[#333538] transition mt-0.5 text-purple-400">
                   {getIcon(item.icon)}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-xs font-semibold text-neutral-900 group-hover:text-purple-900">
+                    <h3 className="text-xs font-semibold text-white group-hover:text-purple-300">
                       {item.title}
                     </h3>
-                    <span className="text-[10px] px-2 py-0.2 rounded-full bg-neutral-100 text-neutral-600">
+                    <span className="text-[10px] px-2 py-0.2 rounded-full bg-[#28292c] text-[#c4c7c5] border border-[#333538]">
                       {item.category}
                     </span>
                     {item.isVisionPrompt && (
-                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/60">
                         Vision
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-neutral-500 mt-0.5">{item.description}</p>
+                  <p className="text-[11px] text-[#8e918f] mt-0.5">{item.description}</p>
                 </div>
               </div>
 
-              <ArrowRight className="w-4 h-4 text-neutral-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition flex-shrink-0 mt-2" />
+              <ArrowRight className="w-4 h-4 text-[#8e918f] group-hover:text-white group-hover:translate-x-0.5 transition flex-shrink-0 mt-2" />
             </div>
           ))}
         </div>
