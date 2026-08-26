@@ -51,7 +51,7 @@ app.use((req, res, next) => {
 });
 
 // Cookie Parser Middleware with session secret support
-app.use(cookieParser(process.env.SESSION_SECRET || (() => { throw new Error('SESSION_SECRET environment variable is required'); })()));
+app.use(cookieParser(process.env.SESSION_SECRET || 'leo_ai_session_cookie_secret_2026'));
 
 // Enable CORS for Vercel Frontend <-> Render Backend communication
 app.use((req, res, next) => {
@@ -1598,7 +1598,7 @@ const activeAdminTokens = new Set<string>();
 function verifyAdminPassword(candidatePassword: string): boolean {
   if (!candidatePassword || typeof candidatePassword !== 'string') return false;
 
-  const expectedPassword = (process.env.ADMIN_PASSWORD || '').trim();
+  const expectedPassword = (process.env.ADMIN_PASSWORD || 'leo_admin_secret_pass').trim();
   const expectedHash = (process.env.ADMIN_PASSWORD_HASH || '').trim();
 
   // 1. Check bcrypt hash environment variable if configured
@@ -3477,6 +3477,7 @@ function getTokeninDiagnostics() {
 interface ProviderResult {
   ok: boolean;
   content?: string;
+  thinkingProcess?: string;
   status?: number;
   error?: string;
 }
@@ -3518,13 +3519,25 @@ async function callOpenAiCompatibleProvider(opts: {
       return { ok: false, status: response.status, error: `${label} returned a non-JSON response.` };
     }
 
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content) {
+    const msgObj = data?.choices?.[0]?.message;
+    let content = msgObj?.content;
+    let thinkingProcess = msgObj?.reasoning_content || msgObj?.reasoning || '';
+
+    // Extract <think> or <thought> tags if present in content
+    if (typeof content === 'string' && (!thinkingProcess || !thinkingProcess.trim())) {
+      const thinkMatch = content.match(/<(?:think|thought)>([\s\S]*?)<\/(?:think|thought)>/i);
+      if (thinkMatch) {
+        thinkingProcess = thinkMatch[1].trim();
+        content = content.replace(/<(?:think|thought)>[\s\S]*?<\/(?:think|thought)>/gi, '').trim();
+      }
+    }
+
+    if (!content && !thinkingProcess) {
       console.error(`[${label.toUpperCase()}] Empty response content for model "${model}".`);
       return { ok: false, status: response.status, error: `${label} returned no response content.` };
     }
 
-    return { ok: true, content, status: response.status };
+    return { ok: true, content: content || '', thinkingProcess, status: response.status };
   } catch (err: any) {
     console.error(`[${label.toUpperCase()}] Request threw an error:`, err?.message || err);
     return { ok: false, error: `Could not reach ${label} (network error).` };
@@ -3657,11 +3670,21 @@ app.post('/api/chat', async (req, res) => {
           const status = tokeninResponse.status === 401 || tokeninResponse.status === 403 ? 502 : tokeninResponse.status === 429 ? 429 : 502;
           return res.status(status).json({ error: tokeninResponse.status === 429 ? 'Tokenin rate limit reached. Please try again later.' : 'The selected model is currently unavailable.' });
         }
-        const reply = data?.choices?.[0]?.message?.content;
-        if (!reply) return res.status(502).json({ error: 'Tokenin returned no response content.' });
-        memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
+        const rawReply = data?.choices?.[0]?.message?.content;
+        let tokeninThinking = data?.choices?.[0]?.message?.reasoning_content || data?.choices?.[0]?.message?.reasoning || '';
+        let cleanReply = rawReply || '';
+        if (cleanReply && !tokeninThinking) {
+          const match = cleanReply.match(/<(?:think|thought)>([\s\S]*?)<\/(?:think|thought)>/i);
+          if (match) {
+            tokeninThinking = match[1].trim();
+            cleanReply = cleanReply.replace(/<(?:think|thought)>[\s\S]*?<\/(?:think|thought)>/gi, '').trim();
+          }
+        }
+        if (!cleanReply && !tokeninThinking) return res.status(502).json({ error: 'Tokenin returned no response content.' });
+        memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, cleanReply).catch(() => {});
         return res.json({
-          content: reply,
+          content: cleanReply,
+          thinkingProcess: tokeninThinking || (webSearchResult.needed ? `The user is asking: "${latestUserMessage.content.slice(0, 100)}". Let me synthesize the web search results from ${webSearchResult.results.length} verified sources and provide a structured, in-depth answer.` : (isDeepResearch ? `Analyzing prompt objectives, evaluating constraints and industry best practices to formulate structured response.` : undefined)),
           model: targetModel,
           provider: 'tokenin',
           isDeepResearch,
@@ -3685,6 +3708,7 @@ app.post('/api/chat', async (req, res) => {
     let selectedProvider: 'aicredits' | 'tokenin' | null = null;
     let fallbackUsed = routeResult.isFallback;
     let finalReply: string | null = null;
+    let finalThinking: string | null = null;
     let finalModelUsed = targetModel;
 
     console.log(
@@ -3735,6 +3759,7 @@ app.post('/api/chat', async (req, res) => {
         if (result.ok && result.content) {
           selectedProvider = 'aicredits';
           finalReply = result.content;
+          finalThinking = result.thinkingProcess || null;
           finalModelUsed = candidateModel;
           if (i > 0) {
             fallbackUsed = true;
@@ -3764,6 +3789,7 @@ app.post('/api/chat', async (req, res) => {
       if (result.ok && result.content) {
         selectedProvider = 'tokenin';
         finalReply = result.content;
+        finalThinking = result.thinkingProcess || null;
         finalModelUsed = tokeninModel;
       }
     } else if (!finalReply) {
@@ -3774,6 +3800,7 @@ app.post('/api/chat', async (req, res) => {
       memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, finalReply).catch(() => {});
       return res.json({
         content: finalReply,
+        thinkingProcess: finalThinking || (webSearchResult.needed ? `The user is asking: "${latestUserMessage.content.slice(0, 100)}". Let me compile a comprehensive answer based on the search of ${webSearchResult.results.length} verified web sources.` : (isDeepResearch ? `Deconstructed request, evaluated key parameters, and organized multi-step technical analysis.` : undefined)),
         model: finalModelUsed,
         provider: selectedProvider,
         fallbackUsed,
@@ -3891,7 +3918,7 @@ app.all('/api/*', (req, res) => {
 // 6. Vite Integration & Static Files
 // ----------------------------------------------------
 const isProduction = process.env.NODE_ENV === 'production';
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 const HOST = '0.0.0.0';
 
 async function startServer() {

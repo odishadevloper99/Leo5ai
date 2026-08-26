@@ -343,6 +343,7 @@ export default function App() {
         searched: response.searched,
         searchQueries: response.searchQueries,
         searchSources: response.searchSources,
+        thinkingProcess: response.thinkingProcess,
         modelUsed: response.model,
       };
 
@@ -505,7 +506,7 @@ export default function App() {
         />
 
         {/* Right Main Area */}
-        <div className="flex-1 flex flex-col h-full min-w-0 bg-[#fdfcff] overflow-hidden">
+        <div className="flex-1 flex flex-col h-full min-w-0 bg-[#131314] overflow-hidden">
           {/* Top Header Bar */}
           <Header
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}

@@ -192,31 +192,31 @@ export const HeroState: React.FC<HeroStateProps> = ({
         </div>
 
         {/* Hello Greeting & Main Question */}
-        <h2 className="font-display font-semibold text-xs sm:text-sm md:text-base text-purple-600 tracking-tight">
+        <h2 className="font-display font-medium text-xs sm:text-sm md:text-base text-purple-400 tracking-tight">
           Hello, {firstName}
         </h2>
-        <h1 className="font-display font-bold text-xl sm:text-2xl md:text-3xl lg:text-4xl text-neutral-900 tracking-tight mt-0.5 mb-4 sm:mb-6 md:mb-7 drop-shadow-xs">
+        <h1 className="font-display font-semibold text-xl sm:text-2xl md:text-3xl lg:text-4xl text-white tracking-tight mt-0.5 mb-4 sm:mb-6 md:mb-7">
           How can I assist you today?
         </h1>
 
-        {/* Central Input Box Container */}
-        <div className="w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl border border-purple-100/90 shadow-[0_10px_35px_-8px_rgba(147,51,234,0.08),0_2px_10px_rgba(0,0,0,0.02)] p-2.5 sm:p-3.5 md:p-4 transition-all duration-200 focus-within:border-purple-300 focus-within:ring-4 focus-within:ring-purple-100/60 focus-within:shadow-[0_12px_40px_-8px_rgba(147,51,234,0.12)]">
+        {/* Central Input Box Container (Dark Theme) */}
+        <div className="w-full max-w-2xl bg-[#1e1f20] rounded-2xl sm:rounded-3xl border border-[#333538] shadow-2xl p-2.5 sm:p-3.5 md:p-4 transition-all duration-200 focus-within:border-neutral-500">
           {/* Selected Images Preview */}
           {selectedImages.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2 px-1">
               {selectedImages.map((img, i) => (
                 <div
                   key={i}
-                  className="relative group rounded-xl overflow-hidden border border-purple-200 shadow-xs"
+                  className="relative group rounded-xl overflow-hidden border border-[#333538] shadow-xs"
                 >
                   <img src={img} alt="Vision upload" className="w-14 h-14 object-cover" />
                   <button
                     onClick={() => removeImage(i)}
-                    className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-black text-white rounded-full transition"
+                    className="absolute top-1 right-1 p-0.5 bg-black/70 hover:bg-black text-white rounded-full transition cursor-pointer"
                   >
                     <X className="w-3 h-3" />
                   </button>
-                  <span className="absolute bottom-0 inset-x-0 bg-purple-700/80 text-[8px] text-white text-center font-medium py-0.5">
+                  <span className="absolute bottom-0 inset-x-0 bg-[#333538] text-[8px] text-white text-center font-medium py-0.5">
                     Vision
                   </span>
                 </div>
@@ -232,12 +232,12 @@ export const HeroState: React.FC<HeroStateProps> = ({
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask me anything..."
-            className="w-full resize-none bg-transparent text-sm sm:text-base text-neutral-800 placeholder-neutral-400 focus:outline-none px-1 leading-relaxed"
+            placeholder="Ask, learn, brainstorm"
+            className="w-full resize-none bg-transparent text-sm sm:text-base text-[#e3e3e3] placeholder-[#8e918f] focus:outline-none px-1 leading-relaxed"
           />
 
           {/* Inner Controls Row */}
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-neutral-100/90 gap-1.5 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#333538] gap-1.5 flex-wrap sm:flex-nowrap">
             {/* Left Controls: [Model Pill] [Image Vision] [Lightbulb Prompts] */}
             <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
               {onOpenModelSelector && (
@@ -245,12 +245,12 @@ export const HeroState: React.FC<HeroStateProps> = ({
                   id="hero-model-pill-btn"
                   type="button"
                   onClick={onOpenModelSelector}
-                  className="flex items-center gap-1 sm:gap-1.5 px-2 py-1 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-medium bg-neutral-50 hover:bg-purple-50 text-neutral-800 hover:text-purple-900 border border-neutral-200/80 hover:border-purple-200 transition active:scale-95 shadow-2xs group cursor-pointer"
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-medium bg-[#28292c] hover:bg-[#333538] text-[#e3e3e3] hover:text-white border border-[#444746] transition active:scale-95 shadow-2xs group cursor-pointer"
                   title="Select AI Model"
                 >
                   <ModelLogo iconKey={activeModelDef.iconKey} modelId={activeModelDef.id} size="xs" />
-                  <span className="font-semibold max-w-[90px] sm:max-w-[120px] truncate">{activeModelDef.name}</span>
-                  <ChevronDown className="w-3 h-3 text-neutral-400 group-hover:text-purple-600 transition" />
+                  <span className="font-medium max-w-[90px] sm:max-w-[120px] truncate">{activeModelDef.name}</span>
+                  <ChevronDown className="w-3 h-3 text-neutral-400 group-hover:text-white transition" />
                 </button>
               )}
 
@@ -258,7 +258,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                 id="hero-vision-upload-btn"
                 onClick={() => fileInputRef.current?.click()}
                 title="Upload image for Vision OCR analysis"
-                className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80 rounded-lg sm:rounded-xl transition active:scale-95 cursor-pointer"
+                className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#28292c] rounded-lg sm:rounded-xl transition active:scale-95 cursor-pointer"
               >
                 <ImageIcon className="w-4 h-4" />
               </button>
@@ -267,7 +267,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                 id="hero-prompt-suggestions-btn"
                 onClick={onOpenSavedPrompts}
                 title="Open Prompt Library"
-                className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80 rounded-lg sm:rounded-xl transition active:scale-95 cursor-pointer"
+                className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#28292c] rounded-lg sm:rounded-xl transition active:scale-95 cursor-pointer"
               >
                 <Lightbulb className="w-4 h-4" />
               </button>
@@ -279,7 +279,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                 <button
                   id="hero-submit-prompt-btn"
                   onClick={() => handleSubmit()}
-                  className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white flex items-center justify-center shadow-md shadow-purple-500/20 transition active:scale-95"
+                  className="w-8 h-8 rounded-full bg-white hover:bg-neutral-200 text-black flex items-center justify-center transition active:scale-95 cursor-pointer"
                 >
                   <ArrowUp className="w-4 h-4 stroke-[2.5]" />
                 </button>
@@ -288,10 +288,10 @@ export const HeroState: React.FC<HeroStateProps> = ({
                   id="hero-voice-mic-btn"
                   onClick={handleToggleVoice}
                   title="Voice input"
-                  className={`w-8 h-8 rounded-full flex items-center justify-center shadow-md transition active:scale-95 ${
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${
                     isRecording
                       ? 'bg-red-500 text-white animate-pulse'
-                      : 'bg-gradient-to-tr from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white shadow-purple-500/20'
+                      : 'bg-[#28292c] hover:bg-[#333538] text-white border border-[#444746]'
                   }`}
                 >
                   <Mic className="w-4 h-4" />
@@ -301,22 +301,22 @@ export const HeroState: React.FC<HeroStateProps> = ({
           </div>
         </div>
 
-        {/* Quick Starter Suggestion Chips */}
+        {/* Quick Starter Suggestion Chips (Dark Theme) */}
         <div className="w-full max-w-2xl mt-4 sm:mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
           {QUICK_STARTER_PROMPTS.map((item, idx) => (
             <button
               key={idx}
               onClick={() => handleSubmit(item.prompt)}
-              className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-xl bg-white/70 hover:bg-white border border-purple-100/60 hover:border-purple-200 shadow-2xs hover:shadow-xs transition-all duration-150 active:scale-[0.99] group text-left"
+              className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-xl bg-[#1e1f20] hover:bg-[#28292c] border border-[#333538] hover:border-neutral-500 transition-all duration-150 active:scale-[0.99] group text-left cursor-pointer"
             >
-              <div className="p-1.5 rounded-lg bg-purple-50/80 group-hover:bg-purple-100/80 shrink-0 transition">
+              <div className="p-1.5 rounded-lg bg-[#28292c] group-hover:bg-[#333538] shrink-0 transition">
                 {item.icon}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold text-neutral-800 group-hover:text-purple-900 transition truncate">
+                <div className="text-xs font-semibold text-[#e3e3e3] group-hover:text-white transition truncate">
                   {item.label}
                 </div>
-                <div className="text-[11px] text-neutral-400 line-clamp-1">
+                <div className="text-[11px] text-[#8e918f] line-clamp-1">
                   {item.prompt}
                 </div>
               </div>
@@ -326,12 +326,12 @@ export const HeroState: React.FC<HeroStateProps> = ({
       </div>
 
       {/* Bottom Footer */}
-      <footer className="w-full flex items-center justify-between text-xs text-neutral-400 mt-6 sm:mt-8 pt-3 border-t border-purple-100/30">
+      <footer className="w-full flex items-center justify-between text-xs text-[#8e918f] mt-6 sm:mt-8 pt-3 border-t border-[#212124]">
         <div className="flex-1 text-center md:text-center text-[11px]">
           <span>Join the Leo AI community for insights </span>
           <button
             onClick={onOpenDiscord}
-            className="text-purple-600 hover:text-purple-800 font-medium underline underline-offset-2 transition ml-1"
+            className="text-purple-400 hover:text-purple-300 font-medium underline underline-offset-2 transition ml-1 cursor-pointer"
           >
             Discord
           </button>
@@ -342,7 +342,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
             id="footer-language-btn"
             onClick={onOpenLanguage}
             title="Language switcher"
-            className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-white/80 rounded-lg transition"
+            className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#212124] rounded-lg transition cursor-pointer"
           >
             <Languages className="w-3.5 h-3.5" />
           </button>
@@ -350,7 +350,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
             id="footer-help-btn"
             onClick={onOpenHelp}
             title="Help & documentation"
-            className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-white/80 rounded-lg transition"
+            className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#212124] rounded-lg transition cursor-pointer"
           >
             <HelpCircle className="w-3.5 h-3.5" />
           </button>

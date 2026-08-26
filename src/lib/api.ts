@@ -80,6 +80,7 @@ export const api = {
     searched?: boolean;
     searchQueries?: string[];
     searchSources?: { title: string; url: string }[];
+    thinkingProcess?: string;
   }> {
     // Attempt request with 1 automatic retry on cold-start or HTML fallback
     let lastError: any = null;
