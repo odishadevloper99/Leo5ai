@@ -2,9 +2,45 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>Leo AI — Next-Gen Intelligence</title>
-    <meta name="description" content="Leo AI - Ultra-fast AI Assistant with vision reasoning, persistent memory, and real-time streaming." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Leo AI — Next-Gen Intelligence & Vision Assistant</title>
+    <meta name="description" content="Leo AI is a high-performance conversational AI assistant featuring vision reasoning, persistent memory, deep research, and developer tools." />
+    <meta name="keywords" content="Leo AI, AI assistant, vision AI, multimodal reasoning, chatbot, Gemini, DeepSeek, persistent memory" />
+    <meta name="author" content="Leo AI" />
+    <meta name="theme-color" content="#7c3aed" />
+
+    <!-- Open Graph / Facebook / WhatsApp / Discord / LinkedIn -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://leo-ai.duckdns.org" />
+    <meta property="og:title" content="Leo AI — Next-Gen Intelligence & Vision Assistant" />
+    <meta property="og:description" content="Ultra-fast conversational AI assistant featuring vision reasoning, persistent memory, smart research, and developer tools." />
+    <meta property="og:image" content="/favicon.svg" />
+    <meta property="og:site_name" content="Leo AI" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Leo AI — Next-Gen Intelligence & Vision Assistant" />
+    <meta name="twitter:description" content="Ultra-fast conversational AI assistant featuring vision reasoning, persistent memory, smart research, and developer tools." />
+    <meta name="twitter:image" content="/favicon.svg" />
+
+    <!-- Structured Data (JSON-LD) for Search Engines & Bots -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Leo AI",
+        "url": "https://leo-ai.duckdns.org",
+        "description": "High-performance AI assistant web app with vision reasoning, persistent memory, and real-time streaming.",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "All modern browsers, iOS, Android, macOS, Windows, Linux",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    </script>
+
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,7 +48,30 @@
     <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
   </head>
   <body class="bg-white md:bg-[#dcd6eb] text-neutral-900 antialiased selection:bg-purple-200 selection:text-purple-900 fixed inset-0 w-full h-full overflow-hidden">
-    <div id="root" class="w-full h-full overflow-hidden"></div>
+    <!-- Static pre-rendered fallback content for SEO crawlers and link-preview bots -->
+    <div id="root" class="w-full h-full overflow-hidden">
+      <div id="ssr-pre-rendered-fallback" class="flex flex-col items-center justify-center min-h-screen p-6 text-center bg-gradient-to-b from-neutral-50 to-purple-50/30 text-neutral-800" style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Plus Jakarta Sans', system-ui, sans-serif;">
+        <div style="max-width: 640px; padding: 32px 24px; border-radius: 20px; background: rgba(255,255,255,0.9); box-shadow: 0 10px 30px rgba(124, 58, 237, 0.08); border: 1px solid rgba(139, 92, 246, 0.15);">
+          <div style="display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); color: #fff; font-size: 24px; font-weight: bold; margin-bottom: 16px; box-shadow: 0 8px 20px rgba(124, 58, 237, 0.35);">
+            ✦
+          </div>
+          <h1 style="font-size: 28px; font-weight: 800; color: #1e1b4b; margin: 0 0 10px 0; letter-spacing: -0.5px;">Leo AI</h1>
+          <p style="font-size: 16px; color: #6b7280; line-height: 1.6; margin: 0 0 20px 0;">
+            Next-Gen Cognitive Intelligence Assistant. Featuring multimodal vision reasoning, long-term memory, deep research, and real-time streaming.
+          </p>
+          <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px;">
+            <span style="display: inline-block; padding: 6px 14px; background: #f3e8ff; color: #7e22ce; font-size: 13px; font-weight: 600; border-radius: 9999px;">Vision Reasoning</span>
+            <span style="display: inline-block; padding: 6px 14px; background: #ede9fe; color: #6d28d9; font-size: 13px; font-weight: 600; border-radius: 9999px;">Persistent Memory</span>
+            <span style="display: inline-block; padding: 6px 14px; background: #e0e7ff; color: #4338ca; font-size: 13px; font-weight: 600; border-radius: 9999px;">Deep Research</span>
+          </div>
+          <noscript>
+            <p style="font-size: 14px; color: #dc2626; background: #fef2f2; padding: 12px; border-radius: 8px; border: 1px solid #fecaca; margin-top: 16px;">
+              Please enable JavaScript in your browser to experience Leo AI.
+            </p>
+          </noscript>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

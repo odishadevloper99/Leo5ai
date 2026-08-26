@@ -20,6 +20,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { ModelLogo } from './ModelLogo';
 import { AIConfig, MemoMemoryItem, SystemStats, UserProfile } from '../types';
 
 const FREE_MODEL_OPTIONS = [
@@ -459,9 +460,12 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                                 : 'bg-neutral-900 border-neutral-800 hover:border-neutral-700'
                             }`}
                           >
-                            <div className="text-left min-w-0">
-                              <div className="text-xs font-semibold text-white">{model.name}</div>
-                              <div className="text-[10px] text-neutral-500 truncate">{model.id}</div>
+                            <div className="flex items-center gap-2.5 min-w-0 text-left">
+                              <ModelLogo modelId={model.id} size="sm" />
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold text-white truncate">{model.name}</div>
+                                <div className="text-[10px] text-neutral-500 truncate font-mono">{model.id}</div>
+                              </div>
                             </div>
                             <span className={`shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full border ${
                               isFree

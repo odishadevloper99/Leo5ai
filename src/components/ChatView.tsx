@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -11,17 +11,15 @@ import {
   ThumbsDown,
   BrainCircuit,
   Image as ImageIcon,
-  Paperclip,
   Mic,
   ArrowUp,
   X,
   Eye,
   ChevronDown,
   ChevronUp,
+  Lightbulb,
   Globe,
-  Bot,
-  User,
-  Lightbulb
+  ExternalLink
 } from 'lucide-react';
 import { Message, UserProfile } from '../types';
 import { LeoLogoMark } from './LeoLogo';
@@ -50,18 +48,27 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onOpenModelSelector
 }) => {
   const [inputText, setInputText] = useState('');
-  const [isDeepResearch, setIsDeepResearch] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [copiedCodeBlock, setCopiedCodeBlock] = useState<string | null>(null);
   const [expandedReasoning, setExpandedReasoning] = useState<Record<string, boolean>>({});
+  const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [inspectImage, setInspectImage] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
 
+  // Streaming State Management
+  const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
+  const [streamedLength, setStreamedLength] = useState<number>(0);
+  const completedStreamIdsRef = useRef<Set<string>>(new Set());
+  const initialLoadDoneRef = useRef<boolean>(false);
+  const activeTimerRef = useRef<any>(null);
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isUserAtBottomRef = useRef<boolean>(true);
 
   // Resolve active model definition
   const activeModelDef = AI_MODELS.find(
@@ -73,10 +80,99 @@ export const ChatView: React.FC<ChatViewProps> = ({
     provider: 'aicredits'
   };
 
-  // Auto scroll
+  // Mark all initial messages as already streamed on mount to avoid replaying history
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+    if (!initialLoadDoneRef.current && messages.length > 0) {
+      messages.forEach((m) => {
+        if (m.role === 'assistant') {
+          completedStreamIdsRef.current.add(m.id);
+        }
+      });
+      initialLoadDoneRef.current = true;
+    }
+  }, [messages]);
+
+  // Track if user is at the bottom of the scroll view
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const threshold = 80;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isUserAtBottomRef.current = distanceToBottom <= threshold;
+  }, []);
+
+  // Smart smooth scrolling
+  const scrollToBottomIfAppropriate = useCallback((force = false) => {
+    if (force || isUserAtBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, []);
+
+  // Trigger streaming animation for the latest assistant message
+  useEffect(() => {
+    if (isLoading) {
+      scrollToBottomIfAppropriate(true);
+      return;
+    }
+
+    if (messages.length === 0) return;
+
+    const lastMsg = messages[messages.length - 1];
+    if (
+      lastMsg.role === 'assistant' &&
+      !completedStreamIdsRef.current.has(lastMsg.id)
+    ) {
+      if (lastMsg.status === 'error' || !lastMsg.content) {
+        completedStreamIdsRef.current.add(lastMsg.id);
+        scrollToBottomIfAppropriate(true);
+        return;
+      }
+
+      // Mark message as completed immediately in the ref set so other effects don't start duplicate timers
+      completedStreamIdsRef.current.add(lastMsg.id);
+      setStreamingMsgId(lastMsg.id);
+      setStreamedLength(1);
+      scrollToBottomIfAppropriate(true);
+
+      const fullContent = lastMsg.content || '';
+      const totalLen = fullContent.length;
+
+      // Clear any previous timer
+      if (activeTimerRef.current) {
+        clearInterval(activeTimerRef.current);
+      }
+
+      // Adaptive speed calculation
+      const step = Math.max(3, Math.min(30, Math.ceil(totalLen / 60)));
+      const intervalDelay = 20;
+
+      let currentLength = 1;
+      activeTimerRef.current = setInterval(() => {
+        currentLength += step;
+        if (currentLength >= totalLen) {
+          setStreamedLength(totalLen);
+          setStreamingMsgId(null);
+          if (activeTimerRef.current) {
+            clearInterval(activeTimerRef.current);
+            activeTimerRef.current = null;
+          }
+          scrollToBottomIfAppropriate();
+        } else {
+          setStreamedLength(currentLength);
+          scrollToBottomIfAppropriate();
+        }
+      }, intervalDelay);
+    }
+  }, [messages, isLoading, scrollToBottomIfAppropriate]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (activeTimerRef.current) {
+        clearInterval(activeTimerRef.current);
+      }
+    };
+  }, []);
 
   // Resilient Copy to Clipboard (with iframe & mobile fallbacks)
   const copyToClipboard = async (text: string): Promise<boolean> => {
@@ -85,9 +181,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         await navigator.clipboard.writeText(text);
         return true;
       }
-    } catch {
-      // Fall through to fallback
-    }
+    } catch {}
 
     try {
       const textArea = document.createElement('textarea');
@@ -163,9 +257,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputText.trim() && selectedImages.length === 0) return;
-    if (isLoading) return;
+    if (isLoading || Boolean(streamingMsgId)) return;
 
-    onSendMessage(inputText, selectedImages, isDeepResearch);
+    onSendMessage(inputText, selectedImages, false);
     setInputText('');
     setSelectedImages([]);
   };
@@ -179,6 +273,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const toggleReasoning = (id: string) => {
     setExpandedReasoning((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const toggleSources = (id: string) => {
+    setExpandedSources((prev) => ({
       ...prev,
       [id]: !prev[id],
     }));
@@ -231,9 +332,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
       />
 
       {/* Messages Scroll Container */}
-      <div className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden px-3 md:px-8 py-4 md:py-6 space-y-4 md:space-y-6 max-w-4xl mx-auto w-full">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden px-3 md:px-8 py-4 md:py-6 space-y-4 md:space-y-6 max-w-4xl mx-auto w-full"
+      >
         {messages.map((message) => {
           const isUser = message.role === 'user';
+          const isCurrentlyStreaming = streamingMsgId === message.id;
+
+          // Determine the text slice to render
+          const displayContent = isCurrentlyStreaming
+            ? (message.content || '').slice(0, streamedLength)
+            : message.content;
+
           return (
             <div
               key={message.id}
@@ -252,7 +364,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   className="w-8 h-8 rounded-full object-cover ring-1 ring-purple-200 flex-shrink-0 mt-1"
                 />
               ) : (
-                <LeoLogoMark className="w-8 h-8 flex-shrink-0 mt-1 drop-shadow-xs" />
+                <div className="relative flex-shrink-0 mt-1">
+                  {isCurrentlyStreaming && (
+                    <div className="absolute -inset-0.5 rounded-full bg-purple-500/30 animate-grok-ring" />
+                  )}
+                  <LeoLogoMark className="w-8 h-8 relative z-10 drop-shadow-xs" />
+                </div>
               )}
 
               {/* Message Bubble Container */}
@@ -305,12 +422,57 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       : 'bg-white border border-purple-100/90 rounded-tl-xs shadow-[0_2px_12px_rgba(0,0,0,0.03)] text-neutral-800'
                   }`}
                 >
-                  {/* Assistant Deep Reasoning Collapsible Block */}
+                  {/* Verified Web Search Sources Badge & Collapsible Links */}
+                  {!isUser && message.searched && message.searchSources && message.searchSources.length > 0 && (
+                    <div className="mb-3 border border-indigo-100 rounded-xl bg-indigo-50/50 p-2.5 text-xs shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => toggleSources(message.id)}
+                        className="flex items-center justify-between w-full font-medium text-indigo-950 hover:text-indigo-900 active:scale-[0.99] transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Globe className="w-3.5 h-3.5 text-indigo-600" />
+                          <span className="font-semibold">
+                            Browsed {message.searchSources.length} web {message.searchSources.length === 1 ? 'source' : 'sources'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[11px] text-indigo-600 font-medium">
+                          <span>{expandedSources[message.id] ? 'Hide' : 'View sources'}</span>
+                          {expandedSources[message.id] ? (
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                      </button>
+
+                      {expandedSources[message.id] && (
+                        <div className="mt-2 pt-2 border-t border-indigo-100/80 flex flex-wrap gap-1.5">
+                          {message.searchSources.map((source, sIdx) => (
+                            <a
+                              key={sIdx}
+                              href={source.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-indigo-200/70 text-indigo-900 hover:text-indigo-600 hover:border-indigo-300 text-[11px] transition shadow-2xs truncate max-w-[240px]"
+                              title={source.url}
+                            >
+                              <Globe className="w-3 h-3 text-indigo-500 shrink-0" />
+                              <span className="truncate">{source.title || 'Source'}</span>
+                              <ExternalLink className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Assistant Deep Reasoning Collapsible Block (if present) */}
                   {!isUser && message.isDeepResearch && (
                     <div className="mb-3.5 border border-purple-200/80 rounded-xl bg-purple-50/60 p-3 text-xs shadow-2xs">
                       <button
                         onClick={() => toggleReasoning(message.id)}
-                        className="flex items-center justify-between w-full font-semibold text-purple-900 active:scale-[0.99] transition"
+                        className="flex items-center justify-between w-full font-semibold text-purple-900 active:scale-[0.99] transition cursor-pointer"
                       >
                         <div className="flex items-center gap-2">
                           <BrainCircuit className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
@@ -333,8 +495,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     </div>
                   )}
 
-                  {/* Markdown Content */}
-                  <div className={`w-full min-w-0 overflow-hidden prose-sm max-w-none break-words ${isUser ? 'text-white' : 'text-neutral-850'}`}>
+                  {/* Markdown Content with Streaming Typing Cursor */}
+                  <div className={`w-full min-w-0 overflow-hidden prose-sm max-w-none break-words relative ${isUser ? 'text-white' : 'text-neutral-850'}`}>
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
@@ -404,7 +566,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           );
                         },
                         p({ children }: any) {
-                          return <p className={`mb-2.5 last:mb-0 leading-relaxed text-xs md:text-sm ${isUser ? 'text-white' : 'text-neutral-800'}`}>{children}</p>;
+                          return (
+                            <p className={`mb-2.5 last:mb-0 leading-relaxed text-xs md:text-sm inline-block w-full ${isUser ? 'text-white' : 'text-neutral-800'}`}>
+                              {children}
+                              {isCurrentlyStreaming && (
+                                <span
+                                  aria-hidden="true"
+                                  className="inline-block w-1.5 h-3.5 md:h-4 ml-1 -mb-0.5 align-middle bg-gradient-to-b from-purple-500 to-indigo-600 rounded-xs animate-cursor-blink shadow-2xs"
+                                />
+                              )}
+                            </p>
+                          );
                         },
                         h1({ children }: any) {
                           return <h1 className="text-base md:text-lg font-bold text-neutral-900 mt-3 mb-2 font-display">{children}</h1>;
@@ -444,18 +616,18 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         }
                       }}
                     >
-                      {message.content}
+                      {displayContent}
                     </ReactMarkdown>
                   </div>
                 </div>
 
-                {/* Assistant Message Actions Toolbar */}
-                {!isUser && (
-                  <div className="flex items-center gap-1.5 mt-1.5 px-1 text-neutral-400 text-xs">
+                {/* Assistant Message Actions Toolbar (fades in when generation completes) */}
+                {!isUser && !isCurrentlyStreaming && (
+                  <div className="flex items-center gap-1.5 mt-1.5 px-1 text-neutral-400 text-xs animate-in fade-in duration-200">
                     <button
                       onClick={() => handleCopyText(message.id, message.content)}
                       title="Copy response"
-                      className="p-1 hover:text-neutral-700 hover:bg-neutral-100 rounded-md transition"
+                      className="p-1 hover:text-neutral-700 hover:bg-neutral-100 rounded-md transition cursor-pointer"
                     >
                       {copiedMsgId === message.id ? (
                         <Check className="w-3.5 h-3.5 text-emerald-500" />
@@ -467,7 +639,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <button
                       onClick={() => handleToggleSpeech(message.id, message.content)}
                       title="Read aloud"
-                      className={`p-1 rounded-md transition ${
+                      className={`p-1 rounded-md transition cursor-pointer ${
                         speakingMsgId === message.id
                           ? 'text-purple-600 bg-purple-50'
                           : 'hover:text-neutral-700 hover:bg-neutral-100'
@@ -479,7 +651,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <button
                       onClick={onRegenerate}
                       title="Regenerate answer"
-                      className="p-1 hover:text-neutral-700 hover:bg-neutral-100 rounded-md transition"
+                      className="p-1 hover:text-neutral-700 hover:bg-neutral-100 rounded-md transition cursor-pointer"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                     </button>
@@ -488,13 +660,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
                     <button
                       title="Helpful"
-                      className="p-1 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition"
+                      className="p-1 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition cursor-pointer"
                     >
                       <ThumbsUp className="w-3.5 h-3.5" />
                     </button>
                     <button
                       title="Not helpful"
-                      className="p-1 hover:text-red-500 hover:bg-red-50 rounded-md transition"
+                      className="p-1 hover:text-red-500 hover:bg-red-50 rounded-md transition cursor-pointer"
                     >
                       <ThumbsDown className="w-3.5 h-3.5" />
                     </button>
@@ -505,17 +677,31 @@ export const ChatView: React.FC<ChatViewProps> = ({
           );
         })}
 
-        {/* Streaming / Loading State */}
+        {/* Premium Grok-Style Thinking State (Active before response arrives) */}
         {isLoading && (
-          <div className="flex items-start gap-3">
-            <LeoLogoMark className="w-8 h-8 flex-shrink-0 animate-pulse drop-shadow-xs" />
-            <div className="bg-white border border-purple-100/80 rounded-2xl rounded-tl-xs p-4 shadow-xs flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-purple-600 animate-bounce" />
-              <div className="w-2 h-2 rounded-full bg-purple-600 animate-bounce [animation-delay:0.2s]" />
-              <div className="w-2 h-2 rounded-full bg-purple-600 animate-bounce [animation-delay:0.4s]" />
-              <span className="text-xs text-neutral-400 font-medium ml-1">
-                Leo AI is reasoning...
-              </span>
+          <div className="flex items-start gap-3 md:gap-4 animate-in fade-in duration-200">
+            {/* Pulsing Luminous Avatar */}
+            <div className="relative w-8 h-8 flex-shrink-0 mt-1 flex items-center justify-center">
+              <div className="absolute -inset-1 rounded-full bg-gradient-to-tr from-purple-500 via-indigo-400 to-pink-400 opacity-60 blur-xs animate-grok-ring" />
+              <LeoLogoMark className="w-8 h-8 relative z-10 drop-shadow-xs" />
+            </div>
+
+            {/* Compact Thinking Capsule */}
+            <div className="w-full max-w-[94%] sm:max-w-[88%] md:max-w-[80%] min-w-0 flex flex-col items-start">
+              <div className="flex items-center gap-2 mb-1 px-1">
+                <span className="text-[11px] font-semibold text-neutral-600">Leo AI</span>
+              </div>
+
+              <div className="bg-white border border-purple-100/90 rounded-2xl rounded-tl-xs px-3.5 py-2.5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex items-center gap-2.5 min-h-[40px]">
+                {/* Luminous orbiting indicator */}
+                <div className="relative flex items-center justify-center w-4 h-4 flex-shrink-0">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600 animate-spin [animation-duration:3s]" />
+                </div>
+                {/* Grok-style shimmering wave text */}
+                <span className="text-xs font-semibold animate-grok-text tracking-tight select-none">
+                  Thinking & researching...
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -537,7 +723,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <img src={img} alt="Vision upload" className="w-14 h-14 object-cover" />
                   <button
                     onClick={() => removeImage(i)}
-                    className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-black text-white rounded-full transition"
+                    className="absolute top-1 right-1 p-0.5 bg-black/60 hover:bg-black text-white rounded-full transition cursor-pointer"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -564,7 +750,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <button
                   type="button"
                   onClick={onOpenModelSelector}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-neutral-50 hover:bg-purple-50 text-neutral-800 hover:text-purple-900 border border-neutral-200/80 hover:border-purple-200 transition active:scale-95 group shadow-2xs"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-neutral-50 hover:bg-purple-50 text-neutral-800 hover:text-purple-900 border border-neutral-200/80 hover:border-purple-200 transition active:scale-95 group shadow-2xs cursor-pointer"
                   title="Change AI Model"
                 >
                   <ModelLogo iconKey={activeModelDef.iconKey} modelId={activeModelDef.id} size="xs" />
@@ -574,21 +760,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
               )}
 
               <button
-                onClick={() => setIsDeepResearch(!isDeepResearch)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition active:scale-95 ${
-                  isDeepResearch
-                    ? 'bg-purple-100 text-purple-900 border border-purple-300 font-semibold'
-                    : 'bg-purple-50/80 hover:bg-purple-100 text-purple-700'
-                }`}
-              >
-                <BrainCircuit className="w-3 h-3" />
-                <span>Deep Research</span>
-              </button>
-
-              <button
                 onClick={() => fileInputRef.current?.click()}
                 title="Upload image for Vision analysis"
-                className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80 rounded-lg transition active:scale-95"
+                className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80 rounded-lg transition active:scale-95 cursor-pointer"
               >
                 <ImageIcon className="w-4 h-4" />
               </button>
@@ -596,7 +770,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <button
                 onClick={onOpenSavedPrompts}
                 title="Open Prompt Library"
-                className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80 rounded-lg transition active:scale-95"
+                className="p-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80 rounded-lg transition active:scale-95 cursor-pointer"
               >
                 <Lightbulb className="w-4 h-4" />
               </button>
@@ -606,7 +780,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <button
                 onClick={handleToggleVoice}
                 title="Voice input"
-                className={`p-1.5 rounded-lg transition active:scale-95 ${
+                className={`p-1.5 rounded-lg transition active:scale-95 cursor-pointer ${
                   isRecording
                     ? 'bg-red-500 text-white animate-pulse'
                     : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100/80'
@@ -617,8 +791,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
               <button
                 onClick={() => handleSubmit()}
-                disabled={!inputText.trim() && selectedImages.length === 0}
-                className="w-7 h-7 rounded-lg bg-neutral-900 hover:bg-black disabled:opacity-30 text-white flex items-center justify-center shadow-xs transition active:scale-95"
+                disabled={(!inputText.trim() && selectedImages.length === 0) || isLoading || Boolean(streamingMsgId)}
+                className="w-7 h-7 rounded-lg bg-neutral-900 hover:bg-black disabled:opacity-30 text-white flex items-center justify-center shadow-xs transition active:scale-95 cursor-pointer"
               >
                 <ArrowUp className="w-4 h-4" />
               </button>
@@ -636,7 +810,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           <div className="relative max-w-4xl max-h-[90vh] bg-neutral-900 rounded-2xl overflow-hidden p-2">
             <button
               onClick={() => setInspectImage(null)}
-              className="absolute top-4 right-4 p-2 bg-black/60 hover:bg-black text-white rounded-full transition z-10"
+              className="absolute top-4 right-4 p-2 bg-black/60 hover:bg-black text-white rounded-full transition z-10 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

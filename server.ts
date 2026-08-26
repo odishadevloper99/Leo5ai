@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import nodemailer from 'nodemailer';
+import bcrypt from 'bcryptjs';
+import cookieParser from 'cookie-parser';
 import { memoService } from './backend/services/memoService';
 
 dotenv.config();
@@ -19,11 +21,49 @@ try {
 const app = express();
 app.set('trust proxy', true);
 
+// ----------------------------------------------------
+// Security Headers Middleware (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
+// ----------------------------------------------------
+app.use((req, res, next) => {
+  // Prevent MIME type sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Clickjacking protection (allow same origin or parent container embed)
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  // Legacy XSS filter protection
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  // Restrict referrer leakage
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Restrict browser features / permissions
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
+
+  // Enforce HSTS over HTTPS connections
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+
+  // Robust Content Security Policy allowing required assets, Google OAuth, and CDNs
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.cashfree.com https://accounts.google.com https://apis.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://accounts.google.com https://sdk.cashfree.com https://*.firebaseapp.com; frame-ancestors 'self' https://*.run.app https://ai.studio https://*.google.com;"
+  );
+
+  next();
+});
+
+// Cookie Parser Middleware with session secret support
+app.use(cookieParser(process.env.SESSION_SECRET || (() => { throw new Error('SESSION_SECRET environment variable is required'); })()));
+
 // Enable CORS for Vercel Frontend <-> Render Backend communication
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-admin-token');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-admin-token, x-user-id');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -32,6 +72,97 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// ----------------------------------------------------
+// Rate Limiting Infrastructures
+// ----------------------------------------------------
+interface LoginRateLimitEntry {
+  attempts: number;
+  firstAttempt: number;
+  blockedUntil?: number;
+}
+const loginRateLimitMap = new Map<string, LoginRateLimitEntry>();
+
+function checkLoginRateLimit(ip: string): { allowed: boolean; remaining: number; retryAfterSeconds: number } {
+  const now = Date.now();
+  const WINDOW_MS = 15 * 60 * 1000; // 15 minutes window
+  const MAX_ATTEMPTS = 5;
+  const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes lockout
+
+  const entry = loginRateLimitMap.get(ip);
+  if (!entry) {
+    return { allowed: true, remaining: MAX_ATTEMPTS, retryAfterSeconds: 0 };
+  }
+
+  // Check if currently locked out
+  if (entry.blockedUntil && now < entry.blockedUntil) {
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: Math.ceil((entry.blockedUntil - now) / 1000)
+    };
+  }
+
+  // Reset window if expired
+  if (now - entry.firstAttempt > WINDOW_MS) {
+    loginRateLimitMap.delete(ip);
+    return { allowed: true, remaining: MAX_ATTEMPTS, retryAfterSeconds: 0 };
+  }
+
+  if (entry.attempts >= MAX_ATTEMPTS) {
+    entry.blockedUntil = now + LOCKOUT_MS;
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: Math.ceil(LOCKOUT_MS / 1000)
+    };
+  }
+
+  return { allowed: true, remaining: MAX_ATTEMPTS - entry.attempts, retryAfterSeconds: 0 };
+}
+
+function recordLoginAttempt(ip: string, success: boolean) {
+  if (success) {
+    loginRateLimitMap.delete(ip);
+    return;
+  }
+  const now = Date.now();
+  const entry = loginRateLimitMap.get(ip) || { attempts: 0, firstAttempt: now };
+  entry.attempts += 1;
+  loginRateLimitMap.set(ip, entry);
+}
+
+// AI Endpoint burst rate limiting: Token bucket per user / IP (30 reqs max burst, 0.5 reqs/sec refill)
+interface TokenBucket {
+  tokens: number;
+  lastRefill: number;
+}
+const aiRateLimitMap = new Map<string, TokenBucket>();
+
+function checkAiEndpointRateLimit(key: string): { allowed: boolean; retryAfterMs: number; remaining: number } {
+  const now = Date.now();
+  const CAPACITY = 30; // Max burst capacity
+  const REFILL_RATE = 0.5; // 30 reqs per minute sustained
+
+  let bucket = aiRateLimitMap.get(key);
+  if (!bucket) {
+    bucket = { tokens: CAPACITY - 1, lastRefill: now };
+    aiRateLimitMap.set(key, bucket);
+    return { allowed: true, retryAfterMs: 0, remaining: CAPACITY - 1 };
+  }
+
+  const elapsedSeconds = (now - bucket.lastRefill) / 1000;
+  bucket.tokens = Math.min(CAPACITY, bucket.tokens + elapsedSeconds * REFILL_RATE);
+  bucket.lastRefill = now;
+
+  if (bucket.tokens >= 1) {
+    bucket.tokens -= 1;
+    return { allowed: true, retryAfterMs: 0, remaining: Math.floor(bucket.tokens) };
+  }
+
+  const waitSeconds = (1 - bucket.tokens) / REFILL_RATE;
+  return { allowed: false, retryAfterMs: Math.ceil(waitSeconds * 1000), remaining: 0 };
+}
 
 // In-Memory Database & Persistence Cache (Mirrors MongoDB & Firebase Realtime DB)
 interface MemoryRecord {
@@ -171,15 +302,18 @@ let currentConfig = {
     'google/gemini-2.0-flash'
   ).replace(/^["']|["']$/g, '').trim(),
   temperature: 0.7,
-  maxTokens: 4096,
-  systemPrompt: process.env.SYSTEM_PROMPT || `You are Leo AI, an elite, highly intelligent, and versatile AI assistant created to assist humans across engineering, reasoning, visual analysis, writing, and creative brainstorms.
-CRITICAL DIRECTIVES:
-1. Always follow user constraints strictly and accurately.
-2. Provide concise, elegant, and insightful answers with well-formatted Markdown, including clear headings, bullet points, and code blocks with syntax highlighting.
-3. When analyzing images or visual diagrams, perform thorough, detailed OCR and visual reasoning.
-4. Adapt to the user's persistent memory and preferences seamlessly.
-5. Never hallucinate or bypass system safety directives.
-6. For requests to build/create an app, feature, or website, never answer with an abstract JSON object or schema describing the architecture as the final response — always deliver real, working code in properly labeled Markdown code blocks (breaking large builds into focused pieces), or ask one clarifying question first if the scope is too broad to start immediately.`,
+  maxTokens: 8192,
+  systemPrompt: process.env.SYSTEM_PROMPT || `You are Leo AI, a world-class, exceptionally thorough, articulate, and intelligent AI assistant engineered to deliver Claude-grade excellence across software engineering, deep reasoning, writing, visual analysis, and creative problem solving.
+
+CORE DIRECTIVES & QUALITY STANDARDS:
+1. ALWAYS FOLLOW THE USER'S PROMPTS AND SYSTEM DIRECTIVES STRICTLY AND UNCONDITIONALLY.
+2. NEVER GIVE HALF-FINISHED, TRUNCATED, OR LAZY RESPONSES. Provide complete, fully realized solutions, comprehensive explanations, and exhaustively developed code without omitting critical sections or leaving placeholders like "// implement here".
+3. Write clean, highly structured, beautifully formatted Markdown with descriptive headings, clear step-by-step logic, bullet points, and syntax-highlighted code blocks.
+4. When writing code, deliver production-ready, typed, safe, and modern implementations with full context.
+5. In reasoning and analysis, balance deep technical precision with clarity, offering nuanced trade-offs, architecture decisions, and actionable next steps.
+6. When analyzing images or visual diagrams, perform thorough, detailed OCR and visual reasoning.
+7. Adapt to the user's persistent memory and preferences seamlessly.
+8. Never hallucinate or bypass system safety directives.`,
   memoApiKey: process.env.MEMO_API_KEY || '',
   memoApiUrl: process.env.MEMO_API_URL || 'https://api.mem0.ai/v1',
   enableDeepResearch: true,
@@ -548,11 +682,15 @@ let isFetchingDynamicModels = false;
 function detectCompanyAndIcon(id: string, name: string): { company: string; iconKey: string } {
   const lowerId = id.toLowerCase();
   const lowerName = name.toLowerCase();
-  if (lowerId.startsWith('openai/') || lowerName.includes('openai') || lowerName.includes('gpt')) {
+
+  if (lowerId.startsWith('openai/') || lowerName.includes('openai') || lowerName.includes('gpt-') || lowerName.includes('o1-') || lowerName.includes('o3-')) {
     return { company: 'OpenAI', iconKey: 'openai' };
   }
   if (lowerId.startsWith('deepseek/') || lowerName.includes('deepseek')) {
     return { company: 'DeepSeek', iconKey: 'deepseek' };
+  }
+  if (lowerId.includes('gemma')) {
+    return { company: 'Google', iconKey: 'gemma' };
   }
   if (lowerId.startsWith('google/') || lowerName.includes('gemini') || lowerName.includes('google')) {
     return { company: 'Google', iconKey: 'gemini' };
@@ -560,27 +698,76 @@ function detectCompanyAndIcon(id: string, name: string): { company: string; icon
   if (lowerId.startsWith('anthropic/') || lowerName.includes('claude') || lowerName.includes('anthropic')) {
     return { company: 'Anthropic', iconKey: 'claude' };
   }
-  if (lowerId.startsWith('mistral') || lowerName.includes('mistral') || lowerName.includes('codestral')) {
+  if (lowerId.startsWith('mistral') || lowerName.includes('mistral') || lowerName.includes('codestral') || lowerName.includes('pixtral')) {
     return { company: 'Mistral AI', iconKey: 'mistral' };
   }
-  if (lowerId.startsWith('z-ai/') || lowerName.includes('glm') || lowerName.includes('zhipu')) {
-    return { company: 'Zhipu AI', iconKey: 'glm' };
+  if (lowerId.startsWith('meta/') || lowerId.startsWith('meta-llama/') || lowerName.includes('llama')) {
+    return { company: 'Meta', iconKey: 'meta' };
   }
   if (lowerId.startsWith('qwen/') || lowerId.startsWith('alibaba/') || lowerName.includes('qwen')) {
     return { company: 'Alibaba Cloud', iconKey: 'qwen' };
   }
-  if (lowerId.startsWith('x-ai/') || lowerName.includes('grok')) {
+  if (lowerId.startsWith('x-ai/') || lowerName.includes('grok') || lowerName.includes('xai')) {
     return { company: 'xAI', iconKey: 'grok' };
   }
   if (lowerId.startsWith('moonshot/') || lowerName.includes('kimi')) {
     return { company: 'Moonshot AI', iconKey: 'kimi' };
   }
-  if (lowerId.startsWith('meta/') || lowerName.includes('llama')) {
-    return { company: 'Meta', iconKey: 'llama' };
+  if (lowerId.includes('perplexity') || lowerName.includes('sonar')) {
+    return { company: 'Perplexity AI', iconKey: 'perplexity' };
   }
+  if (lowerId.includes('copilot') || lowerId.includes('github/')) {
+    return { company: 'GitHub', iconKey: 'copilot' };
+  }
+  if (lowerId.startsWith('groq/') || lowerName.includes('groq')) {
+    return { company: 'Groq', iconKey: 'groq' };
+  }
+  if (lowerId.startsWith('cohere/') || lowerName.includes('cohere') || lowerName.includes('command-r')) {
+    return { company: 'Cohere', iconKey: 'cohere' };
+  }
+  if (lowerId.includes('sora')) {
+    return { company: 'OpenAI', iconKey: 'sora' };
+  }
+  if (lowerId.includes('dall-e') || lowerName.includes('dalle')) {
+    return { company: 'OpenAI', iconKey: 'dalle' };
+  }
+  if (lowerId.includes('flux') || lowerId.includes('black-forest')) {
+    return { company: 'Black Forest Labs', iconKey: 'flux' };
+  }
+  if (lowerId.includes('huggingface') || lowerId.startsWith('hf/')) {
+    return { company: 'Hugging Face', iconKey: 'huggingface' };
+  }
+  if (lowerId.includes('ollama')) {
+    return { company: 'Ollama', iconKey: 'ollama' };
+  }
+  if (lowerId.includes('midjourney')) {
+    return { company: 'Midjourney', iconKey: 'midjourney' };
+  }
+  if (lowerId.includes('kling')) {
+    return { company: 'Kling', iconKey: 'kling' };
+  }
+  if (lowerId.includes('minimax') || lowerName.includes('abab')) {
+    return { company: 'MiniMax', iconKey: 'minimax' };
+  }
+  if (lowerId.startsWith('yi/') || lowerId.includes('01-ai') || lowerName.includes('yi-')) {
+    return { company: '01.AI', iconKey: 'yi' };
+  }
+  if (lowerId.includes('rwkv')) {
+    return { company: 'RWKV', iconKey: 'rwkv' };
+  }
+  if (lowerId.includes('phind')) {
+    return { company: 'Phind', iconKey: 'phind' };
+  }
+  if (lowerId.includes('elevenlabs') || lowerName.includes('eleven')) {
+    return { company: 'ElevenLabs', iconKey: 'elevenlabs' };
+  }
+  if (lowerId.startsWith('z-ai/') || lowerName.includes('glm') || lowerName.includes('zhipu') || lowerName.includes('chatglm')) {
+    return { company: 'Zhipu AI', iconKey: 'glm' };
+  }
+
   const prefix = id.split('/')[0];
   const formattedCompany = prefix ? prefix.charAt(0).toUpperCase() + prefix.slice(1) : 'AI';
-  return { company: formattedCompany, iconKey: 'sparkles' };
+  return { company: formattedCompany, iconKey: 'gemini' };
 }
 
 function detectCategory(id: string, name: string, inputModalities: string[] = []): 'text' | 'vision' | 'reasoning' | 'coding' {
@@ -1404,15 +1591,56 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
 // Initial sync on boot
 syncSystemConfigFromDatabase();
 
-// Active admin sessions
+// Active admin sessions & revocation map
 const activeAdminTokens = new Set<string>();
 
-// Helper to check admin authorization
+// Helper to securely verify Admin Password using bcrypt or fallback environment variable
+function verifyAdminPassword(candidatePassword: string): boolean {
+  if (!candidatePassword || typeof candidatePassword !== 'string') return false;
+
+  const expectedPassword = (process.env.ADMIN_PASSWORD || '').trim();
+  const expectedHash = (process.env.ADMIN_PASSWORD_HASH || '').trim();
+
+  // 1. Check bcrypt hash environment variable if configured
+  if (expectedHash) {
+    try {
+      if (bcrypt.compareSync(candidatePassword, expectedHash)) return true;
+    } catch (e) {}
+  }
+
+  // 2. Check if the ADMIN_PASSWORD environment variable itself is a bcrypt hash ($2a$, $2b$, $2y$)
+  if (expectedPassword.startsWith('$2a$') || expectedPassword.startsWith('$2b$') || expectedPassword.startsWith('$2y$')) {
+    try {
+      if (bcrypt.compareSync(candidatePassword, expectedPassword)) return true;
+    } catch (e) {}
+  }
+
+  // 3. Constant-time / exact string comparison fallback
+  return candidatePassword.trim() === expectedPassword;
+}
+
+// Helper to check admin authorization via Cookie, Bearer header, or x-admin-token
 function isAuthorizedAdmin(req: express.Request): boolean {
+  // Check Cookie first (HttpOnly secure session)
+  const cookieToken = req.cookies?.leo_admin_token;
+  if (cookieToken && activeAdminTokens.has(cookieToken)) {
+    return true;
+  }
+
+  // Check Authorization Bearer header
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return false;
-  const token = authHeader.split(' ')[1];
-  return activeAdminTokens.has(token);
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    if (activeAdminTokens.has(token)) return true;
+  }
+
+  // Check custom admin header
+  const customHeaderToken = req.headers['x-admin-token'] as string;
+  if (customHeaderToken && activeAdminTokens.has(customHeaderToken)) {
+    return true;
+  }
+
+  return false;
 }
 
 // ----------------------------------------------------
@@ -1439,19 +1667,46 @@ app.get('/api/health', (req, res) => {
 // 2. Admin Authentication & Management
 // ----------------------------------------------------
 app.post('/api/admin/login', (req, res) => {
-  const { password } = req.body;
-  const expectedPassword = process.env.ADMIN_PASSWORD || 'leo_admin_secret_pass';
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown-ip';
 
-  if (!password || password !== expectedPassword) {
-    return res.status(401).json({
+  // 1. Rate Limiting Check (5 attempts per IP per 15 minutes)
+  const rateLimitStatus = checkLoginRateLimit(clientIp);
+  if (!rateLimitStatus.allowed) {
+    return res.status(429).json({
       success: false,
-      message: 'Invalid Admin credentials. Please verify your Render Secret / Environment variable.'
+      message: `Too many failed login attempts. Please try again in ${rateLimitStatus.retryAfterSeconds} seconds.`,
+      retryAfterSeconds: rateLimitStatus.retryAfterSeconds
     });
   }
 
-  // Generate secure session token
+  const { password } = req.body;
+
+  // 2. Password Verification with Bcrypt Support
+  if (!password || !verifyAdminPassword(password)) {
+    recordLoginAttempt(clientIp, false);
+    const updatedStatus = checkLoginRateLimit(clientIp);
+    return res.status(401).json({
+      success: false,
+      message: `Invalid Admin credentials. (${updatedStatus.remaining} attempts remaining before temporary lockout).`,
+      remainingAttempts: updatedStatus.remaining
+    });
+  }
+
+  // Record successful login (clears failed attempts for IP)
+  recordLoginAttempt(clientIp, true);
+
+  // 3. Generate secure session token
   const token = 'admin_sess_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
   activeAdminTokens.add(token);
+
+  // 4. Store session in HttpOnly, Secure, SameSite cookie
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.cookie('leo_admin_token', token, {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days session
+  });
 
   res.json({
     success: true,
@@ -1461,12 +1716,32 @@ app.post('/api/admin/login', (req, res) => {
 });
 
 app.post('/api/admin/logout', (req, res) => {
+  // Invalidate token server-side from Bearer header, custom header, or cookie
+  const cookieToken = req.cookies?.leo_admin_token;
+  if (cookieToken) {
+    activeAdminTokens.delete(cookieToken);
+  }
+
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     activeAdminTokens.delete(token);
   }
-  res.json({ success: true, message: 'Logged out' });
+
+  const customHeaderToken = req.headers['x-admin-token'] as string;
+  if (customHeaderToken) {
+    activeAdminTokens.delete(customHeaderToken);
+  }
+
+  // Clear the HttpOnly session cookie
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.clearCookie('leo_admin_token', {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'lax'
+  });
+
+  res.json({ success: true, message: 'Logged out successfully. Server session invalidated.' });
 });
 
 app.get('/api/admin/config', (req, res) => {
@@ -2436,13 +2711,18 @@ app.get('/api/auth/google/callback', async (req, res) => {
   }
 });
 
+// Active User Sessions & Server-Side Invalidation Store
+const activeUserSessions = new Map<string, { uid: string; email: string; createdAt: number }>();
+
 /**
  * GET /api/auth/me or /api/auth/session
  * Returns current authenticated user and updated AI credits
  */
 app.get(['/api/auth/me', '/api/auth/session'], (req, res) => {
+  const cookieToken = req.cookies?.leo_auth_session;
   const authHeader = req.headers.authorization || '';
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim() || (req.query.token as string);
+  const headerToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const token = cookieToken || headerToken || (req.query.token as string);
   const uid = (req.query.uid as string) || (req.headers['x-user-id'] as string);
 
   if (!token && !uid) {
@@ -2452,6 +2732,11 @@ app.get(['/api/auth/me', '/api/auth/session'], (req, res) => {
   let user: UserRecord | undefined;
   if (uid && userStore.has(uid)) {
     user = userStore.get(uid);
+  } else if (token && activeUserSessions.has(token)) {
+    const sess = activeUserSessions.get(token);
+    if (sess && sess.uid) {
+      user = userStore.get(sess.uid);
+    }
   } else {
     // Search userStore
     for (const u of userStore.values()) {
@@ -2470,9 +2755,46 @@ app.get(['/api/auth/me', '/api/auth/session'], (req, res) => {
 });
 
 /**
+ * POST /api/auth/logout
+ * Clears user session cookies and invalidates session token server-side
+ */
+app.post('/api/auth/logout', (req, res) => {
+  const cookieToken = req.cookies?.leo_auth_session;
+  if (cookieToken) {
+    activeUserSessions.delete(cookieToken);
+  }
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    activeUserSessions.delete(token);
+  }
+
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.clearCookie('leo_auth_session', {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'lax'
+  });
+
+  res.json({ success: true, message: 'Logged out successfully. Session invalidated server-side.' });
+});
+
+/**
  * Step 1: Generate OTP, invalidate old OTP, write to /otps/{sanitizedEmail} in RTDB, and send email
  */
 app.post('/api/auth/send-otp', async (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown-ip';
+
+  // 1. IP Rate Limiting Check
+  const rateLimitStatus = checkLoginRateLimit(clientIp);
+  if (!rateLimitStatus.allowed) {
+    return res.status(429).json({
+      success: false,
+      message: `Too many requests from this IP. Please wait ${rateLimitStatus.retryAfterSeconds}s before retrying.`
+    });
+  }
+
   const { email, uid, displayName, photoURL } = req.body;
   if (!email || !email.includes('@')) {
     return res.status(400).json({ success: false, message: 'A valid email address is required.' });
@@ -2593,6 +2915,17 @@ app.get('/api/auth/email-diagnostics', (req, res) => {
  * Step 2: Read /otps/{sanitizedEmail} from RTDB, verify OTP & expiry, delete node, and mint custom token
  */
 app.post('/api/auth/verify-otp', async (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown-ip';
+
+  // 1. IP Rate Limiting Check
+  const rateLimitStatus = checkLoginRateLimit(clientIp);
+  if (!rateLimitStatus.allowed) {
+    return res.status(429).json({
+      success: false,
+      message: `Too many attempts from this IP. Please retry in ${rateLimitStatus.retryAfterSeconds}s.`
+    });
+  }
+
   const { email, otp, userProfile } = req.body;
   if (!email || !otp) {
     return res.status(400).json({ success: false, message: 'Email and OTP are required.' });
@@ -2629,6 +2962,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   // Rate limit / attempts check
   activeAttempts++;
   if (activeAttempts > 5) {
+    recordLoginAttempt(clientIp, false);
     await deleteRtdbData(`otps/${sanitizedEmail}`);
     otpStore.delete(normalizedEmail);
     return res.status(429).json({
@@ -2639,6 +2973,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 
   // Check code match
   if (activeOtp !== otp.trim()) {
+    recordLoginAttempt(clientIp, false);
     // Update attempts in RTDB
     if (rtdbRecord) {
       await setRtdbData(`otps/${sanitizedEmail}/attempts`, activeAttempts);
@@ -2652,7 +2987,8 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     });
   }
 
-  // 2. Code is VALID: Delete /otps/{sanitizedEmail} node in RTDB
+  // 2. Code is VALID: Delete /otps/{sanitizedEmail} node in RTDB & reset rate limits
+  recordLoginAttempt(clientIp, true);
   await deleteRtdbData(`otps/${sanitizedEmail}`);
   otpStore.delete(normalizedEmail);
 
@@ -2683,9 +3019,25 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   });
   userStore.set(finalUid, finalUser);
 
-  // Mint Firebase Custom Token representation
+  // Mint Firebase Custom Token representation & active session
   const customToken = `firebase_custom_token_${finalUid}_${Date.now()}`;
   const sessionToken = 'leo_usr_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+  // Store in server-side session registry
+  activeUserSessions.set(sessionToken, {
+    uid: finalUid,
+    email: normalizedEmail,
+    createdAt: Date.now()
+  });
+
+  // Set HttpOnly, Secure, SameSite session cookie
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.cookie('leo_auth_session', sessionToken, {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+  });
 
   console.log(`[Leo AI Auth] ✅ OTP verified for ${normalizedEmail}. Deleted /otps/${sanitizedEmail} & minted custom token.`);
 
@@ -2816,13 +3168,231 @@ app.delete('/api/chats/:id', (req, res) => {
   res.json({ success: true, message: 'Chat deleted' });
 });
 
+// ----------------------------------------------------
+// Tavily Web Search & Autonomous Tool Engine
+// ----------------------------------------------------
+interface TavilySearchResult {
+  title: string;
+  url: string;
+  content: string;
+  score?: number;
+}
+
+interface WebSearchExecution {
+  needed: boolean;
+  queries: string[];
+  results: TavilySearchResult[];
+  sources: { title: string; url: string }[];
+  groundingText: string;
+  error?: string;
+}
+
+async function executeTavilySearch(query: string, maxResults = 5): Promise<{
+  success: boolean;
+  query: string;
+  results: TavilySearchResult[];
+  answer?: string;
+  error?: string;
+}> {
+  const tavilyApiKey = (process.env.TAVILY_API_KEY || '').trim();
+  if (!tavilyApiKey) {
+    return {
+      success: false,
+      query,
+      results: [],
+      error: 'TAVILY_API_KEY is not configured.'
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 9000);
+
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        api_key: tavilyApiKey,
+        query,
+        search_depth: 'basic',
+        include_answer: true,
+        max_results: Math.min(maxResults, 5)
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn(`[TAVILY] HTTP ${response.status}: ${errText.slice(0, 200)}`);
+      return { success: false, query, results: [], error: `HTTP ${response.status}` };
+    }
+
+    const data: any = await response.json();
+    const rawResults = Array.isArray(data.results) ? data.results : [];
+    const results: TavilySearchResult[] = rawResults
+      .map((r: any) => ({
+        title: (r.title || 'Web Resource').trim(),
+        url: (r.url || '').trim(),
+        content: (r.content || '').trim(),
+        score: r.score
+      }))
+      .filter((r: TavilySearchResult) => r.url && r.content);
+
+    return {
+      success: true,
+      query,
+      results,
+      answer: data.answer
+    };
+  } catch (err: any) {
+    console.warn(`[TAVILY] Search query "${query}" failed:`, err.message || err);
+    return {
+      success: false,
+      query,
+      results: [],
+      error: err.message || 'Search timeout'
+    };
+  }
+}
+
+/**
+ * Evaluates whether a prompt strictly needs fresh / real-time / live web search,
+ * or if it should be answered directly from internal knowledge.
+ */
+function evaluateWebSearchNecessity(prompt: string): { shouldSearch: boolean; suggestedQueries: string[] } {
+  if (!prompt || typeof prompt !== 'string') return { shouldSearch: false, suggestedQueries: [] };
+  const p = prompt.toLowerCase().trim();
+
+  // 1. Definite Non-Search Cases (Programming, Math, Explanations, Greetings, Persona, Creative)
+  const isPureExplanation = /^(what is|explain|define|how does|how do|difference between)\s+(javascript|python|recursion|closure|react|html|css|sql|rest api|binary tree|quicksort|oop|polymorphism|async await|promises|pointers|big o|transistor|gravity|photosynthesis|mitochondria|dna|newton'?s (first|second|third) law)\b/i.test(p);
+  const isCodeTask = /^(write|generate|create|build|debug|fix|refactor|convert|optimize)\s+(a |an |the )?(python|javascript|typescript|c\+\+|java|rust|go|react|component|function|script|sql query|class|algorithm|regex|css|html|endpoint)/i.test(p);
+  const isCasualOrCreative = /^(hi|hello|hey|greetings|good morning|good evening|who are you|what can you do|write a (poem|story|song|essay|joke)|translate|solve this equation)\b/i.test(p);
+
+  if ((isPureExplanation || isCodeTask || isCasualOrCreative) && !/(today|yesterday|current|latest|2025|2026|live|price|score|news|release date|update)/i.test(p)) {
+    return { shouldSearch: false, suggestedQueries: [] };
+  }
+
+  // 2. High-Confidence Temporal & Live Information Triggers
+  const hasTemporalKeywords = /\b(yesterday('?s)?|today('?s)?|tomorrow|current|currently|latest|newest|recent|recently|right now|live|this week|this month|this year|in 2025|in 2026|2025|2026)\b/i.test(p);
+  const hasLiveEntityKeywords = /\b(who won|match score|cricket match|football match|ipl score|champions league|super bowl|world cup|election results|stock price|share price|crypto price|bitcoin price|ethereum price|weather in|weather today|gold rate|silver rate|dollar rate|exchange rate|who is the current|is .* down|outage|release notes|launch date|released on)\b/i.test(p);
+  const hasNewsKeywords = /\b(news|breaking news|headline|what happened (to|in|with)|latest updates? on|announcements? regarding)\b/i.test(p);
+
+  if (hasTemporalKeywords || hasLiveEntityKeywords || hasNewsKeywords) {
+    // Generate clean search query by stripping common conversational prefixes
+    let cleanQuery = prompt
+      .replace(/^(can you (please )?tell me|please tell me|tell me|who won|what is the|what are the|do you know|search for|find|browse)\s+/i, '')
+      .replace(/[?!.]+$/, '')
+      .trim();
+
+    // Multi-step query splitting for comparisons
+    if (/\b(compare|vs|versus)\b/i.test(cleanQuery) && hasTemporalKeywords) {
+      const parts = cleanQuery.split(/\b(?:vs|versus|and)\b/i).map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        return {
+          shouldSearch: true,
+          suggestedQueries: [
+            `${parts[0]} latest updates 2025 2026`,
+            `${parts[1]} latest updates 2025 2026`
+          ]
+        };
+      }
+    }
+
+    if (!cleanQuery) cleanQuery = prompt;
+    return {
+      shouldSearch: true,
+      suggestedQueries: [cleanQuery]
+    };
+  }
+
+  return { shouldSearch: false, suggestedQueries: [] };
+}
+
+async function performAutonomousWebBrowsing(
+  prompt: string,
+  onStatusUpdate?: (status: { phase: 'searching' | 'reading' | 'generating'; query?: string; sourcesCount?: number }) => void
+): Promise<WebSearchExecution> {
+  const decision = evaluateWebSearchNecessity(prompt);
+  if (!decision.shouldSearch || decision.suggestedQueries.length === 0) {
+    return {
+      needed: false,
+      queries: [],
+      results: [],
+      sources: [],
+      groundingText: ''
+    };
+  }
+
+  const queries = decision.suggestedQueries.slice(0, 2); // max 2 queries for multi-step
+  console.log(`[AUTO BROWSER] Autonomous search triggered for: ${JSON.stringify(queries)}`);
+
+  if (onStatusUpdate) {
+    onStatusUpdate({ phase: 'searching', query: queries[0] });
+  }
+
+  const allResults: TavilySearchResult[] = [];
+  const allSources: { title: string; url: string }[] = [];
+  const seenUrls = new Set<string>();
+
+  for (const q of queries) {
+    const searchRes = await executeTavilySearch(q, 4);
+    if (searchRes.success && searchRes.results.length > 0) {
+      for (const item of searchRes.results) {
+        if (!seenUrls.has(item.url)) {
+          seenUrls.add(item.url);
+          allResults.push(item);
+          allSources.push({ title: item.title, url: item.url });
+        }
+      }
+    }
+  }
+
+  if (allResults.length > 0) {
+    if (onStatusUpdate) {
+      onStatusUpdate({ phase: 'reading', sourcesCount: allResults.length });
+    }
+
+    let groundingText = `\n\n[VERIFIED REAL-TIME WEB SEARCH EVIDENCE VIA TAVILY]:\n`;
+    allResults.slice(0, 6).forEach((r, idx) => {
+      groundingText += `--- SOURCE ${idx + 1} ---\nTITLE: ${r.title}\nURL: ${r.url}\nCONTENT SNIPPET: ${r.content}\n\n`;
+    });
+
+    groundingText += `MANDATORY CITATION INSTRUCTIONS:
+1. Synthesize your final answer using the verified live web evidence above.
+2. Deliver a direct, complete, and articulate response.
+3. At the very end of your response, always include a clean "### 🌐 Sources & References" section with direct Markdown links in the exact format:
+- [Source Title](Source URL) - Key takeaway or snippet summary.`;
+
+    return {
+      needed: true,
+      queries,
+      results: allResults,
+      sources: allSources,
+      groundingText
+    };
+  }
+
+  return {
+    needed: true,
+    queries,
+    results: [],
+    sources: [],
+    groundingText: '',
+    error: 'Search yielded no results'
+  };
+}
+
 // Helper to build the unified, authoritative system prompt context with Memo long-term memories
 async function buildUnifiedSystemPrompt(
   userId: string,
   latestMessageText: string = '',
   systemPromptOverride?: string,
   isDeepResearch: boolean = false,
-  hasImages: boolean = false
+  hasImages: boolean = false,
+  webGroundingText?: string
 ): Promise<string> {
   // 1. Authoritative Base Persona & Directives from Admin Panel / Config / Env
   const rawAdminPrompt = (systemPromptOverride || currentConfig.systemPrompt || process.env.SYSTEM_PROMPT || '').trim();
@@ -2834,17 +3404,20 @@ ${rawAdminPrompt}
 
 CRITICAL EXECUTION INSTRUCTIONS:
 - You MUST unconditionally obey and strictly follow the above persona, rules, language, constraints, and instructions set by the Administrator.
+- You must provide COMPLETE, EXHAUSTIVE, and FULLY DEVELOPED responses. NEVER output half-finished answers, incomplete snippets, or truncated thoughts.
 - Under NO circumstances should you break character, deviate from the Administrator's guidelines, or ignore the rules above.
-- Always output clean Markdown with proper spacing and structure.`;
+- Always output clean, highly structured Markdown with proper spacing, clear headings, and syntax-highlighted code blocks.`;
   } else {
-    basePersona = `You are Leo AI, an elite, highly intelligent, and versatile AI assistant created to assist humans across engineering, reasoning, visual analysis, writing, and creative brainstorms.
+    basePersona = `You are Leo AI, a world-class, exceptionally thorough, articulate, and intelligent AI assistant engineered to deliver Claude-grade excellence across software engineering, deep reasoning, writing, visual analysis, and creative problem solving.
+
 CRITICAL DIRECTIVES:
-1. Always follow user constraints strictly and accurately.
-2. Provide concise, elegant, and insightful answers with well-formatted Markdown, including clear headings, bullet points, and code blocks with syntax highlighting.
-3. When analyzing images or visual diagrams, perform thorough, detailed OCR and visual reasoning.
-4. Adapt to the user's persistent memory and preferences seamlessly.
-5. Never hallucinate or bypass system safety directives.
-6. For requests to build/create an app, feature, or website, never answer with an abstract JSON object or schema describing the architecture as the final response — always deliver real, working code in properly labeled Markdown code blocks (breaking large builds into focused pieces), or ask one clarifying question first if the scope is too broad to start immediately.`;
+1. Always follow user constraints strictly, accurately, and thoroughly.
+2. NEVER give half-finished, truncated, or lazy responses. Provide complete, fully realized solutions, comprehensive explanations, and exhaustively developed code without omitting critical sections.
+3. Provide insightful, complete answers with well-formatted Markdown, including clear headings, bullet points, and code blocks with syntax highlighting.
+4. When analyzing images or visual diagrams, perform thorough, detailed OCR and visual reasoning.
+5. Adapt to the user's persistent memory and preferences seamlessly.
+6. Never hallucinate or bypass system safety directives.
+7. For requests to build/create an app, feature, or website, always deliver real, working code in properly labeled Markdown code blocks, breaking complex architectures into modular, production-ready files.`;
   }
 
   // 2. Persistent User Memory Context (Memo API / Long-term service)
@@ -2873,7 +3446,10 @@ CRITICAL DIRECTIVES:
 - Thoroughly inspect all visual features, spatial layouts, extracted text (OCR), colors, and UI/architectural structures in the provided image(s).`;
   }
 
-  return `${basePersona}${memorySection}${deepResearchSection}${visionSection}`.trim();
+  // 5. Real-Time Web Grounding Section
+  const webSection = webGroundingText ? `\n\n${webGroundingText}` : '';
+
+  return `${basePersona}${memorySection}${deepResearchSection}${visionSection}${webSection}`.trim();
 }
 
 // ----------------------------------------------------
@@ -2957,6 +3533,7 @@ async function callOpenAiCompatibleProvider(opts: {
 
 app.post('/api/chat', async (req, res) => {
   try {
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown-ip';
     const {
       messages = [],
       userId = 'default-user',
@@ -2971,8 +3548,27 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Messages array is required' });
     }
 
-    // Admin Panel "Daily Message Limit" enforcement (skipped for authenticated admins)
-    if (!isAuthorizedAdmin(req)) {
+    const isAdmin = isAuthorizedAdmin(req);
+
+    // 1. AI Endpoint Burst Rate Limiting (Token Bucket: 30 burst, 30/min sustained per IP/User)
+    if (!isAdmin) {
+      const rateLimitKey = `ai_${userId}_${clientIp}`;
+      const aiLimit = checkAiEndpointRateLimit(rateLimitKey);
+
+      res.setHeader('X-RateLimit-Limit', '30');
+      res.setHeader('X-RateLimit-Remaining', String(aiLimit.remaining));
+
+      if (!aiLimit.allowed) {
+        res.setHeader('Retry-After', String(Math.ceil(aiLimit.retryAfterMs / 1000)));
+        return res.status(429).json({
+          error: `Too many AI requests. Please slow down and try again in ${Math.ceil(aiLimit.retryAfterMs / 1000)}s.`,
+          retryAfterMs: aiLimit.retryAfterMs
+        });
+      }
+    }
+
+    // 2. Admin Panel "Daily Message Limit" enforcement (skipped for authenticated admins)
+    if (!isAdmin) {
       const usageResult = await checkAndIncrementDailyUsage(userId, false, 1, requestedModel);
       if (!usageResult.allowed) {
         return res.status(429).json({
@@ -2986,7 +3582,10 @@ app.post('/api/chat', async (req, res) => {
 
     const latestUserMessage = messages[messages.length - 1];
 
-    // 1. Run AIModelRouter to determine the exact model role & modality
+    // 1. Autonomous Web Browsing & Live Tool Invocation (Tavily Engine)
+    const webSearchResult = await performAutonomousWebBrowsing(latestUserMessage?.content || '');
+
+    // 2. Run AIModelRouter to determine the exact model role & modality
     const routeResult = await AIModelRouter.routeRequest({
       messages,
       images,
@@ -2997,13 +3596,14 @@ app.post('/api/chat', async (req, res) => {
     const targetModel = routeResult.selectedModel;
     const isVisionInput = routeResult.inputType === 'vision' || (Array.isArray(images) && images.length > 0);
 
-    // Construct the authoritative system prompt containing the defined persona & relevant memories
+    // Construct the authoritative system prompt containing the defined persona, relevant memories & live web grounding
     const finalSystemPrompt = await buildUnifiedSystemPrompt(
       userId,
       latestUserMessage.content || '',
       systemPromptOverride,
       Boolean(isDeepResearch),
-      isVisionInput
+      isVisionInput,
+      webSearchResult.groundingText
     );
 
     if (isVisionInput) {
@@ -3012,7 +3612,7 @@ app.post('/api/chat', async (req, res) => {
     globalStats.totalMessages += 2;
     globalStats.estimatedTokens += 650;
 
-    console.log(`[AI CHAT] Routing: ${routeResult.inputType} | Model: "${targetModel}" | Deep Research: ${isDeepResearch}`);
+    console.log(`[AI CHAT] Routing: ${routeResult.inputType} | Model: "${targetModel}" | AutoWeb: ${webSearchResult.needed} (${webSearchResult.results.length} sources) | Deep Research: ${isDeepResearch}`);
 
     if (isTokeninModel(targetModel) && !userCanUsePremiumModel(userId, targetModel)) {
       return res.status(403).json({
@@ -3060,7 +3660,17 @@ app.post('/api/chat', async (req, res) => {
         const reply = data?.choices?.[0]?.message?.content;
         if (!reply) return res.status(502).json({ error: 'Tokenin returned no response content.' });
         memoService.extractAndSaveMemoryFromChat(userId, latestUserMessage.content, reply).catch(() => {});
-        return res.json({ content: reply, model: targetModel, provider: 'tokenin', isDeepResearch, hasVision: isVisionInput, inputType: routeResult.inputType });
+        return res.json({
+          content: reply,
+          model: targetModel,
+          provider: 'tokenin',
+          isDeepResearch,
+          hasVision: isVisionInput,
+          inputType: routeResult.inputType,
+          searched: webSearchResult.needed && webSearchResult.results.length > 0,
+          searchQueries: webSearchResult.queries,
+          searchSources: webSearchResult.sources
+        });
       } catch (err: any) {
         console.error('[TOKENIN] Request failed:', err.message);
         return res.status(502).json({ error: 'Unable to reach the Tokenin provider. Please try again.' });
@@ -3168,7 +3778,10 @@ app.post('/api/chat', async (req, res) => {
         provider: selectedProvider,
         fallbackUsed,
         isDeepResearch,
-        hasVision: hasImages
+        hasVision: isVisionInput,
+        searched: webSearchResult.needed && webSearchResult.results.length > 0,
+        searchQueries: webSearchResult.queries,
+        searchSources: webSearchResult.sources
       });
     }
 
@@ -3178,7 +3791,7 @@ app.post('/api/chat', async (req, res) => {
       providerDiagnostics,
       model: targetModel,
       isDeepResearch,
-      hasVision: hasImages
+      hasVision: isVisionInput
     });
 
 
@@ -3278,7 +3891,7 @@ app.all('/api/*', (req, res) => {
 // 6. Vite Integration & Static Files
 // ----------------------------------------------------
 const isProduction = process.env.NODE_ENV === 'production';
-const PORT = Number(process.env.PORT) || 10000;
+const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
 
 async function startServer() {

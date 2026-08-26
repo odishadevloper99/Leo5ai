@@ -77,6 +77,9 @@ export const api = {
     fallbackUsed?: boolean;
     isDeepResearch?: boolean;
     hasVision?: boolean;
+    searched?: boolean;
+    searchQueries?: string[];
+    searchSources?: { title: string; url: string }[];
   }> {
     // Attempt request with 1 automatic retry on cold-start or HTML fallback
     let lastError: any = null;

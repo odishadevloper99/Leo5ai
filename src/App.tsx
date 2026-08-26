@@ -15,14 +15,14 @@ import { INITIAL_CHAT_SESSIONS } from './lib/prompts';
 import { getStoredSessions, saveStoredSessions } from './lib/storage';
 import {
   auth,
-  database,
+  db,
   getCurrentStoredUser,
   saveChatToRealtimeDB,
   loadChatsFromRealtimeDB,
   deleteChatFromRealtimeDB
 } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { ref, get, set } from 'firebase/database';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { api } from './lib/api';
 import { ChatSession, Message, UserProfile } from './types';
 import { LeoLogo, LeoLogoMark } from './components/LeoLogo';
@@ -128,21 +128,30 @@ export default function App() {
             }
           } catch (e) {}
 
-          // 2. Sync with Realtime Database
+          // 2. Sync with Firestore
           try {
-            const userRef = ref(database, `users/${fbUser.uid}`);
-            const snap = await get(userRef);
+            const userDocRef = doc(db, 'users', fbUser.uid);
+            const snap = await getDoc(userDocRef);
             if (snap.exists()) {
-              const data = snap.val();
+              const data = snap.data();
               userProfile = {
                 ...userProfile,
                 credits: typeof data.credits === 'number' ? data.credits : userProfile.credits,
-                createdAt: data.createdAt || userProfile.createdAt,
+                createdAt: data.createdAt ? (typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt) || userProfile.createdAt) : userProfile.createdAt,
                 chatCount: typeof data.chatCount === 'number' ? data.chatCount : userProfile.chatCount,
                 role: data.role || userProfile.role,
               };
             } else {
-              await set(userRef, { ...userProfile, updatedAt: Date.now() });
+              await setDoc(userDocRef, {
+                userId: userProfile.uid,
+                displayName: userProfile.displayName,
+                email: userProfile.email,
+                photoURL: userProfile.photoURL,
+                role: userProfile.role,
+                credits: userProfile.credits,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }, { merge: true });
             }
           } catch (e) {}
 
@@ -331,6 +340,10 @@ export default function App() {
         content: response.content,
         timestamp: Date.now(),
         isDeepResearch,
+        searched: response.searched,
+        searchQueries: response.searchQueries,
+        searchSources: response.searchSources,
+        modelUsed: response.model,
       };
 
       const finalMessages = [...updatedMessages, assistantMessage];

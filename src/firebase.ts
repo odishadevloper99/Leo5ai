@@ -9,32 +9,18 @@ import {
   Auth
 } from 'firebase/auth';
 import {
-  getDatabase,
-  ref,
-  set,
-  get,
-  remove,
-  onValue,
-  off,
-  Database
-} from 'firebase/database';
+  getFirestore,
+  Firestore,
+  doc,
+  getDocFromServer
+} from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-const metaEnv = (import.meta as any).env || {};
-const rtdbUrl =
-  metaEnv.VITE_FIREBASE_DATABASE_URL ||
-  `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`;
-
-const config = {
-  ...firebaseConfig,
-  databaseURL: rtdbUrl,
-};
-
 // Initialize Firebase App
-export const app: FirebaseApp = !getApps().length ? initializeApp(config) : getApps()[0];
+export const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 
-// Initialize Realtime Database
-export const database: Database = getDatabase(app, rtdbUrl);
+// Initialize Firestore with configured Database ID
+export const db: Firestore = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 // Initialize Auth
 export const auth: Auth = getAuth(app);
@@ -49,13 +35,15 @@ export enum OperationType {
   WRITE = 'write',
 }
 
-export interface DatabaseErrorInfo {
+export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
   authInfo: {
     userId?: string | null;
     email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
   };
 }
 
@@ -64,16 +52,18 @@ export function handleFirestoreError(
   operationType: OperationType,
   path: string | null
 ): never {
-  const errInfo: DatabaseErrorInfo = {
+  const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
     },
     operationType,
     path,
   };
-  console.warn('Realtime Database Note:', JSON.stringify(errInfo));
+  console.warn('Firestore Note:', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
 

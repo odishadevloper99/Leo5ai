@@ -22,6 +22,7 @@ import {
   X
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { ModelLogo } from './ModelLogo';
 import { AIConfig, MemoMemoryItem, SystemStats, UserProfile } from '../types';
 
 interface AdminPanelModalProps {
@@ -617,16 +618,19 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                           return (
                             <div
                               key={model.id}
-                              className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs"
+                              className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs gap-2"
                             >
-                              <div>
-                                <span className="text-xs font-semibold text-neutral-800">{model.name}</span>
-                                <div className="text-[10px] text-neutral-400 font-mono">{model.id}</div>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <ModelLogo modelId={model.id} size="sm" />
+                                <div className="min-w-0">
+                                  <span className="text-xs font-semibold text-neutral-800 truncate block">{model.name}</span>
+                                  <div className="text-[10px] text-neutral-400 font-mono truncate">{model.id}</div>
+                                </div>
                               </div>
                               <button
                                 type="button"
                                 onClick={() => handleToggleFreeModel(model.id)}
-                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition shrink-0 ${
                                   isFree
                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200'
                                     : 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
@@ -784,12 +788,19 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                         onClick={() =>
                           setConfig({
                             ...config,
-                            systemPrompt: `You are Leo AI, an elite, highly intelligent, and versatile AI assistant created to assist humans across engineering, reasoning, visual analysis, writing, and creative brainstorms.\nDirectives:\n1. Follow user instructions strictly.\n2. Output well-formatted markdown.\n3. Analyze visual diagrams with high precision.`,
+                            systemPrompt: `You are Leo AI, a world-class, exceptionally thorough, articulate, and intelligent AI assistant engineered to deliver Claude-grade excellence across software engineering, deep reasoning, writing, visual analysis, and creative problem solving.
+
+CORE DIRECTIVES & QUALITY STANDARDS:
+1. Always follow user constraints strictly and accurately.
+2. Never give half-finished, truncated, or lazy responses. Provide complete, fully realized solutions and exhaustively developed code without placeholders.
+3. Write clean, highly structured, beautifully formatted Markdown with descriptive headings, bullet points, and code blocks with syntax highlighting.
+4. When writing code, deliver production-ready, typed, and complete implementations.
+5. In reasoning and analysis, balance deep technical precision with clarity, offering nuanced trade-offs and actionable next steps.`,
                           })
                         }
                         className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] font-medium text-neutral-700"
                       >
-                        Default Leo AI
+                        Default Leo AI (Claude-Grade)
                       </button>
                       <button
                         type="button"

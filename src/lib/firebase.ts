@@ -15,21 +15,17 @@ import {
   Auth
 } from 'firebase/auth';
 import {
-  getDatabase,
-  ref,
-  set,
-  get,
-  remove,
-  onValue,
-  off,
-  Database
-} from 'firebase/database';
-import {
   getFirestore,
   doc,
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
   runTransaction,
   serverTimestamp,
   getDocFromServer,
@@ -50,11 +46,6 @@ const messagingSenderId = metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || appletCon
 const appId = metaEnv.VITE_FIREBASE_APP_ID || appletConfig.appId || '1:387156119079:web:e624ae1f226a56f590c802';
 const firestoreDatabaseId = metaEnv.VITE_FIRESTORE_DATABASE_ID || appletConfig.firestoreDatabaseId || 'ai-studio-leoai-434fd984-e3fa-4bcf-9e8d-e03e334f487d';
 
-// Configure Realtime Database URL
-const rtdbUrl =
-  metaEnv.VITE_FIREBASE_DATABASE_URL ||
-  `https://${projectId}-default-rtdb.firebaseio.com`;
-
 const firebaseConfig = {
   apiKey,
   authDomain,
@@ -62,7 +53,6 @@ const firebaseConfig = {
   storageBucket,
   messagingSenderId,
   appId,
-  databaseURL: rtdbUrl,
 };
 
 let app: FirebaseApp;
@@ -73,7 +63,6 @@ if (!getApps().length) {
 }
 
 export const auth: Auth = getAuth(app);
-export const database: Database = getDatabase(app, rtdbUrl);
 export const db: Firestore = getFirestore(app, firestoreDatabaseId);
 
 // Test Firestore Connection
@@ -183,7 +172,7 @@ export async function loginWithGoogle(): Promise<UserProfile> {
       if (backendRes.success && backendRes.user) {
         userProfile = {
           ...backendRes.user,
-          uid: fbUser.uid, // Strictly preserve authenticated Firebase UID
+          uid: fbUser.uid,
           displayName: fbUser.displayName || backendRes.user.displayName,
           email: fbUser.email || backendRes.user.email,
           photoURL: fbUser.photoURL || backendRes.user.photoURL,
@@ -196,30 +185,38 @@ export async function loginWithGoogle(): Promise<UserProfile> {
       console.warn('[Backend Google Auth Verify Note]:', backendErr);
     }
 
-    // 2. Fetch existing profile from Realtime Database to preserve existing credits and chatCount
+    // 2. Fetch existing profile from Firestore to preserve existing credits and chatCount
     try {
-      const userRef = ref(database, `users/${fbUser.uid}`);
-      const snap = await get(userRef);
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      const snap = await getDoc(userDocRef);
       if (snap.exists()) {
-        const existingData = snap.val();
+        const existingData = snap.data();
         userProfile = {
           ...userProfile,
           credits: typeof existingData.credits === 'number' ? existingData.credits : userProfile.credits,
-          createdAt: existingData.createdAt || userProfile.createdAt,
+          createdAt: existingData.createdAt ? (typeof existingData.createdAt === 'number' ? existingData.createdAt : Date.parse(existingData.createdAt) || userProfile.createdAt) : userProfile.createdAt,
           chatCount: typeof existingData.chatCount === 'number' ? existingData.chatCount : userProfile.chatCount,
           role: existingData.role || userProfile.role,
         };
       }
 
-      // Save updated login timestamp and active status
-      await set(userRef, {
-        ...userProfile,
-        lastLoginAt: Date.now(),
-        lastActive: Date.now(),
-        updatedAt: Date.now(),
-      });
+      // Save updated profile to Firestore
+      await setDoc(
+        userDocRef,
+        {
+          userId: userProfile.uid,
+          displayName: userProfile.displayName,
+          email: userProfile.email,
+          photoURL: userProfile.photoURL,
+          role: userProfile.role,
+          credits: userProfile.credits,
+          createdAt: new Date(userProfile.createdAt || Date.now()).toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
     } catch (dbErr) {
-      console.warn('[Realtime Database User Sync Note]:', dbErr);
+      console.warn('[Firestore User Sync Note]:', dbErr);
     }
 
     // 3. Persist profile to LocalStorage safely
@@ -316,26 +313,31 @@ export async function checkRedirectResult(): Promise<UserProfile | null> {
     }
 
     try {
-      const userRef = ref(database, `users/${fbUser.uid}`);
-      const snap = await get(userRef);
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      const snap = await getDoc(userDocRef);
       if (snap.exists()) {
-        const existingData = snap.val();
+        const existingData = snap.data();
         userProfile = {
           ...userProfile,
           credits: typeof existingData.credits === 'number' ? existingData.credits : userProfile.credits,
-          createdAt: existingData.createdAt || userProfile.createdAt,
+          createdAt: existingData.createdAt ? (typeof existingData.createdAt === 'number' ? existingData.createdAt : Date.parse(existingData.createdAt) || userProfile.createdAt) : userProfile.createdAt,
           chatCount: typeof existingData.chatCount === 'number' ? existingData.chatCount : userProfile.chatCount,
           role: existingData.role || userProfile.role,
         };
       }
-      await set(userRef, {
-        ...userProfile,
-        lastLoginAt: Date.now(),
-        lastActive: Date.now(),
-        updatedAt: Date.now(),
-      });
+      await setDoc(
+        userDocRef,
+        {
+          userId: userProfile.uid,
+          displayName: userProfile.displayName,
+          email: userProfile.email,
+          photoURL: userProfile.photoURL,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
     } catch (dbErr) {
-      console.warn('[Realtime Database User Sync Note]:', dbErr);
+      console.warn('[Firestore User Sync Note]:', dbErr);
     }
 
     try {
@@ -371,21 +373,24 @@ export async function loginWithCustomToken(customToken: string, userProfile: Use
     ]);
   }
 
-  // 3. Asynchronously sync user profile to Realtime Database without blocking UI
+  // 3. Asynchronously sync user profile to Firestore without blocking UI
   try {
-    const syncPromise = set(ref(database, `users/${userProfile.uid}`), {
-      ...userProfile,
-      updatedAt: Date.now(),
-    }).catch((err) => {
-      console.warn('Realtime Database user profile sync note:', err.message || err);
+    const userDocRef = doc(db, 'users', userProfile.uid);
+    setDoc(
+      userDocRef,
+      {
+        userId: userProfile.uid,
+        displayName: userProfile.displayName || 'Leo Explorer',
+        email: userProfile.email || '',
+        photoURL: userProfile.photoURL || '',
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    ).catch((err) => {
+      console.warn('Firestore user profile sync note:', err.message || err);
     });
-    // Non-blocking wait with quick timeout
-    Promise.race([
-      syncPromise,
-      new Promise((resolve) => setTimeout(resolve, 1500))
-    ]).catch(() => {});
   } catch (e) {
-    console.warn('Realtime Database user profile sync caught:', e);
+    console.warn('Firestore user profile sync caught:', e);
   }
 
   return userProfile;
@@ -416,12 +421,12 @@ export async function loginWithEmailPassword(email: string, pass: string): Promi
       chatCount: 0,
     };
 
-    // Synchronize user from Realtime Database
+    // Synchronize user from Firestore
     try {
-      const userRef = ref(database, `users/${fbUser.uid}`);
-      const snap = await get(userRef);
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      const snap = await getDoc(userDocRef);
       if (snap.exists()) {
-        const existingData = snap.val();
+        const existingData = snap.data();
         userProfile = {
           ...userProfile,
           ...existingData,
@@ -430,14 +435,18 @@ export async function loginWithEmailPassword(email: string, pass: string): Promi
           uid: fbUser.uid,
         };
       }
-      await set(userRef, {
-        ...userProfile,
-        lastLoginAt: Date.now(),
-        lastActive: Date.now(),
-        updatedAt: Date.now(),
-      });
+      await setDoc(
+        userDocRef,
+        {
+          userId: userProfile.uid,
+          displayName: userProfile.displayName,
+          email: cleanEmail,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
     } catch (e) {
-      console.warn('RTDB sync notice:', e);
+      console.warn('Firestore sync notice:', e);
     }
 
     try {
@@ -489,12 +498,17 @@ export async function registerWithEmailPassword(email: string, pass: string, nam
     };
 
     try {
-      await set(ref(database, `users/${fbUser.uid}`), {
-        ...userProfile,
-        updatedAt: Date.now(),
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      await setDoc(userDocRef, {
+        userId: fbUser.uid,
+        displayName,
+        email: cleanEmail,
+        photoURL: userProfile.photoURL,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
     } catch (e) {
-      console.warn('RTDB register sync notice:', e);
+      console.warn('Firestore register sync notice:', e);
     }
 
     try {
@@ -534,17 +548,11 @@ export function getCurrentStoredUser(): UserProfile {
   if (stored) {
     try {
       const parsed = JSON.parse(stored);
-      // Only trust the stored profile if it's a real, non-anonymous session.
       if (parsed && parsed.isAnonymous !== true && parsed.uid) {
         return parsed;
       }
     } catch (e) {}
   }
-  // IMPORTANT: no user is signed in yet. Previously this returned a fully
-  // formed fake "logged in" profile (Emerson Sterling), which meant the app
-  // always behaved as if someone had already logged in and the chat UI opened
-  // immediately without ever requiring login. Return a real guest/anonymous
-  // profile instead so the app can correctly gate access behind sign-in.
   return {
     uid: 'guest-' + Date.now(),
     displayName: 'Guest',
@@ -555,109 +563,162 @@ export function getCurrentStoredUser(): UserProfile {
 }
 
 /**
- * Save Chat Session to Realtime Database
+ * Save Chat Session to Firestore
  */
 export async function saveChatToRealtimeDB(userId: string, chat: ChatSession): Promise<void> {
   try {
-    const chatRef = ref(database, `chats/${userId}/${chat.id}`);
-    await set(chatRef, {
-      ...chat,
-      updatedAt: Date.now(),
-    });
+    const sessionDocRef = doc(db, 'chat_sessions', chat.id);
+    await setDoc(
+      sessionDocRef,
+      {
+        sessionId: chat.id,
+        userId,
+        title: (chat.title || 'New Chat').slice(0, 300),
+        selectedModel: chat.model || 'default',
+        model: chat.model || 'default',
+        messages: chat.messages || [],
+        createdAt: typeof chat.createdAt === 'number' ? new Date(chat.createdAt).toISOString() : (chat.createdAt || new Date().toISOString()),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
   } catch (e) {
-    console.warn('Realtime Database chat save note:', e);
+    console.warn('Firestore chat save note:', e);
   }
 }
 
+export const saveChatToFirestore = saveChatToRealtimeDB;
+
 /**
- * Load Chat Sessions from Realtime Database
+ * Load Chat Sessions from Firestore
  */
 export async function loadChatsFromRealtimeDB(userId: string): Promise<ChatSession[]> {
   try {
-    const userChatsRef = ref(database, `chats/${userId}`);
-    const snapshot = await get(userChatsRef);
-    if (snapshot.exists()) {
-      const data = snapshot.val();
-      const sessions: ChatSession[] = Object.values(data);
-      // Sort newest first
-      return sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    }
+    const sessionsCol = collection(db, 'chat_sessions');
+    const q = query(sessionsCol, where('userId', '==', userId));
+    const snapshot = await getDocs(q);
+    const sessions: ChatSession[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      sessions.push({
+        id: data.sessionId || docSnap.id,
+        userId: data.userId || userId,
+        title: data.title || 'Untitled Chat',
+        messages: Array.isArray(data.messages) ? data.messages : [],
+        createdAt: data.createdAt ? (typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt) || Date.now()) : Date.now(),
+        updatedAt: data.updatedAt ? (typeof data.updatedAt === 'number' ? data.updatedAt : Date.parse(data.updatedAt) || Date.now()) : Date.now(),
+        model: data.model || data.selectedModel || 'default',
+      });
+    });
+    return sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   } catch (e) {
-    console.warn('Realtime Database load chats note:', e);
+    console.warn('Firestore load chats note:', e);
   }
   return [];
 }
 
+export const loadChatsFromFirestore = loadChatsFromRealtimeDB;
+
 /**
- * Delete Chat Session from Realtime Database
+ * Delete Chat Session from Firestore
  */
 export async function deleteChatFromRealtimeDB(userId: string, chatId: string): Promise<void> {
   try {
-    const chatRef = ref(database, `chats/${userId}/${chatId}`);
-    await remove(chatRef);
+    const sessionDocRef = doc(db, 'chat_sessions', chatId);
+    await deleteDoc(sessionDocRef);
   } catch (e) {
-    console.warn('Realtime Database delete chat note:', e);
+    console.warn('Firestore delete chat note:', e);
   }
 }
 
+export const deleteChatFromFirestore = deleteChatFromRealtimeDB;
+
 /**
- * Save Memo Memory to Realtime Database
+ * Save Memo Memory to Firestore
  */
 export async function saveMemoryToRealtimeDB(userId: string, memory: MemoMemoryItem): Promise<void> {
   try {
-    const memRef = ref(database, `memories/${userId}/${memory.id}`);
-    await set(memRef, memory);
+    const memDocRef = doc(db, 'user_memories', memory.id);
+    await setDoc(memDocRef, {
+      memoryId: memory.id,
+      userId,
+      text: memory.text || '',
+      category: memory.category || 'preference',
+      createdAt: typeof memory.createdAt === 'number' ? new Date(memory.createdAt).toISOString() : new Date().toISOString(),
+    });
   } catch (e) {
-    console.warn('Realtime Database save memory note:', e);
+    console.warn('Firestore save memory note:', e);
   }
 }
 
+export const saveMemoryToFirestore = saveMemoryToRealtimeDB;
+
 /**
- * Load Memo Memories from Realtime Database
+ * Load Memo Memories from Firestore
  */
 export async function loadMemoriesFromRealtimeDB(userId: string): Promise<MemoMemoryItem[]> {
   try {
-    const memsRef = ref(database, `memories/${userId}`);
-    const snapshot = await get(memsRef);
-    if (snapshot.exists()) {
-      const data = snapshot.val();
-      const memories: MemoMemoryItem[] = Object.values(data);
-      return memories.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    }
+    const memsCol = collection(db, 'user_memories');
+    const q = query(memsCol, where('userId', '==', userId));
+    const snapshot = await getDocs(q);
+    const memories: MemoMemoryItem[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      memories.push({
+        id: data.memoryId || docSnap.id,
+        userId: data.userId || userId,
+        text: data.text || '',
+        category: data.category || 'preference',
+        createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt) || Date.now(),
+      });
+    });
+    return memories.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   } catch (e) {
-    console.warn('Realtime Database load memories note:', e);
+    console.warn('Firestore load memories note:', e);
   }
   return [];
 }
 
+export const loadMemoriesFromFirestore = loadMemoriesFromRealtimeDB;
+
 /**
- * Subscribe to Realtime Database Chats Live Changes
+ * Subscribe to Firestore Chats Live Changes
  */
 export function subscribeToRealtimeChats(
   userId: string,
   callback: (sessions: ChatSession[]) => void
 ): () => void {
-  const userChatsRef = ref(database, `chats/${userId}`);
-  const listener = onValue(
-    userChatsRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const sessions: ChatSession[] = Object.values(data);
+  try {
+    const sessionsCol = collection(db, 'chat_sessions');
+    const q = query(sessionsCol, where('userId', '==', userId));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const sessions: ChatSession[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          sessions.push({
+            id: data.sessionId || docSnap.id,
+            userId: data.userId || userId,
+            title: data.title || 'Untitled Chat',
+            messages: Array.isArray(data.messages) ? data.messages : [],
+            createdAt: data.createdAt ? (typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt) || Date.now()) : Date.now(),
+            updatedAt: data.updatedAt ? (typeof data.updatedAt === 'number' ? data.updatedAt : Date.parse(data.updatedAt) || Date.now()) : Date.now(),
+            model: data.model || data.selectedModel || 'default',
+          });
+        });
         sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
         callback(sessions);
-      } else {
-        callback([]);
+      },
+      (err) => {
+        console.warn('Firestore listener error:', err);
       }
-    },
-    (err) => {
-      console.warn('Realtime listener error:', err);
-    }
-  );
-
-  return () => {
-    off(userChatsRef, 'value', listener);
-  };
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Firestore listener subscribe error:', err);
+    return () => {};
+  }
 }
 
 export interface DailyUsageCheckResult {
@@ -672,16 +733,6 @@ export interface DailyUsageCheckResult {
 /**
  * Checks a user's daily usage counter in Firestore against global and user-specific limits,
  * and atomically increments the counter if permitted.
- *
- * Document paths:
- * - Daily Usage: `users/{userId}/dailyUsage/{YYYY-MM-DD}`
- * - Global Settings: `settings/usage`
- * - User Profile: `users/{userId}`
- *
- * @param userId Unique user identifier
- * @param date Optional date string in YYYY-MM-DD format (defaults to current UTC/local date)
- * @param incrementAmount Amount to increment if permitted (default: 1)
- * @returns DailyUsageCheckResult object indicating if request is permitted and current stats
  */
 export async function checkAndIncrementDailyUsage(
   userId: string,
@@ -796,4 +847,3 @@ export async function checkAndIncrementDailyUsage(
     handleFirestoreError(error, OperationType.WRITE, usageDocPath);
   }
 }
-

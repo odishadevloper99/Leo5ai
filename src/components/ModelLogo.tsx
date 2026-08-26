@@ -1,4 +1,532 @@
-import React from 'react';
+import React, { useState } from 'react';
+
+export interface ModelBrandInfo {
+  key: string;
+  name: string;
+  url: string;
+  fallbackUrls?: string[];
+  bgClass: string;
+  borderClass: string;
+  textClass: string;
+  glowClass: string;
+}
+
+/**
+ * Local Bundled and CDN AI Model Logos
+ * Provides reliable local assets with CDN fallback
+ */
+export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
+  openai: {
+    key: 'openai',
+    name: 'OpenAI / GPT',
+    url: '/icons/models/openai.svg',
+    fallbackUrls: [
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/openai.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/openai.svg'
+    ],
+    bgClass: 'bg-[#10a37f]/15 dark:bg-[#10a37f]/20',
+    borderClass: 'border-emerald-500/40 ring-1 ring-emerald-400/20',
+    textClass: 'text-emerald-400',
+    glowClass: 'shadow-emerald-950/60'
+  },
+  claude: {
+    key: 'claude',
+    name: 'Claude / Anthropic',
+    url: '/icons/models/claude-color.svg',
+    fallbackUrls: [
+      '/icons/models/claude.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/claude-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/claude.svg'
+    ],
+    bgClass: 'bg-[#d97706]/15 dark:bg-[#d97706]/20',
+    borderClass: 'border-amber-600/50 ring-1 ring-amber-400/20',
+    textClass: 'text-amber-400',
+    glowClass: 'shadow-amber-950/60'
+  },
+  gemini: {
+    key: 'gemini',
+    name: 'Google Gemini',
+    url: '/icons/models/gemini-color.svg',
+    fallbackUrls: [
+      '/icons/models/gemini.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/gemini-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/gemini.svg'
+    ],
+    bgClass: 'bg-[#4f46e5]/15 dark:bg-[#4f46e5]/20',
+    borderClass: 'border-indigo-500/40 ring-1 ring-indigo-400/20',
+    textClass: 'text-indigo-300',
+    glowClass: 'shadow-indigo-950/60'
+  },
+  gemma: {
+    key: 'gemma',
+    name: 'Google Gemma',
+    url: '/icons/models/gemma-color.svg',
+    fallbackUrls: [
+      '/icons/models/gemma.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/gemma-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/gemma.svg'
+    ],
+    bgClass: 'bg-[#2563eb]/15 dark:bg-[#2563eb]/20',
+    borderClass: 'border-blue-500/40 ring-1 ring-blue-400/20',
+    textClass: 'text-blue-400',
+    glowClass: 'shadow-blue-950/60'
+  },
+  deepseek: {
+    key: 'deepseek',
+    name: 'DeepSeek',
+    url: '/icons/models/deepseek-color.svg',
+    fallbackUrls: [
+      '/icons/models/deepseek.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/deepseek-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/deepseek.svg'
+    ],
+    bgClass: 'bg-[#0284c7]/15 dark:bg-[#0284c7]/20',
+    borderClass: 'border-sky-500/40 ring-1 ring-sky-400/20',
+    textClass: 'text-sky-400',
+    glowClass: 'shadow-sky-950/60'
+  },
+  grok: {
+    key: 'grok',
+    name: 'xAI Grok',
+    url: '/icons/models/grok.svg',
+    fallbackUrls: [
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/grok.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/grok.svg'
+    ],
+    bgClass: 'bg-neutral-800/80 dark:bg-neutral-900/80',
+    borderClass: 'border-neutral-700 ring-1 ring-white/10',
+    textClass: 'text-white',
+    glowClass: 'shadow-neutral-950/70'
+  },
+  meta: {
+    key: 'meta',
+    name: 'Meta / Llama',
+    url: '/icons/models/meta-color.svg',
+    fallbackUrls: [
+      '/icons/models/meta.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/meta-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/meta.svg'
+    ],
+    bgClass: 'bg-[#0081fb]/15 dark:bg-[#0081fb]/20',
+    borderClass: 'border-sky-500/40 ring-1 ring-sky-400/20',
+    textClass: 'text-sky-400',
+    glowClass: 'shadow-sky-950/60'
+  },
+  qwen: {
+    key: 'qwen',
+    name: 'Alibaba Qwen',
+    url: '/icons/models/qwen-color.svg',
+    fallbackUrls: [
+      '/icons/models/qwen.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/qwen-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/qwen.svg'
+    ],
+    bgClass: 'bg-[#0891b2]/15 dark:bg-[#0891b2]/20',
+    borderClass: 'border-cyan-500/40 ring-1 ring-cyan-400/20',
+    textClass: 'text-cyan-400',
+    glowClass: 'shadow-cyan-950/60'
+  },
+  mistral: {
+    key: 'mistral',
+    name: 'Mistral AI',
+    url: '/icons/models/mistral-color.svg',
+    fallbackUrls: [
+      '/icons/models/mistral.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/mistral-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/mistral.svg'
+    ],
+    bgClass: 'bg-[#ea580c]/15 dark:bg-[#ea580c]/20',
+    borderClass: 'border-amber-500/40 ring-1 ring-amber-400/20',
+    textClass: 'text-amber-400',
+    glowClass: 'shadow-amber-950/60'
+  },
+  kimi: {
+    key: 'kimi',
+    name: 'Moonshot Kimi',
+    url: '/icons/models/kimi-color.svg',
+    fallbackUrls: [
+      '/icons/models/kimi.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/kimi-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/kimi.svg'
+    ],
+    bgClass: 'bg-[#9333ea]/15 dark:bg-[#9333ea]/20',
+    borderClass: 'border-purple-500/40 ring-1 ring-purple-400/20',
+    textClass: 'text-purple-400',
+    glowClass: 'shadow-purple-950/60'
+  },
+  perplexity: {
+    key: 'perplexity',
+    name: 'Perplexity AI',
+    url: '/icons/models/perplexity-color.svg',
+    fallbackUrls: [
+      '/icons/models/perplexity.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/perplexity-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/perplexity.svg'
+    ],
+    bgClass: 'bg-[#0d9488]/15 dark:bg-[#0d9488]/20',
+    borderClass: 'border-teal-500/40 ring-1 ring-teal-400/20',
+    textClass: 'text-teal-400',
+    glowClass: 'shadow-teal-950/60'
+  },
+  copilot: {
+    key: 'copilot',
+    name: 'GitHub Copilot',
+    url: '/icons/models/githubcopilot.svg',
+    fallbackUrls: [
+      '/icons/models/github.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/githubcopilot.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/github-copilot.svg'
+    ],
+    bgClass: 'bg-[#4338ca]/15 dark:bg-[#4338ca]/20',
+    borderClass: 'border-indigo-500/40 ring-1 ring-indigo-400/20',
+    textClass: 'text-indigo-400',
+    glowClass: 'shadow-indigo-950/60'
+  },
+  groq: {
+    key: 'groq',
+    name: 'Groq LPU',
+    url: '/icons/models/groq.svg',
+    fallbackUrls: [
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/groq.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/groq.svg'
+    ],
+    bgClass: 'bg-[#c2410c]/15 dark:bg-[#c2410c]/20',
+    borderClass: 'border-orange-500/40 ring-1 ring-orange-400/20',
+    textClass: 'text-orange-400',
+    glowClass: 'shadow-orange-950/60'
+  },
+  cohere: {
+    key: 'cohere',
+    name: 'Cohere',
+    url: '/icons/models/cohere-color.svg',
+    fallbackUrls: [
+      '/icons/models/cohere.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/cohere-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/cohere.svg'
+    ],
+    bgClass: 'bg-[#059669]/15 dark:bg-[#059669]/20',
+    borderClass: 'border-emerald-600/40 ring-1 ring-emerald-500/20',
+    textClass: 'text-emerald-400',
+    glowClass: 'shadow-emerald-950/60'
+  },
+  sora: {
+    key: 'sora',
+    name: 'OpenAI Sora',
+    url: '/icons/models/sora-color.svg',
+    fallbackUrls: [
+      '/icons/models/sora.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/sora-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/sora.svg'
+    ],
+    bgClass: 'bg-[#0284c7]/15 dark:bg-[#0284c7]/20',
+    borderClass: 'border-sky-500/40 ring-1 ring-sky-400/20',
+    textClass: 'text-sky-400',
+    glowClass: 'shadow-sky-950/60'
+  },
+  dalle: {
+    key: 'dalle',
+    name: 'DALL-E',
+    url: '/icons/models/openai.svg',
+    fallbackUrls: [
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/openai.svg'
+    ],
+    bgClass: 'bg-[#ca8a04]/15 dark:bg-[#ca8a04]/20',
+    borderClass: 'border-yellow-500/40 ring-1 ring-yellow-400/20',
+    textClass: 'text-yellow-400',
+    glowClass: 'shadow-yellow-950/60'
+  },
+  flux: {
+    key: 'flux',
+    name: 'Flux / Black Forest Labs',
+    url: '/icons/models/flux.svg',
+    fallbackUrls: [
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/flux.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/flux.svg'
+    ],
+    bgClass: 'bg-[#7c3aed]/15 dark:bg-[#7c3aed]/20',
+    borderClass: 'border-violet-500/40 ring-1 ring-violet-400/20',
+    textClass: 'text-violet-400',
+    glowClass: 'shadow-violet-950/60'
+  },
+  huggingface: {
+    key: 'huggingface',
+    name: 'Hugging Face',
+    url: '/icons/models/huggingface-color.svg',
+    fallbackUrls: [
+      '/icons/models/huggingface.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/huggingface-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/huggingface.svg'
+    ],
+    bgClass: 'bg-[#d97706]/15 dark:bg-[#d97706]/20',
+    borderClass: 'border-amber-500/40 ring-1 ring-amber-400/20',
+    textClass: 'text-amber-400',
+    glowClass: 'shadow-amber-950/60'
+  },
+  ollama: {
+    key: 'ollama',
+    name: 'Ollama',
+    url: '/icons/models/ollama.svg',
+    fallbackUrls: [
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/ollama.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/ollama.svg'
+    ],
+    bgClass: 'bg-neutral-800/80 dark:bg-neutral-900/80',
+    borderClass: 'border-neutral-600 ring-1 ring-white/10',
+    textClass: 'text-white',
+    glowClass: 'shadow-neutral-950/70'
+  },
+  midjourney: {
+    key: 'midjourney',
+    name: 'Midjourney',
+    url: '/icons/models/midjourney.svg',
+    fallbackUrls: [
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/midjourney.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/midjourney.svg'
+    ],
+    bgClass: 'bg-[#1d4ed8]/15 dark:bg-[#1d4ed8]/20',
+    borderClass: 'border-blue-500/40 ring-1 ring-blue-400/20',
+    textClass: 'text-blue-400',
+    glowClass: 'shadow-blue-950/60'
+  },
+  kling: {
+    key: 'kling',
+    name: 'Kling AI',
+    url: '/icons/models/kling-color.svg',
+    fallbackUrls: [
+      '/icons/models/kling.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/kling-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/kling.svg'
+    ],
+    bgClass: 'bg-[#9333ea]/15 dark:bg-[#9333ea]/20',
+    borderClass: 'border-purple-500/40 ring-1 ring-purple-400/20',
+    textClass: 'text-purple-400',
+    glowClass: 'shadow-purple-950/60'
+  },
+  minimax: {
+    key: 'minimax',
+    name: 'MiniMax',
+    url: '/icons/models/minimax-color.svg',
+    fallbackUrls: [
+      '/icons/models/minimax.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/minimax-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/minimax.svg'
+    ],
+    bgClass: 'bg-[#db2777]/15 dark:bg-[#db2777]/20',
+    borderClass: 'border-pink-500/40 ring-1 ring-pink-400/20',
+    textClass: 'text-pink-400',
+    glowClass: 'shadow-pink-950/60'
+  },
+  yi: {
+    key: 'yi',
+    name: '01.AI Yi',
+    url: '/icons/models/yi-color.svg',
+    fallbackUrls: [
+      '/icons/models/yi.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/yi-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/yi.svg'
+    ],
+    bgClass: 'bg-[#0284c7]/15 dark:bg-[#0284c7]/20',
+    borderClass: 'border-sky-500/40 ring-1 ring-sky-400/20',
+    textClass: 'text-sky-400',
+    glowClass: 'shadow-sky-950/60'
+  },
+  rwkv: {
+    key: 'rwkv',
+    name: 'RWKV',
+    url: '/icons/models/rwkv-color.svg',
+    fallbackUrls: [
+      '/icons/models/rwkv.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/rwkv-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/rwkv.svg'
+    ],
+    bgClass: 'bg-[#4f46e5]/15 dark:bg-[#4f46e5]/20',
+    borderClass: 'border-indigo-500/40 ring-1 ring-indigo-400/20',
+    textClass: 'text-indigo-400',
+    glowClass: 'shadow-indigo-950/60'
+  },
+  phind: {
+    key: 'phind',
+    name: 'Phind',
+    url: '/icons/models/phind.svg',
+    fallbackUrls: [
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/phind.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/phind.svg'
+    ],
+    bgClass: 'bg-[#2563eb]/15 dark:bg-[#2563eb]/20',
+    borderClass: 'border-blue-500/40 ring-1 ring-blue-400/20',
+    textClass: 'text-blue-400',
+    glowClass: 'shadow-blue-950/60'
+  },
+  elevenlabs: {
+    key: 'elevenlabs',
+    name: 'ElevenLabs',
+    url: '/icons/models/elevenlabs.svg',
+    fallbackUrls: [
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/elevenlabs.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/elevenlabs.svg'
+    ],
+    bgClass: 'bg-neutral-800/80 dark:bg-neutral-900/80',
+    borderClass: 'border-neutral-700 ring-1 ring-white/10',
+    textClass: 'text-neutral-200',
+    glowClass: 'shadow-neutral-950/70'
+  },
+  glm: {
+    key: 'glm',
+    name: 'GLM / ChatGLM',
+    url: '/icons/models/chatglm-color.svg',
+    fallbackUrls: [
+      '/icons/models/chatglm.svg',
+      '/icons/models/zhipu-color.svg',
+      '/icons/models/zhipu.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/chatglm-color.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/chatglm.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/chatglm.svg'
+    ],
+    bgClass: 'bg-[#2563eb]/15 dark:bg-[#2563eb]/20',
+    borderClass: 'border-blue-500/40 ring-1 ring-blue-400/20',
+    textClass: 'text-blue-400',
+    glowClass: 'shadow-blue-950/60'
+  },
+  chatglm: {
+    key: 'chatglm',
+    name: 'GLM / ChatGLM',
+    url: '/icons/models/chatglm-color.svg',
+    fallbackUrls: [
+      '/icons/models/chatglm.svg',
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/chatglm-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/chatglm.svg'
+    ],
+    bgClass: 'bg-[#2563eb]/15 dark:bg-[#2563eb]/20',
+    borderClass: 'border-blue-500/40 ring-1 ring-blue-400/20',
+    textClass: 'text-blue-400',
+    glowClass: 'shadow-blue-950/60'
+  }
+};
+
+/**
+ * Intelligent Brand Identification from iconKey or modelId string
+ */
+export function resolveModelBrand(iconKey = '', modelId = ''): ModelBrandInfo {
+  const k = (iconKey || '').toLowerCase().trim();
+  const id = (modelId || '').toLowerCase().trim();
+
+  // Exact iconKey matching
+  if (k && BRAND_LOGOS[k]) {
+    return BRAND_LOGOS[k];
+  }
+
+  // Alias iconKey normalizations
+  if (k === 'llama' || k === 'meta-llama') return BRAND_LOGOS.meta;
+  if (k === 'gpt' || k === 'chatgpt') return BRAND_LOGOS.openai;
+  if (k === 'anthropic') return BRAND_LOGOS.claude;
+  if (k === 'google') return BRAND_LOGOS.gemini;
+  if (k === 'zhipu' || k === 'z-ai' || k === 'chatglm') return BRAND_LOGOS.glm;
+  if (k === 'alibaba') return BRAND_LOGOS.qwen;
+  if (k === 'moonshot') return BRAND_LOGOS.kimi;
+  if (k === 'xai' || k === 'x-ai') return BRAND_LOGOS.grok;
+  if (k === 'github' || k === 'copilot') return BRAND_LOGOS.copilot;
+  if (k === 'black-forest' || k === 'bfl') return BRAND_LOGOS.flux;
+  if (k === 'hf' || k === 'huggingface') return BRAND_LOGOS.huggingface;
+  if (k === '01-ai' || k === 'lingyi') return BRAND_LOGOS.yi;
+
+  // Substring and prefix heuristics on modelId
+  if (id.startsWith('openai/') || id.includes('gpt-') || id.includes('o1') || id.includes('o3') || id.includes('text-embedding')) {
+    return BRAND_LOGOS.openai;
+  }
+  if (id.startsWith('anthropic/') || id.includes('claude')) {
+    return BRAND_LOGOS.claude;
+  }
+  if (id.includes('gemma')) {
+    return BRAND_LOGOS.gemma;
+  }
+  if (id.startsWith('google/') || id.includes('gemini') || id.includes('imagen')) {
+    return BRAND_LOGOS.gemini;
+  }
+  if (id.startsWith('deepseek/') || id.includes('deepseek')) {
+    return BRAND_LOGOS.deepseek;
+  }
+  if (id.startsWith('x-ai/') || id.includes('grok') || id.includes('xai')) {
+    return BRAND_LOGOS.grok;
+  }
+  if (id.startsWith('meta/') || id.includes('llama')) {
+    return BRAND_LOGOS.meta;
+  }
+  if (id.startsWith('qwen/') || id.startsWith('alibaba/') || id.includes('qwen')) {
+    return BRAND_LOGOS.qwen;
+  }
+  if (id.startsWith('mistral') || id.includes('mistral') || id.includes('codestral') || id.includes('pixtral') || id.includes('ministral')) {
+    return BRAND_LOGOS.mistral;
+  }
+  if (id.startsWith('moonshot/') || id.includes('kimi')) {
+    return BRAND_LOGOS.kimi;
+  }
+  if (id.includes('perplexity') || id.includes('sonar')) {
+    return BRAND_LOGOS.perplexity;
+  }
+  if (id.includes('copilot')) {
+    return BRAND_LOGOS.copilot;
+  }
+  if (id.startsWith('groq/') || id.includes('groq')) {
+    return BRAND_LOGOS.groq;
+  }
+  if (id.startsWith('cohere/') || id.includes('cohere') || id.includes('command-r')) {
+    return BRAND_LOGOS.cohere;
+  }
+  if (id.includes('sora')) {
+    return BRAND_LOGOS.sora;
+  }
+  if (id.includes('dall-e') || id.includes('dalle')) {
+    return BRAND_LOGOS.dalle;
+  }
+  if (id.includes('flux')) {
+    return BRAND_LOGOS.flux;
+  }
+  if (id.includes('huggingface') || id.includes('hf/')) {
+    return BRAND_LOGOS.huggingface;
+  }
+  if (id.includes('ollama')) {
+    return BRAND_LOGOS.ollama;
+  }
+  if (id.includes('midjourney') || id.includes('mj/')) {
+    return BRAND_LOGOS.midjourney;
+  }
+  if (id.includes('kling')) {
+    return BRAND_LOGOS.kling;
+  }
+  if (id.includes('minimax') || id.includes('abab')) {
+    return BRAND_LOGOS.minimax;
+  }
+  if (id.startsWith('yi/') || id.includes('01-ai') || id.includes('yi-')) {
+    return BRAND_LOGOS.yi;
+  }
+  if (id.includes('rwkv')) {
+    return BRAND_LOGOS.rwkv;
+  }
+  if (id.includes('phind')) {
+    return BRAND_LOGOS.phind;
+  }
+  if (id.includes('elevenlabs') || id.includes('eleven')) {
+    return BRAND_LOGOS.elevenlabs;
+  }
+  if (id.startsWith('z-ai/') || id.includes('glm') || id.includes('zhipu') || id.includes('chatglm')) {
+    return BRAND_LOGOS.glm;
+  }
+
+  // Fallback brand metadata
+  return {
+    key: 'generic',
+    name: 'AI Model',
+    url: '/icons/models/gemini-color.svg',
+    fallbackUrls: [
+      'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/gemini-color.svg',
+      'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/gemini.svg'
+    ],
+    bgClass: 'bg-purple-600/15 dark:bg-purple-600/20',
+    borderClass: 'border-purple-500/40 ring-1 ring-purple-400/20',
+    textClass: 'text-purple-400',
+    glowClass: 'shadow-purple-950/60'
+  };
+}
 
 interface ModelLogoProps {
   iconKey?: string;
@@ -9,16 +537,36 @@ interface ModelLogoProps {
 }
 
 const sizeClasses = {
-  xs: 'w-4 h-4 rounded-md',
-  sm: 'w-6 h-6 rounded-lg',
-  md: 'w-8 h-8 rounded-xl',
-  lg: 'w-9 h-9 rounded-xl',
-  xl: 'w-11 h-11 rounded-2xl',
+  xs: {
+    container: 'w-4 h-4 rounded-md',
+    img: 'p-0.5',
+    fallbackText: 'text-[7px]'
+  },
+  sm: {
+    container: 'w-6 h-6 rounded-lg',
+    img: 'p-1',
+    fallbackText: 'text-[9px]'
+  },
+  md: {
+    container: 'w-8 h-8 rounded-xl',
+    img: 'p-1.5',
+    fallbackText: 'text-[11px]'
+  },
+  lg: {
+    container: 'w-9 h-9 rounded-xl',
+    img: 'p-1.5',
+    fallbackText: 'text-xs'
+  },
+  xl: {
+    container: 'w-11 h-11 rounded-2xl',
+    img: 'p-2',
+    fallbackText: 'text-sm'
+  },
 };
 
 /**
  * Universal Brand & Model Logo Renderer
- * High-fidelity vector logos with exact geometry, dynamic gradients, and crisp specular rendering
+ * High resilience with local bundle assets, multi-CDN fallbacks, and CSS color adaptability
  */
 export const ModelLogo: React.FC<ModelLogoProps> = ({
   iconKey = '',
@@ -27,312 +575,22 @@ export const ModelLogo: React.FC<ModelLogoProps> = ({
   className = '',
   isNew = false,
 }) => {
-  const normalizedKey = (iconKey || '').toLowerCase();
-  const normalizedId = (modelId || '').toLowerCase();
+  const brand = resolveModelBrand(iconKey, modelId);
+  const sizing = sizeClasses[size] || sizeClasses.md;
 
-  const isGemini = normalizedKey === 'gemini' || normalizedId.includes('gemini');
-  const isGrok = normalizedKey === 'grok' || normalizedId.includes('grok') || normalizedId.includes('xai');
-  const isGlm = normalizedKey === 'glm' || normalizedId.includes('glm') || normalizedId.includes('zhipu');
-  const isKimi = normalizedKey === 'kimi' || normalizedId.includes('kimi') || normalizedId.includes('moonshot');
-  const isQwen = normalizedKey === 'qwen' || normalizedId.includes('qwen') || normalizedId.includes('alibaba');
-  const isDeepSeek = normalizedKey === 'deepseek' || normalizedId.includes('deepseek');
-  const isOpenAI = normalizedKey === 'openai' || normalizedKey === 'gpt' || normalizedId.includes('gpt') || normalizedId.includes('openai');
-  const isClaude = normalizedKey === 'claude' || normalizedId.includes('claude') || normalizedId.includes('anthropic');
-  const isMistral = normalizedKey === 'mistral' || normalizedId.includes('mistral') || normalizedId.includes('codestral');
-  const isMeta = normalizedKey === 'llama' || normalizedId.includes('llama') || normalizedId.includes('meta');
+  const urlList = [brand.url, ...(brand.fallbackUrls || [])];
+  const [currentUrlIndex, setCurrentUrlIndex] = useState(0);
+  const [hasExhaustedErrors, setHasExhaustedErrors] = useState(false);
 
-  const baseSizeClass = sizeClasses[size] || sizeClasses.md;
-
-  const renderInnerSvg = () => {
-    // 1. Google Gemini (Iconic 4-point dynamic curved radiant spark with quad-color gradient)
-    if (isGemini) {
-      return (
-        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="gemini-quad-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#4A89FF" />
-              <stop offset="35%" stopColor="#8E55EA" />
-              <stop offset="65%" stopColor="#E05273" />
-              <stop offset="100%" stopColor="#FFA63D" />
-            </linearGradient>
-            <radialGradient id="gemini-center-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.8" />
-              <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
-            </radialGradient>
-          </defs>
-          {/* Subtle central flare */}
-          <circle cx="18" cy="18" r="8" fill="url(#gemini-center-glow)" />
-          {/* Main 4-point star path */}
-          <path
-            d="M18 2C18 10.8366 10.8366 18 2 18C10.8366 18 18 25.1634 18 34C18 25.1634 25.1634 18 34 18C25.1634 18 18 10.8366 18 2Z"
-            fill="url(#gemini-quad-grad)"
-          />
-          {/* Internal diagonal accent sparkle */}
-          <path
-            d="M18 11C18 14.866 14.866 18 11 18C14.866 18 18 21.134 18 25C18 21.134 21.134 18 25 18C21.134 18 18 14.866 18 11Z"
-            fill="#FFFFFF"
-            fillOpacity="0.65"
-          />
-        </svg>
-      );
+  const handleError = () => {
+    if (currentUrlIndex + 1 < urlList.length) {
+      setCurrentUrlIndex(prev => prev + 1);
+    } else {
+      setHasExhaustedErrors(true);
     }
-
-    // 2. OpenAI (Accurate 6-petal hexagonal rotational rosette)
-    if (isOpenAI) {
-      return (
-        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="openai-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#10A37F" />
-              <stop offset="100%" stopColor="#2DD4BF" />
-            </linearGradient>
-          </defs>
-          <g stroke="url(#openai-grad)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M28.5 14.8A6.8 6.8 0 0 0 27.2 8.4A6.9 6.9 0 0 0 19.4 5.7A6.8 6.8 0 0 0 9.2 8.1A6.8 6.8 0 0 0 7.1 19.8A6.8 6.8 0 0 0 8.4 26.2A6.9 6.9 0 0 0 16.2 28.9A6.8 6.8 0 0 0 26.4 26.5A6.8 6.8 0 0 0 28.5 14.8Z" />
-            <path d="M18 12.5V23.5" />
-            <path d="M13.2 15.3L22.8 20.7" />
-            <path d="M22.8 15.3L13.2 20.7" />
-            <circle cx="18" cy="18" r="2" fill="#10A37F" />
-          </g>
-        </svg>
-      );
-    }
-
-    // 3. Anthropic Claude (Iconic Terracotta Geometric Asterisk Starburst)
-    if (isClaude) {
-      return (
-        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1.2" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="claude-sun-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#F59E0B" />
-              <stop offset="50%" stopColor="#D97706" />
-              <stop offset="100%" stopColor="#B45309" />
-            </linearGradient>
-          </defs>
-          <g stroke="url(#claude-sun-grad)" strokeWidth="3.2" strokeLinecap="round">
-            <path d="M18 4V32" />
-            <path d="M4 18H32" />
-            <path d="M8.1 8.1L27.9 27.9" />
-            <path d="M27.9 8.1L8.1 27.9" />
-          </g>
-          <circle cx="18" cy="18" r="3.2" fill="#F59E0B" />
-        </svg>
-      );
-    }
-
-    // 4. DeepSeek (Whale Tail / Deep Oceanic Azure Hydrofoil)
-    if (isDeepSeek) {
-      return (
-        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="deepseek-glow-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#38BDF8" />
-              <stop offset="50%" stopColor="#0284C7" />
-              <stop offset="100%" stopColor="#0369A1" />
-            </linearGradient>
-          </defs>
-          {/* Whale caudal fin top flow */}
-          <path
-            d="M5 21C11 15 16 15.5 18 17.5C20 19.5 25 20 31 15"
-            stroke="url(#deepseek-glow-grad)"
-            strokeWidth="3.2"
-            strokeLinecap="round"
-          />
-          {/* Lower hydrofoil ripple */}
-          <path
-            d="M7 26C12 21 16 21.5 18 23.5C20 25.5 24 26 29 21"
-            stroke="#38BDF8"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            strokeOpacity="0.85"
-          />
-          {/* Core dorsal neural spark */}
-          <path d="M18 6V13" stroke="#38BDF8" strokeWidth="3" strokeLinecap="round" />
-          <circle cx="18" cy="6" r="2.8" fill="#E0F2FE" />
-        </svg>
-      );
-    }
-
-    // 5. xAI Grok (Precision Monochrome / Diagonal Speed-Slash X)
-    if (isGrok) {
-      return (
-        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="grok-slash-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#FFFFFF" />
-              <stop offset="100%" stopColor="#94A3B8" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M8 7L28 29"
-            stroke="url(#grok-slash-grad)"
-            strokeWidth="3.8"
-            strokeLinecap="round"
-          />
-          <path
-            d="M28 7L8 29"
-            stroke="url(#grok-slash-grad)"
-            strokeWidth="3.8"
-            strokeLinecap="round"
-          />
-          <path
-            d="M17 13L21 18L17 23"
-            stroke="#38BDF8"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      );
-    }
-
-    // 6. Alibaba Cloud / Qwen (Prismatic Cyan-Teal Hexagonal Crystal)
-    if (isQwen) {
-      return (
-        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="qwen-prism-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#22D3EE" />
-              <stop offset="50%" stopColor="#06B6D4" />
-              <stop offset="100%" stopColor="#10B981" />
-            </linearGradient>
-          </defs>
-          {/* Outer Prism Hexagon */}
-          <path
-            d="M18 3L30 10V24L18 31L6 24V10L18 3Z"
-            stroke="url(#qwen-prism-grad)"
-            strokeWidth="2.6"
-            strokeLinejoin="round"
-          />
-          {/* Inner Facet */}
-          <path
-            d="M18 10L24 14V21L18 25L12 21V14L18 10Z"
-            fill="url(#qwen-prism-grad)"
-            fillOpacity="0.35"
-            stroke="url(#qwen-prism-grad)"
-            strokeWidth="1.8"
-            strokeLinejoin="round"
-          />
-          <circle cx="18" cy="17.5" r="2" fill="#E0F2FE" />
-        </svg>
-      );
-    }
-
-    // 7. Zhipu AI / GLM (Zhipu Cobalt-Indigo Neural Z Emblem)
-    if (isGlm) {
-      return (
-        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="glm-cyber-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#60A5FA" />
-              <stop offset="50%" stopColor="#3B82F6" />
-              <stop offset="100%" stopColor="#6366F1" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M8 10H28L12 26H28"
-            stroke="url(#glm-cyber-grad)"
-            strokeWidth="3.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <circle cx="24" cy="10" r="2.4" fill="#93C5FD" />
-          <circle cx="12" cy="26" r="2.4" fill="#C7D2FE" />
-        </svg>
-      );
-    }
-
-    // 8. Moonshot AI / Kimi (Lunar Crescent & Neon Violet K Mark)
-    if (isKimi) {
-      return (
-        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="kimi-neon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#A855F7" />
-              <stop offset="50%" stopColor="#C084FC" />
-              <stop offset="100%" stopColor="#E879F9" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M10 7V29M10 18L24 7M14 15.5L26 29"
-            stroke="url(#kimi-neon-grad)"
-            strokeWidth="3.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <circle cx="25" cy="8" r="2.2" fill="#FDF4FF" />
-        </svg>
-      );
-    }
-
-    // 9. Meta Llama (Infinity Gradient Loop)
-    if (isMeta) {
-      return (
-        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="meta-loop-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#0081FB" />
-              <stop offset="50%" stopColor="#0284C7" />
-              <stop offset="100%" stopColor="#06B6D4" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M12 12C9 12 6.5 14.5 6.5 18C6.5 21.5 9 24 12 24C15.5 24 18 19.5 18 18C18 16.5 20.5 12 24 12C27 12 29.5 14.5 29.5 18C29.5 21.5 27 24 24 24C20.5 24 18 19.5 18 18"
-            stroke="url(#meta-loop-grad)"
-            strokeWidth="3.4"
-            strokeLinecap="round"
-          />
-        </svg>
-      );
-    }
-
-    // 10. Mistral AI (Iconic Orange Stepped Pixel Chevron)
-    if (isMistral) {
-      return (
-        <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1.2" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="mistral-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#FF7000" />
-              <stop offset="50%" stopColor="#FF9E00" />
-              <stop offset="100%" stopColor="#FFD000" />
-            </linearGradient>
-          </defs>
-          <g fill="url(#mistral-grad)">
-            <rect x="6" y="8" width="5" height="20" rx="1.5" />
-            <rect x="25" y="8" width="5" height="20" rx="1.5" />
-            <rect x="11" y="13" width="5" height="15" rx="1.5" />
-            <rect x="20" y="13" width="5" height="15" rx="1.5" />
-            <rect x="15.5" y="18" width="5" height="10" rx="1.5" />
-          </g>
-        </svg>
-      );
-    }
-
-    // Default Fallback Star Sparkle
-    return (
-      <svg viewBox="0 0 36 36" fill="none" className="w-full h-full p-1.5" xmlns="http://www.w3.org/2000/svg">
-        <path
-          d="M18 4L22 14L32 18L22 22L18 32L14 22L4 18L14 14L18 4Z"
-          fill="#A855F7"
-        />
-      </svg>
-    );
   };
 
-  // Background container styling based on model identity with subtle rim borders & depth
-  const getContainerBg = () => {
-    if (isGemini) return 'bg-gradient-to-br from-[#12122b] via-[#1a1438] to-[#0f0e24] border-indigo-500/40 text-indigo-200 shadow-indigo-950/60 ring-1 ring-indigo-400/20';
-    if (isGrok) return 'bg-[#090b10] border-neutral-700 text-white shadow-neutral-950/70 ring-1 ring-white/10';
-    if (isOpenAI) return 'bg-gradient-to-br from-[#04241d] via-[#062c23] to-[#041d17] border-emerald-500/40 text-emerald-300 shadow-emerald-950/60 ring-1 ring-emerald-400/20';
-    if (isClaude) return 'bg-gradient-to-br from-[#2f1809] via-[#241307] to-[#1a0e05] border-amber-600/50 text-amber-300 shadow-amber-950/60 ring-1 ring-amber-400/20';
-    if (isDeepSeek) return 'bg-gradient-to-br from-[#06203d] via-[#081e36] to-[#051629] border-sky-500/40 text-sky-300 shadow-sky-950/60 ring-1 ring-sky-400/20';
-    if (isQwen) return 'bg-gradient-to-br from-[#052631] via-[#072029] to-[#041820] border-cyan-500/40 text-cyan-300 shadow-cyan-950/60 ring-1 ring-cyan-400/20';
-    if (isGlm) return 'bg-gradient-to-br from-[#0d1738] via-[#0d142d] to-[#090e21] border-blue-500/40 text-blue-300 shadow-blue-950/60 ring-1 ring-blue-400/20';
-    if (isKimi) return 'bg-gradient-to-br from-[#240e3b] via-[#1c0b2f] to-[#140722] border-purple-500/40 text-purple-300 shadow-purple-950/60 ring-1 ring-purple-400/20';
-    if (isMistral) return 'bg-gradient-to-br from-[#2f1604] via-[#241103] to-[#170a02] border-amber-500/40 text-amber-300 shadow-amber-950/60 ring-1 ring-amber-400/20';
-    if (isMeta) return 'bg-gradient-to-br from-[#06223b] via-[#081d30] to-[#051524] border-sky-500/40 text-sky-300 shadow-sky-950/60 ring-1 ring-sky-400/20';
-    return 'bg-neutral-900 border-neutral-800 text-neutral-200 ring-1 ring-white/5';
-  };
+  const currentSrc = urlList[currentUrlIndex] || brand.url;
 
   return (
     <div className={`relative shrink-0 select-none ${className}`}>
@@ -342,11 +600,25 @@ export const ModelLogo: React.FC<ModelLogoProps> = ({
         </span>
       )}
       <div
-        className={`${baseSizeClass} border flex items-center justify-center shadow-md overflow-hidden transition-all duration-200 group-hover:scale-105 ${getContainerBg()}`}
+        className={`${sizing.container} ${brand.bgClass} ${brand.borderClass} ${brand.glowClass} ${brand.textClass} border flex items-center justify-center shadow-xs overflow-hidden transition-all duration-200 group-hover:scale-105`}
+        title={brand.name}
       >
-        {renderInnerSvg()}
+        {!hasExhaustedErrors ? (
+          <img
+            key={currentSrc}
+            src={currentSrc}
+            alt={brand.name}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={handleError}
+            className={`w-full h-full object-contain ${sizing.img} transition-opacity duration-200`}
+          />
+        ) : (
+          <span className={`font-black uppercase tracking-tighter ${brand.textClass} ${sizing.fallbackText}`}>
+            {brand.name.charAt(0)}
+          </span>
+        )}
       </div>
     </div>
   );
 };
-

@@ -53,6 +53,10 @@ export interface Message {
   timestamp: number;
   images?: string[]; // base64 or URLs for Vision analysis
   isDeepResearch?: boolean;
+  searched?: boolean;
+  searchQueries?: string[];
+  searchSources?: { title: string; url: string }[];
+  searchPhase?: 'searching' | 'reading' | 'generating' | 'done';
   thinkingProcess?: string;
   memoryExtracted?: string[];
   status?: 'sending' | 'streaming' | 'completed' | 'error';
