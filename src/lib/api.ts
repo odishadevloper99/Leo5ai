@@ -81,6 +81,8 @@ export const api = {
     searchQueries?: string[];
     searchSources?: { title: string; url: string }[];
     thinkingProcess?: string;
+    agentSteps?: { tool: string; input: any; output?: string; success?: boolean; durationMs?: number }[];
+    iterations?: number;
   }> {
     // Attempt request with 1 automatic retry on cold-start or HTML fallback
     let lastError: any = null;

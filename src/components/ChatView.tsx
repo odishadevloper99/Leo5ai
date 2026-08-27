@@ -22,7 +22,8 @@ import {
   Square,
   Plus,
   MessageSquare,
-  Monitor
+  Monitor,
+  Terminal
 } from 'lucide-react';
 import { Message, UserProfile } from '../types';
 
@@ -54,6 +55,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [expandedReasoning, setExpandedReasoning] = useState<Record<string, boolean>>({});
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
+  const [expandedAgentSteps, setExpandedAgentSteps] = useState<Record<string, boolean>>({});
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [inspectImage, setInspectImage] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -290,6 +292,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }));
   };
 
+  const toggleAgentSteps = (id: string) => {
+    setExpandedAgentSteps((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
   // Speech Recognition
   const handleToggleVoice = () => {
     const SpeechRecognition =
@@ -502,6 +511,46 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       {isThinkingOpen && (
                         <div className="text-xs md:text-sm text-[#9aa0a6] leading-relaxed font-sans pl-0.5 animate-in fade-in duration-150">
                           {message.thinkingProcess}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 4. Autonomous Agent Execution Steps */}
+                  {message.agentSteps && message.agentSteps.length > 0 && (
+                    <div className="w-full space-y-1.5 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => toggleAgentSteps(message.id)}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#141824] border border-[#1f283d] text-slate-300 hover:text-emerald-400 text-xs font-mono transition cursor-pointer active:scale-[0.99] shadow-2xs"
+                      >
+                        <Terminal className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>Agent Execution: {message.agentSteps.length} tool {message.agentSteps.length === 1 ? 'action' : 'actions'}</span>
+                        <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform ${expandedAgentSteps[message.id] ? 'rotate-90' : ''}`} />
+                      </button>
+
+                      {expandedAgentSteps[message.id] && (
+                        <div className="w-full border border-[#1f283d] rounded-xl bg-[#0d1017] p-3 space-y-2 text-xs font-mono animate-in fade-in duration-150">
+                          {message.agentSteps.map((step, sIdx) => (
+                            <div key={sIdx} className="p-2.5 rounded-lg bg-[#141926] border border-[#1b2234] space-y-1">
+                              <div className="flex items-center justify-between text-emerald-400 font-semibold text-[11px]">
+                                <span className="flex items-center gap-1.5">
+                                  <Terminal className="w-3 h-3 text-emerald-400" />
+                                  <span>Step {sIdx + 1}: {step.tool}</span>
+                                </span>
+                                <span className="text-[10px] text-slate-500">{step.durationMs ? `${step.durationMs}ms` : ''}</span>
+                              </div>
+                              <div className="text-slate-400 text-[11px] truncate">
+                                <span className="text-slate-500">Input: </span>
+                                {JSON.stringify(step.input)}
+                              </div>
+                              {step.output && (
+                                <pre className="mt-1 p-2 rounded bg-[#090b10] border border-[#181e2e] text-slate-300 text-[11px] max-h-36 overflow-y-auto whitespace-pre-wrap">
+                                  {step.output}
+                                </pre>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>

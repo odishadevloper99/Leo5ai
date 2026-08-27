@@ -46,6 +46,14 @@ export interface AdminUsageAnalytics {
   }[];
 }
 
+export interface AgentStepItem {
+  tool: string;
+  input: Record<string, any>;
+  output?: string;
+  success?: boolean;
+  durationMs?: number;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -58,6 +66,8 @@ export interface Message {
   searchSources?: { title: string; url: string }[];
   searchPhase?: 'searching' | 'reading' | 'generating' | 'done';
   thinkingProcess?: string;
+  agentSteps?: AgentStepItem[];
+  iterations?: number;
   memoryExtracted?: string[];
   status?: 'sending' | 'streaming' | 'completed' | 'error';
   modelUsed?: string;

@@ -3,7 +3,6 @@ import {
   Download,
   Share2,
   MoreHorizontal,
-  Menu,
   Sparkles,
   PanelLeft,
   ChevronDown
@@ -29,7 +28,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenExport,
   onShare,
   onOpenUpgrade,
-  selectedModel,
   userPlan
 }) => {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -48,47 +46,50 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header
       id="main-app-header"
-      className="h-13 px-3 md:px-5 flex items-center justify-between border-b border-[#1f1f23] bg-[#0c0c0e] text-zinc-200 sticky top-0 z-30 transition-all select-none"
+      className="h-13 px-3 md:px-4 flex items-center justify-between bg-[#000000] text-zinc-200 sticky top-0 z-30 transition-all select-none"
     >
-      {/* Left: Sidebar toggle + Upgrade pill button (matches Screenshot 4) */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      {/* Left: Sidebar toggle + Upgrade pill button (Matches Screenshot 4 & 5) */}
+      <div className="flex items-center gap-3">
         {!isSidebarOpen && (
           <button
             id="header-sidebar-toggle-btn"
             onClick={onToggleSidebar}
-            title="Open sidebar"
-            className="p-1.5 text-zinc-400 hover:text-white hover:bg-[#18181b] rounded-lg border border-[#27272a] transition cursor-pointer"
+            title="Toggle sidebar"
+            className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-[#141416] transition cursor-pointer"
           >
-            <PanelLeft className="w-4 h-4" />
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="M9 3v18" />
+            </svg>
           </button>
         )}
 
-        {/* Upgrade pill button (matches Screenshot 4) */}
+        {/* Upgrade pill button (Matches Screenshot 4 & 5) */}
         {userPlan !== 'pro' && userPlan !== 'ultra' && (
           <button
             onClick={onOpenUpgrade}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/40 hover:bg-purple-900/50 text-purple-300 border border-purple-500/30 hover:border-purple-500/60 text-xs font-medium transition cursor-pointer shadow-xs"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#463b78] hover:bg-[#52458c] text-white text-xs font-semibold tracking-wide transition cursor-pointer shadow-xs"
           >
-            <Sparkles className="w-3 h-3 text-purple-400" />
-            <span>+ Upgrade plan</span>
+            <Sparkles className="w-3.5 h-3.5 fill-white" />
+            <span>Upgrade plan</span>
           </button>
         )}
 
-        {/* Active Session Title (if active) */}
+        {/* Active Session Title */}
         {activeSession?.title && (
-          <span className="hidden sm:inline-block text-xs font-medium text-zinc-400 truncate max-w-[200px] md:max-w-[320px] px-2 py-0.5 rounded bg-[#161619] border border-[#27272a]">
+          <span className="hidden sm:inline-block text-xs font-medium text-zinc-400 truncate max-w-[240px] md:max-w-[340px] px-2 py-0.5 rounded bg-[#141416] border border-[#222225]">
             {activeSession.title}
           </span>
         )}
       </div>
 
-      {/* Right Controls: Share & Export */}
-      <div className="flex items-center gap-1.5">
+      {/* Right Controls: Share & Export & More */}
+      <div className="flex items-center gap-1">
         <button
           id="header-share-btn"
           onClick={onShare}
           title="Share link"
-          className="p-1.5 text-zinc-400 hover:text-white hover:bg-[#18181b] rounded-lg border border-transparent hover:border-[#27272a] transition cursor-pointer"
+          className="p-1.5 text-zinc-400 hover:text-white hover:bg-[#141416] rounded-lg transition cursor-pointer"
         >
           <Share2 className="w-4 h-4" />
         </button>
@@ -96,19 +97,19 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           id="header-export-btn"
           onClick={onOpenExport}
-          title="Export chat"
-          className="p-1.5 text-zinc-400 hover:text-white hover:bg-[#18181b] rounded-lg border border-transparent hover:border-[#27272a] transition cursor-pointer"
+          title="Export task"
+          className="p-1.5 text-zinc-400 hover:text-white hover:bg-[#141416] rounded-lg transition cursor-pointer"
         >
           <Download className="w-4 h-4" />
         </button>
 
-        {/* More Menu dropdown */}
+        {/* More Menu */}
         <div className="relative" ref={moreRef}>
           <button
             id="header-more-btn"
             onClick={() => setMoreMenuOpen(!moreMenuOpen)}
             title="More actions"
-            className="p-1.5 text-zinc-400 hover:text-white hover:bg-[#18181b] rounded-lg border border-transparent hover:border-[#27272a] transition cursor-pointer"
+            className="p-1.5 text-zinc-400 hover:text-white hover:bg-[#141416] rounded-lg transition cursor-pointer"
           >
             <MoreHorizontal className="w-4 h-4" />
           </button>

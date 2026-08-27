@@ -342,6 +342,8 @@ export default function App() {
         searchQueries: response.searchQueries,
         searchSources: response.searchSources,
         thinkingProcess: response.thinkingProcess,
+        agentSteps: response.agentSteps,
+        iterations: response.iterations,
         modelUsed: response.model,
       };
 
@@ -433,115 +435,73 @@ export default function App() {
     );
   }
 
-  // Gate: don't render the chat interface until the user has authenticated.
-  if (!isLoggedIn) {
-    return (
-      <div className="fixed inset-0 w-full h-full h-[100dvh] bg-[#f8f7ff] md:bg-[#dcd6eb] flex items-center justify-center overflow-hidden font-sans p-4">
-        <div className="hidden md:block absolute top-[-10%] left-[-10%] w-[45vw] h-[45vw] rounded-full bg-purple-300/40 blur-[100px] pointer-events-none -z-10" />
-        <div className="hidden md:block absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] rounded-full bg-indigo-300/30 blur-[120px] pointer-events-none -z-10" />
-
-        <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-xl border border-purple-100/80 text-center space-y-6 animate-in fade-in zoom-in-95 duration-200">
-          <LeoLogoMark className="w-20 h-20 mx-auto drop-shadow-lg" />
-          
-          <div className="space-y-2">
-            <h1 className="font-display font-bold text-2xl text-neutral-900 tracking-tight">
-              Welcome to Leo AI
-            </h1>
-            <p className="text-xs text-neutral-500 max-w-xs mx-auto leading-relaxed">
-              Experience ultra-fast multimodal intelligence, persistent memory, and deep reasoning. Please sign in to continue.
-            </p>
-          </div>
-
-          <div className="space-y-3 pt-2">
-            <button
-              onClick={() => setIsAuthOpen(true)}
-              className="w-full py-3.5 px-4 bg-purple-600 hover:bg-purple-700 active:scale-[0.99] text-white rounded-2xl text-xs font-semibold shadow-lg shadow-purple-500/25 transition cursor-pointer"
-            >
-              Sign in / Create Account
-            </button>
-          </div>
-        </div>
-
-        <AuthModal
-          isOpen={isAuthOpen}
-          onClose={() => setIsAuthOpen(false)}
-          user={user}
-          onUserUpdate={setUser}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="fixed inset-0 w-full h-full h-[100dvh] max-w-[100vw] bg-white md:bg-[#dcd6eb] text-neutral-900 flex flex-col md:relative md:h-screen md:p-4 lg:p-6 md:flex-row md:items-center md:justify-center overflow-hidden font-sans select-none">
-      {/* Background Soft Atmospheric Ambient Glowing Blobs (Visible only on desktop md:) */}
-      <div className="hidden md:block absolute top-[-10%] left-[-10%] w-[45vw] h-[45vw] rounded-full bg-purple-300/40 blur-[100px] pointer-events-none -z-10" />
-      <div className="hidden md:block absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] rounded-full bg-indigo-300/30 blur-[120px] pointer-events-none -z-10" />
-      <div className="hidden md:block absolute top-[30%] right-[10%] w-[35vw] h-[35vw] rounded-full bg-pink-200/25 blur-[90px] pointer-events-none -z-10" />
+    <div className="fixed inset-0 w-full h-full h-[100dvh] max-w-[100vw] bg-[#000000] text-zinc-100 flex overflow-hidden font-sans select-none">
+      {/* Left Sidebar */}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSelectSession={(id) => {
+          setActiveSessionId(id);
+          if (window.innerWidth < 768) setIsSidebarOpen(false);
+        }}
+        onNewChat={handleNewChat}
+        onDeleteSession={handleDeleteSession}
+        user={user}
+        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenExplore={() => setIsExploreOpen(true)}
+        onOpenLibrary={() => setIsPromptLibraryOpen(true)}
+        onOpenFiles={() => setIsPromptLibraryOpen(true)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onOpenSearchModal={() => setIsCommandPaletteOpen(true)}
+        onOpenSettings={() => setIsExploreOpen(true)}
+        onOpenHelp={() => setIsHelpOpen(true)}
+      />
 
-      {/* Main Container: Edge-to-edge native full-screen on mobile, Floating luxury card on desktop */}
-      <div className="w-full h-full md:h-[92vh] md:max-w-7xl bg-white md:bg-white/95 md:backdrop-blur-xl border-0 md:border md:border-white/80 rounded-none md:rounded-3xl md:shadow-2xl md:shadow-purple-900/10 flex overflow-hidden relative">
-        {/* Left Sidebar */}
-        <Sidebar
-          isOpen={isSidebarOpen}
-          onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-          sessions={sessions}
-          activeSessionId={activeSessionId}
-          onSelectSession={(id) => {
-            setActiveSessionId(id);
-            if (window.innerWidth < 768) setIsSidebarOpen(false);
-          }}
-          onNewChat={handleNewChat}
-          onDeleteSession={handleDeleteSession}
-          user={user}
-          onOpenAuth={() => setIsAuthOpen(true)}
-          onOpenExplore={() => setIsExploreOpen(true)}
-          onOpenLibrary={() => setIsPromptLibraryOpen(true)}
-          onOpenFiles={() => setIsPromptLibraryOpen(true)}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onOpenSearchModal={() => setIsCommandPaletteOpen(true)}
+      {/* Right Main Area */}
+      <div className="flex-1 flex flex-col h-full min-w-0 bg-[#000000] overflow-hidden relative">
+        {/* Top Header Bar */}
+        <Header
+          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          isSidebarOpen={isSidebarOpen}
+          activeSession={activeSession}
+          onOpenExport={() => setIsExportOpen(true)}
+          onShare={handleShare}
+          onOpenUpgrade={() => setIsExploreOpen(true)}
+          selectedModel={selectedModel}
+          onSelectModel={setSelectedModel}
+          userPlan={user.plan}
         />
 
-        {/* Right Main Area */}
-        <div className="flex-1 flex flex-col h-full min-w-0 bg-[#131314] overflow-hidden">
-          {/* Top Header Bar */}
-          <Header
-            onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-            isSidebarOpen={isSidebarOpen}
-            activeSession={activeSession}
-            onOpenExport={() => setIsExportOpen(true)}
-            onShare={handleShare}
-            selectedModel={selectedModel}
-            onSelectModel={setSelectedModel}
-            userPlan={user.plan}
-          />
-
-          {/* Body Content: Welcome Hero OR Active Chat */}
-          <main className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
-            {!activeSession || activeSession.messages.length === 0 ? (
-              <HeroState
-                user={user}
-                onSendMessage={handleSendMessage}
-                onOpenSavedPrompts={() => setIsPromptLibraryOpen(true)}
-                onOpenHelp={() => setIsHelpOpen(true)}
-                onOpenLanguage={() => alert('Leo AI supports over 95 languages automatically. Simply type in any language!')}
-                onOpenDiscord={() => window.open('https://discord.gg', '_blank')}
-                selectedModel={selectedModel}
-              />
-            ) : (
-              <ChatView
-                messages={activeSession.messages}
-                isLoading={isLoading}
-                onSendMessage={handleSendMessage}
-                onRegenerate={handleRegenerate}
-                user={user}
-                onOpenSavedPrompts={() => setIsPromptLibraryOpen(true)}
-                selectedModel={selectedModel}
-              />
-            )}
-          </main>
-        </div>
+        {/* Body Content: Welcome Hero OR Active Chat */}
+        <main className="flex-1 flex flex-col min-h-0 overflow-hidden relative bg-[#000000]">
+          {!activeSession || activeSession.messages.length === 0 ? (
+            <HeroState
+              user={user}
+              onSendMessage={handleSendMessage}
+              onOpenSavedPrompts={() => setIsPromptLibraryOpen(true)}
+              onOpenHelp={() => setIsHelpOpen(true)}
+              onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+              isSidebarOpen={isSidebarOpen}
+              onOpenAuth={() => setIsAuthOpen(true)}
+              onOpenUpgrade={() => setIsExploreOpen(true)}
+              selectedModel={selectedModel}
+            />
+          ) : (
+            <ChatView
+              messages={activeSession.messages}
+              isLoading={isLoading}
+              onSendMessage={handleSendMessage}
+              onRegenerate={handleRegenerate}
+              user={user}
+              onOpenSavedPrompts={() => setIsPromptLibraryOpen(true)}
+              selectedModel={selectedModel}
+            />
+          )}
+        </main>
       </div>
 
       {/* Modals for Users */}
