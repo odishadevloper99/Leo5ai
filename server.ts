@@ -252,45 +252,61 @@ let globalStats = {
   serverStartTime: Date.now()
 };
 
-// System AI Configuration (Configurable via Admin Panel and Persisted in Firebase)
+// System AI Configuration (Configurable via Render Environment Variables and Admin Panel)
 let currentConfig = {
-  // 1. DEFAULT MODEL: Primary model for normal text conversation, writing, and explanations
+  // 1. DEFAULT MODEL: Primary model configured via Render environment variables
   defaultAiModel: (
     process.env.DEFAULT_AI_MODEL ||
+    process.env.AI_MODEL ||
+    process.env.MODEL_NAME ||
+    process.env.GEMINI_MODEL ||
+    process.env.MODEL_ID ||
     process.env.ACTIVE_MODEL_ID ||
     process.env.AICREDITS_MODEL ||
-    'google/gemini-2.0-flash'
+    ''
   ).replace(/^["']|["']$/g, '').trim(),
 
-  // 2. VISION MODEL: Multimodal model for photos, screenshots, and visual reasoning
+  // 2. VISION MODEL: Vision model configured via Render environment variables
   visionAiModel: (
     process.env.VISION_AI_MODEL ||
     process.env.AICREDITS_VISION_MODEL ||
     process.env.VISION_MODEL ||
-    'google/gemini-2.0-flash'
+    process.env.DEFAULT_AI_MODEL ||
+    process.env.AI_MODEL ||
+    ''
   ).replace(/^["']|["']$/g, '').trim(),
 
-  // 3. CODE MODEL: Technical model for programming, code debugging, and software architecture
+  // 3. CODE MODEL: Code model configured via Render environment variables
   codeAiModel: (
     process.env.CODE_AI_MODEL ||
     process.env.AICREDITS_CODE_MODEL ||
-    'deepseek/deepseek-chat'
+    process.env.DEFAULT_AI_MODEL ||
+    process.env.AI_MODEL ||
+    ''
   ).replace(/^["']|["']$/g, '').trim(),
 
   // Legacy / Compatibility aliases
   activeModelId: (
     process.env.DEFAULT_AI_MODEL ||
+    process.env.AI_MODEL ||
+    process.env.MODEL_NAME ||
+    process.env.GEMINI_MODEL ||
+    process.env.MODEL_ID ||
     process.env.ACTIVE_MODEL_ID ||
     process.env.AICREDITS_MODEL ||
-    'google/gemini-2.0-flash'
+    ''
   ).replace(/^["']|["']$/g, '').trim(),
   aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
   aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
   aiCreditsModel: (
     process.env.DEFAULT_AI_MODEL ||
+    process.env.AI_MODEL ||
+    process.env.MODEL_NAME ||
+    process.env.GEMINI_MODEL ||
+    process.env.MODEL_ID ||
     process.env.ACTIVE_MODEL_ID ||
     process.env.AICREDITS_MODEL ||
-    'google/gemini-2.0-flash'
+    ''
   ).replace(/^["']|["']$/g, '').trim(),
   tokeninApiKey: process.env.TOKENIN_API_KEY || '',
   tokeninBaseUrl: (process.env.TOKENIN_BASE_URL || 'https://tokenin.my.id/api/v1').trim().replace(/\/+$/, ''),
@@ -299,7 +315,9 @@ let currentConfig = {
     process.env.VISION_AI_MODEL ||
     process.env.AICREDITS_VISION_MODEL ||
     process.env.VISION_MODEL ||
-    'google/gemini-2.0-flash'
+    process.env.DEFAULT_AI_MODEL ||
+    process.env.AI_MODEL ||
+    ''
   ).replace(/^["']|["']$/g, '').trim(),
   temperature: 0.7,
   maxTokens: 8192,
@@ -649,25 +667,6 @@ export interface EnrichedAIModel {
   contextLength?: number;
 }
 
-// Preferred candidates in priority order (used ONLY if actually returned by the API)
-const CHEAP_CANDIDATE_PATTERNS = [
-  'openai/gpt-4o-mini',
-  'deepseek/deepseek-chat',
-  'google/gemini-2.0-flash',
-  'mistral/mistral-small',
-  'mistralai/mistral-small-24b-instruct-2501',
-  'mistralai/mistral-small-3.2-24b-instruct',
-  'mistralai/mistral-small-2603'
-];
-
-const QUALITY_CANDIDATE_PATTERNS = [
-  'openai/gpt-4o',
-  'anthropic/claude-sonnet-4.5',
-  'deepseek/deepseek-reasoner',
-  'deepseek/deepseek-r1',
-  'google/gemini-2.5-pro'
-];
-
 let dynamicModelsCache: {
   models: EnrichedAIModel[];
   cheapCandidates: EnrichedAIModel[];
@@ -849,14 +848,10 @@ async function fetchDynamicAiCreditsModels(forceRefresh = false): Promise<{
       if (totalCostPer1M > 0 && totalCostPer1M <= 1.0) badges.push('Budget-Friendly');
       if (totalCostPer1M >= 10.0) badges.push('High-Precision');
 
-      // Check tier
       let tier: 'cheap' | 'quality' | 'standard' = 'standard';
-      const isCheapCandidate = CHEAP_CANDIDATE_PATTERNS.some((pat) => pat === m.id || m.id.includes(pat));
-      const isQualityCandidate = QUALITY_CANDIDATE_PATTERNS.some((pat) => pat === m.id || m.id.includes(pat));
-
-      if (isCheapCandidate) {
+      if (totalCostPer1M > 0 && totalCostPer1M <= 1.0) {
         tier = 'cheap';
-      } else if (isQualityCandidate) {
+      } else if (totalCostPer1M >= 10.0) {
         tier = 'quality';
       }
 
@@ -877,46 +872,24 @@ async function fetchDynamicAiCreditsModels(forceRefresh = false): Promise<{
       };
     });
 
-    // Extract available cheap candidate models that were actually returned
-    const cheapCandidates = enrichedList
-      .filter((m) => CHEAP_CANDIDATE_PATTERNS.some((pat) => pat === m.id || m.id.includes(pat)))
-      // Sort strictly by actual input_cost_per_1m + output_cost_per_1m ascending
-      .sort((a, b) => a.totalCostPer1M - b.totalCostPer1M);
+    const configuredDefault = (
+      process.env.DEFAULT_AI_MODEL ||
+      process.env.AI_MODEL ||
+      process.env.MODEL_NAME ||
+      process.env.GEMINI_MODEL ||
+      process.env.MODEL_ID ||
+      process.env.ACTIVE_MODEL_ID ||
+      process.env.AICREDITS_MODEL ||
+      currentConfig.defaultAiModel ||
+      ''
+    ).replace(/^["']|["']$/g, '').trim();
 
-    // Extract available quality candidate models that were actually returned
-    const qualityCandidates = enrichedList
-      .filter((m) => QUALITY_CANDIDATE_PATTERNS.some((pat) => pat === m.id || m.id.includes(pat)))
-      .sort((a, b) => a.totalCostPer1M - b.totalCostPer1M);
-
-    // Automatically select the cheapest available model as default
-    let defaultModel = 'google/gemini-2.0-flash';
-    if (cheapCandidates.length > 0) {
-      defaultModel = cheapCandidates[0].id;
-    } else if (enrichedList.length > 0) {
-      // Sort all available active models by cost and take cheapest
-      const sortedAll = [...enrichedList].sort((a, b) => a.totalCostPer1M - b.totalCostPer1M);
-      defaultModel = sortedAll[0].id;
+    let defaultModel = configuredDefault;
+    if (!defaultModel && enrichedList.length > 0) {
+      defaultModel = enrichedList[0].id;
     }
 
-    // Build the 3-model fallback chain from the available models
-    const fallbackChain: string[] = [];
-    for (const c of cheapCandidates) {
-      if (!fallbackChain.includes(c.id)) {
-        fallbackChain.push(c.id);
-      }
-      if (fallbackChain.length >= 3) break;
-    }
-
-    // If cheap candidates < 3, fill from other available active models sorted by cost
-    if (fallbackChain.length < 3) {
-      const sortedByCost = [...enrichedList].sort((a, b) => a.totalCostPer1M - b.totalCostPer1M);
-      for (const m of sortedByCost) {
-        if (!fallbackChain.includes(m.id)) {
-          fallbackChain.push(m.id);
-        }
-        if (fallbackChain.length >= 3) break;
-      }
-    }
+    const fallbackChain: string[] = defaultModel ? [defaultModel] : [];
 
     // Mark isDefault on the chosen default model
     enrichedList.forEach((m) => {
@@ -925,79 +898,59 @@ async function fetchDynamicAiCreditsModels(forceRefresh = false): Promise<{
 
     dynamicModelsCache = {
       models: enrichedList,
-      cheapCandidates,
-      qualityCandidates,
+      cheapCandidates: [],
+      qualityCandidates: [],
       defaultModel,
       fallbackChain,
       lastUpdated: Date.now()
     };
 
     console.log(
-      `[DYNAMIC MODELS] Loaded ${enrichedList.length} models from AICredits API. ` +
-      `Cheapest Default: "${defaultModel}" (total cost: $${cheapCandidates[0]?.totalCostPer1M || 0}/M). ` +
-      `Fallback Chain (up to 3): ${JSON.stringify(fallbackChain)}`
+      `[DYNAMIC MODELS] Loaded ${enrichedList.length} models. ` +
+      `Active Model: "${defaultModel || 'None (Awaiting Render Env Var)'}".`
     );
 
     return dynamicModelsCache;
   } catch (err: any) {
-    console.warn('[DYNAMIC MODELS] Could not fetch fresh models from https://api.aicredits.in/api/models:', err.message);
+    console.warn('[DYNAMIC MODELS] Could not fetch fresh models:', err.message);
     if (dynamicModelsCache) {
       return dynamicModelsCache;
     }
 
-    // Fallback static dataset if first boot happens offline
-    const fallbackDefault = 'google/gemini-2.0-flash';
-    const fallbackChain = ['google/gemini-2.0-flash', 'openai/gpt-4o-mini', 'deepseek/deepseek-chat'];
+    const configuredDefault = (
+      process.env.DEFAULT_AI_MODEL ||
+      process.env.AI_MODEL ||
+      process.env.MODEL_NAME ||
+      process.env.GEMINI_MODEL ||
+      process.env.MODEL_ID ||
+      process.env.ACTIVE_MODEL_ID ||
+      process.env.AICREDITS_MODEL ||
+      currentConfig.defaultAiModel ||
+      ''
+    ).replace(/^["']|["']$/g, '').trim();
+
     const fallbackResult = {
-      models: [
+      models: configuredDefault ? [
         {
-          id: 'google/gemini-2.0-flash',
-          name: 'Gemini 2.0 Flash',
-          company: 'Google',
-          category: 'vision' as const,
-          description: 'Ultra-fast low-latency multimodal intelligence.',
-          badges: ['Vision', 'Fast', 'Cheapest'],
+          id: configuredDefault,
+          name: configuredDefault,
+          company: 'Configured Engine',
+          category: 'text' as const,
+          description: 'Model configured via Render environment variables.',
+          badges: ['Active'],
           iconKey: 'gemini',
           provider: 'aicredits' as const,
-          tier: 'cheap' as const,
-          inputCostPer1M: 0.1,
-          outputCostPer1M: 0.4,
-          totalCostPer1M: 0.5,
+          tier: 'standard' as const,
+          inputCostPer1M: 0,
+          outputCostPer1M: 0,
+          totalCostPer1M: 0,
           isDefault: true
-        },
-        {
-          id: 'openai/gpt-4o-mini',
-          name: 'GPT-4o Mini',
-          company: 'OpenAI',
-          category: 'text' as const,
-          description: 'Fast, cost-efficient multimodal reasoning.',
-          badges: ['Vision', 'Fast'],
-          iconKey: 'openai',
-          provider: 'aicredits' as const,
-          tier: 'cheap' as const,
-          inputCostPer1M: 0.15,
-          outputCostPer1M: 0.6,
-          totalCostPer1M: 0.75
-        },
-        {
-          id: 'deepseek/deepseek-chat',
-          name: 'DeepSeek V3',
-          company: 'DeepSeek',
-          category: 'coding' as const,
-          description: 'Top-tier code generation and technical reasoning.',
-          badges: ['Coding', 'Speed'],
-          iconKey: 'deepseek',
-          provider: 'aicredits' as const,
-          tier: 'cheap' as const,
-          inputCostPer1M: 0.257,
-          outputCostPer1M: 1.029,
-          totalCostPer1M: 1.286
         }
-      ],
+      ] : [],
       cheapCandidates: [],
       qualityCandidates: [],
-      defaultModel: fallbackDefault,
-      fallbackChain,
+      defaultModel: configuredDefault,
+      fallbackChain: configuredDefault ? [configuredDefault] : [],
       lastUpdated: Date.now()
     };
     return fallbackResult;
@@ -1133,179 +1086,96 @@ export const AIModelRouter = {
   },
 
   /**
-   * Returns the configured Default Model (from Admin or Render env var)
+   * Returns the configured Default Model (from Render env var or Admin)
    */
   getDefaultModel(): string {
     const configured =
+      process.env.DEFAULT_AI_MODEL ||
+      process.env.AI_MODEL ||
+      process.env.MODEL_NAME ||
+      process.env.GEMINI_MODEL ||
+      process.env.MODEL_ID ||
+      process.env.ACTIVE_MODEL_ID ||
+      process.env.AICREDITS_MODEL ||
       (currentConfig.defaultAiModel && currentConfig.defaultAiModel.trim()) ||
       (currentConfig.activeModelId && currentConfig.activeModelId.trim()) ||
       (currentConfig.aiCreditsModel && currentConfig.aiCreditsModel.trim()) ||
-      process.env.DEFAULT_AI_MODEL ||
-      process.env.ACTIVE_MODEL_ID ||
-      process.env.AICREDITS_MODEL ||
-      'google/gemini-2.0-flash';
+      '';
     return configured.replace(/^["']|["']$/g, '').trim();
   },
 
   /**
-   * Returns the configured Vision Model (from Admin or Render env var)
+   * Returns the configured Vision Model (from Render env var or Admin)
    */
   getVisionModel(): string {
     const configured =
-      (currentConfig.visionAiModel && currentConfig.visionAiModel.trim()) ||
-      (currentConfig.visionModel && currentConfig.visionModel.trim() && currentConfig.visionModel !== 'gemini-3.7-flash' ? currentConfig.visionModel : '') ||
       process.env.VISION_AI_MODEL ||
       process.env.AICREDITS_VISION_MODEL ||
       process.env.VISION_MODEL ||
-      'google/gemini-2.0-flash';
+      (currentConfig.visionAiModel && currentConfig.visionAiModel.trim()) ||
+      (currentConfig.visionModel && currentConfig.visionModel.trim()) ||
+      this.getDefaultModel();
     return configured.replace(/^["']|["']$/g, '').trim();
   },
 
   /**
-   * Returns the configured Code Model (from Admin or Render env var)
+   * Returns the configured Code Model (from Render env var or Admin)
    */
   getCodeModel(): string {
     const configured =
-      (currentConfig.codeAiModel && currentConfig.codeAiModel.trim()) ||
       process.env.CODE_AI_MODEL ||
       process.env.AICREDITS_CODE_MODEL ||
-      'deepseek/deepseek-chat';
+      (currentConfig.codeAiModel && currentConfig.codeAiModel.trim()) ||
+      this.getDefaultModel();
     return configured.replace(/^["']|["']$/g, '').trim();
   },
 
   /**
-   * Validates whether a model is currently available and compatible with the required modality.
+   * Validates whether a model identifier is configured and available.
    */
   validateModel(
     modelId: string,
-    requiredModality: 'vision' | 'code' | 'text' = 'text',
-    catalog?: EnrichedAIModel[]
+    _requiredModality: 'vision' | 'code' | 'text' = 'text',
+    _catalog?: EnrichedAIModel[]
   ): { valid: boolean; reason?: string } {
     if (!modelId || typeof modelId !== 'string' || modelId.trim().length === 0) {
-      return { valid: false, reason: 'Empty model identifier.' };
+      return {
+        valid: false,
+        reason: 'No model configured. Please set DEFAULT_AI_MODEL or AI_MODEL in Render environment variables.'
+      };
     }
-
-    const cleanId = modelId.toLowerCase().trim();
-
-    if (requiredModality === 'vision') {
-      // Known text-only models that DO NOT support images
-      const knownTextOnlyPatterns = [
-        'deepseek-chat', 'deepseek-coder', 'deepseek-reasoner', 'deepseek-r1', 'deepseek-v3',
-        'llama-3', 'llama-2', 'codestral', 'mistral-small', 'mistral-large', 'qwen-2.5-coder',
-        'qwen-2.5-72b-instruct', 'gpt-3.5', 'glm-4-plus', 'moonshot-v1'
-      ];
-      const isKnownTextOnly = knownTextOnlyPatterns.some((pat) => cleanId.includes(pat));
-      if (isKnownTextOnly) {
-        return { valid: false, reason: `Model "${modelId}" is text-only and does not support image/vision input.` };
-      }
-
-      // Check catalog metadata if present
-      const catalogItem = catalog?.find((m) => m.id.toLowerCase() === cleanId || m.id.toLowerCase().endsWith('/' + cleanId) || cleanId.endsWith('/' + m.id.toLowerCase()));
-      if (catalogItem) {
-        const hasVisionBadge = catalogItem.badges?.includes('Vision') || catalogItem.category === 'vision';
-        if (!hasVisionBadge && !cleanId.includes('gemini') && !cleanId.includes('4o') && !cleanId.includes('vision') && !cleanId.includes('pixtral') && !cleanId.includes('claude-3')) {
-          return { valid: false, reason: `Model "${modelId}" does not support image modality in catalog.` };
-        }
-      }
-      return { valid: true };
-    }
-
-    if (requiredModality === 'code') {
-      return { valid: true };
-    }
-
     return { valid: true };
   },
 
   /**
-   * Finds the best available vision-capable fallback model.
+   * Returns configured vision model or empty string if not configured.
    */
-  selectVisionFallback(catalog?: EnrichedAIModel[]): string {
-    const preferredVisionFallbacks = [
-      'google/gemini-2.0-flash',
-      'openai/gpt-4o-mini',
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'google/gemini-1.5-flash',
-      'gemini-1.5-flash',
-      'openai/gpt-4o',
-      'gpt-4o',
-      'gpt-4o-mini',
-      'anthropic/claude-3.5-sonnet',
-      'anthropic/claude-3-5-sonnet',
-      'claude-3-5-sonnet',
-      'mistralai/pixtral-12b-2409'
-    ];
-
-    if (catalog && catalog.length > 0) {
-      for (const pref of preferredVisionFallbacks) {
-        const found = catalog.find((m) => m.id.toLowerCase() === pref.toLowerCase());
-        if (found) return found.id;
-      }
-      const anyVision = catalog.find((m) => m.badges?.includes('Vision') || m.category === 'vision' || m.id.includes('vision') || m.id.includes('gemini') || m.id.includes('4o'));
-      if (anyVision) return anyVision.id;
-    }
-
-    return 'google/gemini-2.0-flash';
+  selectVisionFallback(_catalog?: EnrichedAIModel[]): string {
+    return this.getVisionModel();
   },
 
   /**
-   * Finds the best available coding-capable fallback model.
+   * Returns configured code model or empty string if not configured.
    */
-  selectCodeFallback(catalog?: EnrichedAIModel[]): string {
-    const preferredCodeFallbacks = [
-      'deepseek/deepseek-chat',
-      'deepseek-chat',
-      'deepseek-reasoner',
-      'qwen/qwen-2.5-coder-32b-instruct',
-      'mistralai/codestral-2501',
-      'anthropic/claude-3.5-sonnet',
-      'anthropic/claude-3-5-sonnet',
-      'claude-3-5-sonnet',
-      'openai/gpt-4o-mini',
-      'google/gemini-2.0-flash'
-    ];
-
-    if (catalog && catalog.length > 0) {
-      for (const pref of preferredCodeFallbacks) {
-        const found = catalog.find((m) => m.id.toLowerCase() === pref.toLowerCase());
-        if (found) return found.id;
-      }
-      const anyCoding = catalog.find((m) => m.category === 'coding' || m.category === 'reasoning' || m.badges?.includes('Code'));
-      if (anyCoding) return anyCoding.id;
-    }
-
-    return 'deepseek/deepseek-chat';
+  selectCodeFallback(_catalog?: EnrichedAIModel[]): string {
+    return this.getCodeModel();
   },
 
   /**
-   * Finds the best available normal text fallback model.
+   * Returns configured default model or empty string if not configured.
    */
-  selectDefaultFallback(catalog?: EnrichedAIModel[]): string {
-    if (dynamicModelsCache?.cheapCandidates && dynamicModelsCache.cheapCandidates.length > 0) {
-      return dynamicModelsCache.cheapCandidates[0].id;
-    }
-    if (dynamicModelsCache?.defaultModel) {
-      return dynamicModelsCache.defaultModel;
-    }
-    if (catalog && catalog.length > 0) {
-      return catalog[0].id;
-    }
-    return 'google/gemini-2.0-flash';
+  selectDefaultFallback(_catalog?: EnrichedAIModel[]): string {
+    return this.getDefaultModel();
   },
 
   /**
-   * Main Router: Evaluates input, applies priority order, validates capability,
-   * handles fallbacks, logs safely, and returns the chosen model and candidates.
+   * Main Router: Evaluates input, determines configured model from environment variables,
+   * validates configuration, and returns the selected model and candidates.
    */
   async routeRequest(req: AIModelRouterRequest): Promise<RoutedAIRequest> {
-    const catalogData = await fetchDynamicAiCreditsModels().catch(() => null);
-    const catalog = catalogData?.models;
-
-    // 1. Detect Input Type (VISION > CODE > TEXT)
     const inputType = this.detectInputType(req);
 
-    // If client explicitly requested a specific concrete model (not a generic alias)
+    // If client explicitly requested a specific concrete model
     const clientSpecifiedModel = typeof req.requestedModel === 'string' &&
       req.requestedModel.trim().length > 0 &&
       req.requestedModel.trim() !== 'default' &&
@@ -1315,83 +1185,31 @@ export const AIModelRouter = {
         ? req.requestedModel.trim()
         : null;
 
-    let selectedModel = '';
     let configuredModel = '';
+    if (inputType === 'vision') {
+      configuredModel = clientSpecifiedModel || this.getVisionModel();
+    } else if (inputType === 'code') {
+      configuredModel = clientSpecifiedModel || this.getCodeModel();
+    } else {
+      configuredModel = clientSpecifiedModel || this.getDefaultModel();
+    }
+
+    const validation = this.validateModel(configuredModel, inputType);
+    let selectedModel = '';
     let isFallback = false;
     let fallbackReason: string | undefined = undefined;
     const candidates: string[] = [];
 
-    // --- ROUTE 1: VISION (IMAGE REQUEST) ---
-    if (inputType === 'vision') {
-      configuredModel = clientSpecifiedModel || this.getVisionModel();
-      const validation = this.validateModel(configuredModel, 'vision', catalog);
-
-      if (validation.valid) {
-        selectedModel = configuredModel;
-      } else {
-        isFallback = true;
-        fallbackReason = validation.reason;
-        selectedModel = this.selectVisionFallback(catalog);
-        console.warn(`[AI ROUTER] Configured model "${configuredModel}" unavailable or incompatible with input type "vision" (${validation.reason}).`);
-        console.log(`[AI ROUTER] Using fallback model: "${selectedModel}"`);
-      }
-
+    if (validation.valid && configuredModel) {
+      selectedModel = configuredModel;
       candidates.push(selectedModel);
-      const secondaryVision = this.selectVisionFallback(catalog);
-      if (!candidates.includes(secondaryVision)) candidates.push(secondaryVision);
-      if (!candidates.includes('google/gemini-2.0-flash')) candidates.push('google/gemini-2.0-flash');
-      if (!candidates.includes('openai/gpt-4o-mini')) candidates.push('openai/gpt-4o-mini');
+    } else {
+      isFallback = true;
+      fallbackReason = validation.reason || 'No model configured';
+      console.warn(`[AI ROUTER] No model configured for input type "${inputType}" (${validation.reason}).`);
     }
 
-    // --- ROUTE 2: CODE (CODING REQUEST) ---
-    else if (inputType === 'code') {
-      configuredModel = clientSpecifiedModel || this.getCodeModel();
-      const validation = this.validateModel(configuredModel, 'code', catalog);
-
-      if (validation.valid) {
-        selectedModel = configuredModel;
-      } else {
-        isFallback = true;
-        fallbackReason = validation.reason;
-        selectedModel = this.selectCodeFallback(catalog);
-        console.warn(`[AI ROUTER] Configured model "${configuredModel}" unavailable. Using fallback model: "${selectedModel}"`);
-      }
-
-      candidates.push(selectedModel);
-      const secondaryCode = this.selectCodeFallback(catalog);
-      if (!candidates.includes(secondaryCode)) candidates.push(secondaryCode);
-      const defaultMod = this.getDefaultModel();
-      if (!candidates.includes(defaultMod)) candidates.push(defaultMod);
-      if (!candidates.includes('deepseek/deepseek-chat')) candidates.push('deepseek/deepseek-chat');
-    }
-
-    // --- ROUTE 3: DEFAULT (NORMAL TEXT REQUEST) ---
-    else {
-      configuredModel = clientSpecifiedModel || this.getDefaultModel();
-      const validation = this.validateModel(configuredModel, 'text', catalog);
-
-      if (validation.valid) {
-        selectedModel = configuredModel;
-      } else {
-        isFallback = true;
-        fallbackReason = validation.reason;
-        selectedModel = this.selectDefaultFallback(catalog);
-        console.warn(`[AI ROUTER] Configured model "${configuredModel}" unavailable. Using fallback model: "${selectedModel}"`);
-      }
-
-      candidates.push(selectedModel);
-      if (catalogData?.fallbackChain) {
-        for (const fb of catalogData.fallbackChain) {
-          if (!candidates.includes(fb)) candidates.push(fb);
-        }
-      }
-      if (!candidates.includes('google/gemini-2.0-flash')) candidates.push('google/gemini-2.0-flash');
-      if (!candidates.includes('openai/gpt-4o-mini')) candidates.push('openai/gpt-4o-mini');
-    }
-
-    // Safe Backend Logging (never logging sensitive credentials, keys, or passwords)
-    console.log(`[AI ROUTER] Input type: ${inputType}`);
-    console.log(`[AI ROUTER] Selected model: ${selectedModel}`);
+    console.log(`[AI ROUTER] Input type: ${inputType} | Selected model: "${selectedModel}"`);
 
     return {
       inputType,
@@ -1399,7 +1217,7 @@ export const AIModelRouter = {
       configuredModel,
       isFallback,
       fallbackReason,
-      candidates: candidates.slice(0, 4)
+      candidates
     };
   }
 };
@@ -3607,6 +3425,12 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const targetModel = routeResult.selectedModel;
+    if (!targetModel || !targetModel.trim()) {
+      return res.status(400).json({
+        error: 'No AI model configured. Please set DEFAULT_AI_MODEL or AI_MODEL in Render environment variables.',
+        configured: false
+      });
+    }
     const isVisionInput = routeResult.inputType === 'vision' || (Array.isArray(images) && images.length > 0);
 
     // Construct the authoritative system prompt containing the defined persona, relevant memories & live web grounding

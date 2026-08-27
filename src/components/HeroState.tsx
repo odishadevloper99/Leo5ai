@@ -1,24 +1,20 @@
 import React, { useState, useRef } from 'react';
 import {
-  Image as ImageIcon,
-  Globe,
-  Lightbulb,
-  Mic,
-  HelpCircle,
-  Languages,
-  X,
+  Plus,
   ArrowUp,
-  BrainCircuit,
-  ChevronDown,
+  Image as ImageIcon,
   Sparkles,
-  Code,
-  Compass,
-  FileText,
-  Zap
+  Search,
+  Code2,
+  Shield,
+  FileCode2,
+  Terminal,
+  Cpu,
+  X,
+  Mic,
+  ChevronDown
 } from 'lucide-react';
 import { UserProfile } from '../types';
-import { ModelLogo } from './ModelLogo';
-import { AI_MODELS, DEFAULT_MODEL_ID } from '../data/models';
 
 interface HeroStateProps {
   user: UserProfile;
@@ -31,26 +27,26 @@ interface HeroStateProps {
   onOpenModelSelector?: () => void;
 }
 
-const QUICK_STARTER_PROMPTS = [
+const STARTER_PROMPTS = [
   {
-    icon: <Code className="w-3.5 h-3.5 text-purple-600" />,
-    label: 'Build React UI component',
-    prompt: 'Write a clean, responsive TypeScript React component with Tailwind CSS styling and smooth transitions.'
+    icon: <Code2 className="w-4 h-4 text-purple-400" />,
+    label: 'Code Architecture',
+    prompt: 'Design a modular full-stack architecture with React, TypeScript, and server-side API proxying.'
   },
   {
-    icon: <Sparkles className="w-3.5 h-3.5 text-amber-500" />,
-    label: 'Deep Problem Analysis',
-    prompt: 'Explain the core principles and trade-offs of microservices vs monolithic architecture in modern web systems.'
+    icon: <Shield className="w-4 h-4 text-emerald-400" />,
+    label: 'Security & Pen Testing',
+    prompt: 'Analyze common security vulnerabilities like SQLi, XSS, and SSRF with exploit mitigation strategies.'
   },
   {
-    icon: <FileText className="w-3.5 h-3.5 text-blue-500" />,
-    label: 'Summarize & Draft',
-    prompt: 'Draft an executive briefing email proposing our Q3 product roadmap with actionable milestones and ROI.'
+    icon: <Search className="w-4 h-4 text-blue-400" />,
+    label: 'Deep Research',
+    prompt: 'Perform deep research on state-of-the-art LLM reasoning models and multimodal vision benchmarks.'
   },
   {
-    icon: <Zap className="w-3.5 h-3.5 text-emerald-500" />,
-    label: 'Debug & Optimize',
-    prompt: 'How can I optimize slow database queries and reduce API latency in high-traffic full-stack applications?'
+    icon: <Terminal className="w-4 h-4 text-amber-400" />,
+    label: 'Script & Payload Helper',
+    prompt: 'Generate standard Linux reverse shell one-liners, port scanning scripts, and automation workflows.'
   }
 ];
 
@@ -59,31 +55,17 @@ export const HeroState: React.FC<HeroStateProps> = ({
   onSendMessage,
   onOpenSavedPrompts,
   onOpenHelp,
-  onOpenLanguage,
-  onOpenDiscord,
-  selectedModel,
+  selectedModel = 'default',
   onOpenModelSelector
 }) => {
   const [inputText, setInputText] = useState('');
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [isDeepResearch, setIsDeepResearch] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const firstName = user.displayName?.split(' ')[0] || 'Explorer';
-
-  // Resolve active model
-  const activeModelDef = AI_MODELS.find(
-    (m) => m.id === selectedModel || (selectedModel === 'default' && m.id === DEFAULT_MODEL_ID)
-  ) || {
-    id: selectedModel || DEFAULT_MODEL_ID,
-    name: selectedModel ? selectedModel.split('/').pop() || 'Gemini 2.0 Flash' : 'Gemini 2.0 Flash',
-    iconKey: 'gemini',
-    provider: 'aicredits'
-  };
-
-  // Handle Image Upload / Vision
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -104,13 +86,12 @@ export const HeroState: React.FC<HeroStateProps> = ({
     setSelectedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Submit Prompt
   const handleSubmit = (overrideText?: string, e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const textToSend = overrideText !== undefined ? overrideText : inputText;
     if (!textToSend.trim() && selectedImages.length === 0) return;
 
-    onSendMessage(textToSend, selectedImages, false);
+    onSendMessage(textToSend, selectedImages, isDeepResearch);
     setInputText('');
     setSelectedImages([]);
   };
@@ -122,13 +103,13 @@ export const HeroState: React.FC<HeroStateProps> = ({
     }
   };
 
-  // Voice recording simulation / Web Speech API
+  // Web speech recognition
   const handleToggleVoice = () => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert('Speech Recognition is not supported on this browser. You can type directly into the prompt box.');
+      alert('Speech recognition is not supported in this browser. Please type your prompt.');
       return;
     }
 
@@ -141,8 +122,6 @@ export const HeroState: React.FC<HeroStateProps> = ({
       const recognition = new SpeechRecognition();
       recognition.lang = 'en-US';
       recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-
       setIsRecording(true);
 
       recognition.onresult = (event: any) => {
@@ -151,23 +130,21 @@ export const HeroState: React.FC<HeroStateProps> = ({
         setIsRecording(false);
       };
 
-      recognition.onerror = () => {
-        setIsRecording(false);
-      };
-
-      recognition.onend = () => {
-        setIsRecording(false);
-      };
-
+      recognition.onerror = () => setIsRecording(false);
+      recognition.onend = () => setIsRecording(false);
       recognition.start();
-    } catch (err) {
+    } catch {
       setIsRecording(false);
     }
   };
 
+  const displayName = user.displayName && user.displayName !== 'Guest'
+    ? user.displayName.split(' ')[0]
+    : 'there';
+
   return (
-    <div className="flex-1 flex flex-col justify-between items-center px-3 sm:px-6 md:px-8 py-3 sm:py-6 md:py-8 max-w-4xl mx-auto w-full overflow-y-auto overscroll-contain">
-      {/* Hidden File Input for Vision */}
+    <div className="flex-1 flex flex-col justify-between items-center px-4 sm:px-6 md:px-8 py-6 sm:py-10 max-w-3xl mx-auto w-full overflow-y-auto select-none">
+      {/* Hidden File Input for Vision uploads */}
       <input
         type="file"
         ref={fileInputRef}
@@ -177,48 +154,33 @@ export const HeroState: React.FC<HeroStateProps> = ({
         className="hidden"
       />
 
-      {/* Top Center: 3D Luminous Floating Orb + Welcome Text */}
-      <div className="flex flex-col items-center text-center mt-1 sm:mt-3 md:mt-4 w-full">
-        {/* Floating Glowing Sphere */}
-        <div className="relative mb-3 sm:mb-5 flex items-center justify-center">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-tr from-purple-500 via-purple-300 to-indigo-200 shadow-2xl animate-float-orb relative flex items-center justify-center overflow-hidden ring-1 ring-white/40">
-            {/* Luminous internal reflection highlight */}
-            <div className="absolute top-1.5 left-2.5 w-8 h-4 sm:w-10 sm:h-6 bg-white/80 rounded-full blur-xs -rotate-25" />
-            <div className="absolute bottom-2 right-3 w-10 h-10 sm:w-12 sm:h-12 bg-purple-700/30 rounded-full blur-sm" />
-            <div className="absolute inset-0 bg-radial from-white/40 via-transparent to-purple-900/25" />
-          </div>
-          {/* Subtle ambient blur behind */}
-          <div className="absolute -inset-4 bg-purple-400/25 rounded-full blur-xl -z-10" />
-        </div>
-
-        {/* Hello Greeting & Main Question */}
-        <h2 className="font-display font-medium text-xs sm:text-sm md:text-base text-purple-400 tracking-tight">
-          Hello, {firstName}
-        </h2>
-        <h1 className="font-display font-semibold text-xl sm:text-2xl md:text-3xl lg:text-4xl text-white tracking-tight mt-0.5 mb-4 sm:mb-6 md:mb-7">
-          How can I assist you today?
+      {/* Main Centered Content */}
+      <div className="flex-1 flex flex-col justify-center items-center text-center w-full my-auto py-4">
+        {/* Large Clean Minimal Title */}
+        <h1 className="font-display font-bold text-2xl sm:text-3xl md:text-4xl text-zinc-100 tracking-tight mb-2 sm:mb-3">
+          How can Leo help you today?
         </h1>
+        <p className="text-xs sm:text-sm text-zinc-400 max-w-md mb-6 sm:mb-8 font-normal leading-relaxed">
+          Ask questions, write and audit code, analyze security payloads, or brainstorm complex architectures.
+        </p>
 
-        {/* Central Input Box Container (Dark Theme) */}
-        <div className="w-full max-w-2xl bg-[#1e1f20] rounded-2xl sm:rounded-3xl border border-[#333538] shadow-2xl p-2.5 sm:p-3.5 md:p-4 transition-all duration-200 focus-within:border-neutral-500">
+        {/* Centered Floating Composer Card (Signature HackerAI reference look) */}
+        <div className="w-full max-w-2xl bg-[#141416] rounded-2xl sm:rounded-3xl border border-[#27272a] hover:border-zinc-700 focus-within:border-zinc-500 shadow-2xl p-3 sm:p-4 transition duration-200">
           {/* Selected Images Preview */}
           {selectedImages.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2 px-1">
               {selectedImages.map((img, i) => (
                 <div
                   key={i}
-                  className="relative group rounded-xl overflow-hidden border border-[#333538] shadow-xs"
+                  className="relative group rounded-xl overflow-hidden border border-[#27272a] shadow-xs"
                 >
                   <img src={img} alt="Vision upload" className="w-14 h-14 object-cover" />
                   <button
                     onClick={() => removeImage(i)}
-                    className="absolute top-1 right-1 p-0.5 bg-black/70 hover:bg-black text-white rounded-full transition cursor-pointer"
+                    className="absolute top-1 right-1 p-0.5 bg-black/80 hover:bg-red-500 text-white rounded-full transition cursor-pointer"
                   >
                     <X className="w-3 h-3" />
                   </button>
-                  <span className="absolute bottom-0 inset-x-0 bg-[#333538] text-[8px] text-white text-center font-medium py-0.5">
-                    Vision
-                  </span>
                 </div>
               ))}
             </div>
@@ -232,91 +194,96 @@ export const HeroState: React.FC<HeroStateProps> = ({
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask, learn, brainstorm"
-            className="w-full resize-none bg-transparent text-sm sm:text-base text-[#e3e3e3] placeholder-[#8e918f] focus:outline-none px-1 leading-relaxed"
+            placeholder="Ask, learn, brainstorm..."
+            className="w-full resize-none bg-transparent text-sm sm:text-base text-zinc-100 placeholder-zinc-500 focus:outline-none px-1 leading-relaxed"
           />
 
-          {/* Inner Controls Row */}
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#333538] gap-1.5 flex-wrap sm:flex-nowrap">
-            {/* Left Controls: [Model Pill] [Image Vision] [Lightbulb Prompts] */}
-            <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
-              {onOpenModelSelector && (
-                <button
-                  id="hero-model-pill-btn"
-                  type="button"
-                  onClick={onOpenModelSelector}
-                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-medium bg-[#28292c] hover:bg-[#333538] text-[#e3e3e3] hover:text-white border border-[#444746] transition active:scale-95 shadow-2xs group cursor-pointer"
-                  title="Select AI Model"
-                >
-                  <ModelLogo iconKey={activeModelDef.iconKey} modelId={activeModelDef.id} size="xs" />
-                  <span className="font-medium max-w-[90px] sm:max-w-[120px] truncate">{activeModelDef.name}</span>
-                  <ChevronDown className="w-3 h-3 text-neutral-400 group-hover:text-white transition" />
-                </button>
-              )}
-
+          {/* Bottom Action Bar inside composer */}
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#1f1f23] gap-2">
+            {/* Left Tools */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* + Attachment Button */}
               <button
                 id="hero-vision-upload-btn"
                 onClick={() => fileInputRef.current?.click()}
-                title="Upload image for Vision OCR analysis"
-                className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#28292c] rounded-lg sm:rounded-xl transition active:scale-95 cursor-pointer"
+                title="Attach image or file"
+                className="w-7 h-7 rounded-lg bg-[#1a1a1d] hover:bg-[#27272a] text-zinc-400 hover:text-zinc-200 border border-[#27272a] flex items-center justify-center transition active:scale-95 cursor-pointer"
               >
-                <ImageIcon className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
               </button>
 
+              {/* Prompt Library Pill */}
               <button
                 id="hero-prompt-suggestions-btn"
                 onClick={onOpenSavedPrompts}
-                title="Open Prompt Library"
-                className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#28292c] rounded-lg sm:rounded-xl transition active:scale-95 cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#1a1a1d] hover:bg-[#27272a] text-zinc-400 hover:text-zinc-200 border border-[#27272a] text-[11px] font-medium transition active:scale-95 cursor-pointer"
               >
-                <Lightbulb className="w-4 h-4" />
+                <Sparkles className="w-3 h-3 text-purple-400" />
+                <span>Prompts</span>
+              </button>
+
+              {/* Deep Research Toggle */}
+              <button
+                onClick={() => setIsDeepResearch(!isDeepResearch)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition active:scale-95 cursor-pointer ${
+                  isDeepResearch
+                    ? 'bg-purple-950/60 border-purple-500/50 text-purple-300'
+                    : 'bg-[#1a1a1d] hover:bg-[#27272a] text-zinc-400 hover:text-zinc-200 border-[#27272a]'
+                }`}
+              >
+                <Search className="w-3 h-3" />
+                <span>Deep Research</span>
               </button>
             </div>
 
-            {/* Right Controls: Voice / Mic + Send */}
-            <div className="flex items-center gap-1.5 ml-auto">
-              {inputText.trim() || selectedImages.length > 0 ? (
-                <button
-                  id="hero-submit-prompt-btn"
-                  onClick={() => handleSubmit()}
-                  className="w-8 h-8 rounded-full bg-white hover:bg-neutral-200 text-black flex items-center justify-center transition active:scale-95 cursor-pointer"
-                >
-                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-                </button>
-              ) : (
-                <button
-                  id="hero-voice-mic-btn"
-                  onClick={handleToggleVoice}
-                  title="Voice input"
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition active:scale-95 cursor-pointer ${
-                    isRecording
-                      ? 'bg-red-500 text-white animate-pulse'
-                      : 'bg-[#28292c] hover:bg-[#333538] text-white border border-[#444746]'
-                  }`}
-                >
-                  <Mic className="w-4 h-4" />
-                </button>
-              )}
+            {/* Right Tools: Mic + Send Button */}
+            <div className="flex items-center gap-2">
+              <button
+                id="hero-voice-mic-btn"
+                onClick={handleToggleVoice}
+                title="Voice input"
+                className={`w-7 h-7 rounded-lg flex items-center justify-center transition active:scale-95 cursor-pointer ${
+                  isRecording
+                    ? 'bg-red-500 text-white animate-pulse'
+                    : 'bg-[#1a1a1d] hover:bg-[#27272a] text-zinc-400 hover:text-zinc-200 border border-[#27272a]'
+                }`}
+              >
+                <Mic className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Circular Send Arrow Button */}
+              <button
+                id="hero-submit-prompt-btn"
+                onClick={() => handleSubmit()}
+                disabled={!inputText.trim() && selectedImages.length === 0}
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition duration-150 active:scale-95 cursor-pointer ${
+                  inputText.trim() || selectedImages.length > 0
+                    ? 'bg-white text-black hover:bg-zinc-200 shadow-md'
+                    : 'bg-[#222225] text-zinc-600 cursor-not-allowed'
+                }`}
+              >
+                <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Quick Starter Suggestion Chips (Dark Theme) */}
-        <div className="w-full max-w-2xl mt-4 sm:mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
-          {QUICK_STARTER_PROMPTS.map((item, idx) => (
+        {/* Starter Prompts Grid */}
+        <div className="w-full max-w-2xl mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
+          {STARTER_PROMPTS.map((item, idx) => (
             <button
               key={idx}
               onClick={() => handleSubmit(item.prompt)}
-              className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-xl bg-[#1e1f20] hover:bg-[#28292c] border border-[#333538] hover:border-neutral-500 transition-all duration-150 active:scale-[0.99] group text-left cursor-pointer"
+              className="flex items-start gap-3 p-3 rounded-2xl bg-[#141416] hover:bg-[#1a1a1d] border border-[#27272a] hover:border-zinc-700 transition duration-150 active:scale-[0.99] group text-left cursor-pointer shadow-xs"
             >
-              <div className="p-1.5 rounded-lg bg-[#28292c] group-hover:bg-[#333538] shrink-0 transition">
+              <div className="p-2 rounded-xl bg-[#1a1a1d] group-hover:bg-[#222226] shrink-0 transition">
                 {item.icon}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold text-[#e3e3e3] group-hover:text-white transition truncate">
+                <div className="text-xs font-semibold text-zinc-200 group-hover:text-white transition">
                   {item.label}
                 </div>
-                <div className="text-[11px] text-[#8e918f] line-clamp-1">
+                <div className="text-[11px] text-zinc-500 line-clamp-1 mt-0.5">
                   {item.prompt}
                 </div>
               </div>
@@ -325,36 +292,9 @@ export const HeroState: React.FC<HeroStateProps> = ({
         </div>
       </div>
 
-      {/* Bottom Footer */}
-      <footer className="w-full flex items-center justify-between text-xs text-[#8e918f] mt-6 sm:mt-8 pt-3 border-t border-[#212124]">
-        <div className="flex-1 text-center md:text-center text-[11px]">
-          <span>Join the Leo AI community for insights </span>
-          <button
-            onClick={onOpenDiscord}
-            className="text-purple-400 hover:text-purple-300 font-medium underline underline-offset-2 transition ml-1 cursor-pointer"
-          >
-            Discord
-          </button>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <button
-            id="footer-language-btn"
-            onClick={onOpenLanguage}
-            title="Language switcher"
-            className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#212124] rounded-lg transition cursor-pointer"
-          >
-            <Languages className="w-3.5 h-3.5" />
-          </button>
-          <button
-            id="footer-help-btn"
-            onClick={onOpenHelp}
-            title="Help & documentation"
-            className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#212124] rounded-lg transition cursor-pointer"
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-          </button>
-        </div>
+      {/* Footer Minimalist Info */}
+      <footer className="w-full text-center text-[11px] text-zinc-600 pt-3">
+        <span>Leo AI is a powerful multimodal intelligence and coding assistant.</span>
       </footer>
     </div>
   );

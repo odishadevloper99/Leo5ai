@@ -1,6 +1,6 @@
 {
   "name": "Leo AI",
-  "description": "Production-ready, intelligent AI chatbot with vision model capabilities, persistent Memo API memory, Firebase authentication, MongoDB sync, and a secure Admin Panel.",
+  "description": "Minimalist AI assistant with code intelligence, reasoning engine, prompt library, and multimodal chat.",
   "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

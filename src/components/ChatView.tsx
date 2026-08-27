@@ -25,8 +25,6 @@ import {
   Monitor
 } from 'lucide-react';
 import { Message, UserProfile } from '../types';
-import { ModelLogo } from './ModelLogo';
-import { AI_MODELS, DEFAULT_MODEL_ID } from '../data/models';
 
 interface ChatViewProps {
   messages: Message[];
@@ -74,16 +72,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isUserAtBottomRef = useRef<boolean>(true);
-
-  // Resolve active model definition
-  const activeModelDef = AI_MODELS.find(
-    (m) => m.id === selectedModel || (selectedModel === 'default' && m.id === DEFAULT_MODEL_ID)
-  ) || {
-    id: selectedModel || DEFAULT_MODEL_ID,
-    name: selectedModel ? selectedModel.split('/').pop() || 'Gemini 2.0 Flash' : 'Gemini 2.0 Flash',
-    iconKey: 'gemini',
-    provider: 'aicredits'
-  };
 
   // Mark all initial messages as already streamed on mount to avoid replaying history
   useEffect(() => {
@@ -339,7 +327,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#131314]">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#0b0d13]">
       {/* Hidden File Input */}
       <input
         type="file"
@@ -354,7 +342,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden px-4 md:px-8 py-5 md:py-8 space-y-6 max-w-4xl mx-auto w-full"
+        className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden px-3 sm:px-6 md:px-8 py-5 md:py-8 space-y-6 max-w-4xl mx-auto w-full font-mono"
       >
         {messages.map((message) => {
           const isUser = message.role === 'user';
@@ -397,19 +385,19 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </div>
               )}
 
-              {/* User Bubble Layout (Matches Screenshot: Sleek Dark Rounded Pill) */}
+              {/* User Bubble Layout (Matches HackerAI Terminal Bubble) */}
               {isUser ? (
                 <div className="flex flex-col items-end gap-1 max-w-[92%] sm:max-w-[85%]">
-                  <div className="inline-block rounded-2xl bg-[#212124] text-[#e3e3e3] border border-[#333538] px-4 py-2.5 text-sm md:text-[15px] leading-relaxed shadow-sm break-words">
+                  <div className="inline-block rounded-xl bg-[#131724] text-slate-100 border border-[#1f283d] px-4 py-2.5 text-sm md:text-[15px] leading-relaxed shadow-sm break-words font-mono">
                     {message.content}
                   </div>
 
                   {/* User Action icons (Copy, Edit) below bubble */}
-                  <div className="flex items-center gap-1.5 px-1 pt-0.5 text-neutral-400">
+                  <div className="flex items-center gap-1.5 px-1 pt-0.5 text-slate-500">
                     <button
                       onClick={() => handleCopyText(message.id, message.content)}
                       title="Copy question"
-                      className="p-1 hover:text-neutral-200 hover:bg-[#212124] rounded-md transition cursor-pointer"
+                      className="p-1 hover:text-emerald-400 hover:bg-[#161a26] rounded transition cursor-pointer"
                     >
                       {copiedMsgId === message.id ? (
                         <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -420,34 +408,34 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <button
                       onClick={() => handleEditUserMessage(message.content)}
                       title="Edit question"
-                      className="p-1 hover:text-neutral-200 hover:bg-[#212124] rounded-md transition cursor-pointer"
+                      className="p-1 hover:text-emerald-400 hover:bg-[#161a26] rounded transition cursor-pointer"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
               ) : (
-                /* Assistant Output Flow (Exact Match to Screenshot) */
+                /* Assistant Output Flow */
                 <div className="w-full max-w-full flex flex-col items-start space-y-2.5">
                   {/* 1. Reasoning Pill Header */}
                   <button
                     type="button"
                     onClick={() => toggleReasoning(message.id)}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[#c4c7c5] hover:text-white transition cursor-pointer active:scale-95 py-0.5"
+                    className="inline-flex items-center gap-1.5 text-xs font-mono font-medium text-slate-400 hover:text-emerald-400 transition cursor-pointer active:scale-95 py-0.5"
                   >
-                    <BrainCircuit className="w-4 h-4 text-[#c4c7c5]" />
-                    <span>Reasoning</span>
-                    <ChevronRight className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${expandedReasoning[message.id] ? 'rotate-90' : ''}`} />
+                    <BrainCircuit className="w-4 h-4 text-emerald-400" />
+                    <span>Security Reasoning</span>
+                    <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform ${expandedReasoning[message.id] ? 'rotate-90' : ''}`} />
                   </button>
 
                   {/* Expanded Reasoning Overview (if clicked) */}
                   {expandedReasoning[message.id] && (
-                    <div className="w-full border border-[#333538] rounded-xl bg-[#1e1f20] p-3 text-xs text-[#c4c7c5] space-y-1.5 animate-in fade-in duration-150">
-                      <div className="font-semibold text-white text-xs flex items-center gap-1.5">
-                        <BrainCircuit className="w-3.5 h-3.5 text-purple-400" />
-                        <span>Cognitive Execution Framework</span>
+                    <div className="w-full border border-[#1f273b] rounded-xl bg-[#0f131d] p-3 text-xs text-slate-300 space-y-1.5 font-mono animate-in fade-in duration-150">
+                      <div className="font-semibold text-emerald-400 text-xs flex items-center gap-1.5">
+                        <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Security Execution Strategy</span>
                       </div>
-                      <p className="text-[12px] text-[#9aa0a6] leading-relaxed">
+                      <p className="text-[12px] text-slate-400 leading-relaxed">
                         • Deconstructed prompt parameters and validated technical penetration testing references.
                         <br />
                         • Structured multi-phase security evaluation, tools analysis, and precision remediation insights.
@@ -829,19 +817,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
             {/* Right Action Buttons */}
             <div className="flex items-center gap-2">
-              {/* Model Selector Button (Displays "Model ⌄" or Active Model Name) */}
-              {onOpenModelSelector && (
-                <button
-                  type="button"
-                  onClick={onOpenModelSelector}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-[#c4c7c5] hover:text-white bg-[#28292c] hover:bg-[#333538] transition active:scale-95 cursor-pointer"
-                  title="Select AI Model"
-                >
-                  <span className="font-medium">{activeModelDef.name.length > 16 ? 'Model' : activeModelDef.name}</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
-                </button>
-              )}
-
               {/* Voice input button */}
               <button
                 type="button"

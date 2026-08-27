@@ -10,7 +10,6 @@ import { ExportModal } from './components/ExportModal';
 import { ExploreModal } from './components/ExploreModal';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { HelpModal } from './components/HelpModal';
-import { ModelSelectorModal } from './components/ModelSelectorModal';
 import { INITIAL_CHAT_SESSIONS } from './lib/prompts';
 import { getStoredSessions, saveStoredSessions } from './lib/storage';
 import {
@@ -76,7 +75,6 @@ export default function App() {
   const [isExploreOpen, setIsExploreOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
 
   // Sync sessions safely to localStorage
   useEffect(() => {
@@ -516,7 +514,6 @@ export default function App() {
             onShare={handleShare}
             selectedModel={selectedModel}
             onSelectModel={setSelectedModel}
-            onOpenModelSelector={() => setIsModelSelectorOpen(true)}
             userPlan={user.plan}
           />
 
@@ -531,7 +528,6 @@ export default function App() {
                 onOpenLanguage={() => alert('Leo AI supports over 95 languages automatically. Simply type in any language!')}
                 onOpenDiscord={() => window.open('https://discord.gg', '_blank')}
                 selectedModel={selectedModel}
-                onOpenModelSelector={() => setIsModelSelectorOpen(true)}
               />
             ) : (
               <ChatView
@@ -542,7 +538,6 @@ export default function App() {
                 user={user}
                 onOpenSavedPrompts={() => setIsPromptLibraryOpen(true)}
                 selectedModel={selectedModel}
-                onOpenModelSelector={() => setIsModelSelectorOpen(true)}
               />
             )}
           </main>
@@ -550,16 +545,6 @@ export default function App() {
       </div>
 
       {/* Modals for Users */}
-      <ModelSelectorModal
-        isOpen={isModelSelectorOpen}
-        onClose={() => setIsModelSelectorOpen(false)}
-        selectedModelId={selectedModel}
-        onSelectModel={(id) => {
-          setSelectedModel(id);
-          setIsModelSelectorOpen(false);
-        }}
-      />
-
       <PromptLibraryModal
         isOpen={isPromptLibraryOpen}
         onClose={() => setIsPromptLibraryOpen(false)}

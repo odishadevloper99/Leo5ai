@@ -8,7 +8,7 @@ interface LeoLogoMarkProps {
 
 /**
  * Official Leo AI Brand Logo Mark (SVG)
- * Source of truth: Vector rounded app mark with neural-core L, AI spark, and glass highlight
+ * Minimalist geometric AI mark with deep dark surfaces and sleek accent glow
  */
 export const LeoLogoMark: React.FC<LeoLogoMarkProps> = ({
   className = 'w-8 h-8',
@@ -18,7 +18,7 @@ export const LeoLogoMark: React.FC<LeoLogoMarkProps> = ({
   const rawId = useId();
   const cleanId = rawId.replace(/[^a-zA-Z0-9_-]/g, '');
   const gradId = `leo-g-${cleanId}`;
-  const shineId = `leo-shine-${cleanId}`;
+  const glowId = `leo-glow-${cleanId}`;
 
   const styleProps = size !== undefined ? { width: size, height: size } : undefined;
 
@@ -33,45 +33,47 @@ export const LeoLogoMark: React.FC<LeoLogoMarkProps> = ({
     >
       <title>{title}</title>
       <defs>
-        <linearGradient id={gradId} x1="12" y1="10" x2="88" y2="92" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#6D20D8" />
-          <stop offset="52%" stopColor="#9B4DFF" />
-          <stop offset="100%" stopColor="#C084FC" />
+        <linearGradient id={gradId} x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="50%" stopColor="#a855f7" />
+          <stop offset="100%" stopColor="#6366f1" />
         </linearGradient>
-        <linearGradient id={shineId} x1="30" y1="18" x2="76" y2="78" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.95" />
-          <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0.05" />
-        </linearGradient>
+        <radialGradient id={glowId} cx="50" cy="50" r="50" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+        </radialGradient>
       </defs>
 
-      {/* Rounded-square app mark */}
-      <rect x="5" y="5" width="90" height="90" rx="27" fill={`url(#${gradId})`} />
+      {/* Ambient background glow */}
+      <circle cx="50" cy="50" r="48" fill={`url(#${glowId})`} />
 
-      {/* Minimal abstract L / neural-core symbol */}
+      {/* Outer Rounded Container */}
+      <rect
+        x="8"
+        y="8"
+        width="84"
+        height="84"
+        rx="22"
+        fill="#141416"
+        stroke="#27272a"
+        strokeWidth="2.5"
+      />
+
+      {/* Geometric L & Sparkle Iconography */}
       <path
-        d="M31 27v35c0 9 5 14 14 14h19"
+        d="M32 26V68C32 70.2 33.8 72 36 72H68"
         fill="none"
-        stroke="#ffffff"
-        strokeWidth="9"
+        stroke="url(#${gradId})"
+        strokeWidth="7"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
 
-      {/* AI spark */}
+      {/* Floating Intelligence Sparkle */}
       <path
-        d="M68 25l2.8 7.8L79 36l-8.2 3.2L68 47l-3-7.8L57 36l8-3.2L68 25z"
+        d="M58 34L61 24L64 34L74 37L64 40L61 50L58 40L48 37Z"
         fill="#ffffff"
-      />
-      <circle cx="78" cy="53" r="3.2" fill="#ffffff" opacity="0.92" />
-
-      {/* Subtle glass highlight */}
-      <path
-        d="M25 19c10-10 27-13 39-8"
-        fill="none"
-        stroke={`url(#${shineId})`}
-        strokeWidth="5"
-        strokeLinecap="round"
-        opacity="0.65"
+        opacity="0.95"
       />
     </svg>
   );
@@ -102,25 +104,25 @@ export const LeoLogo: React.FC<LeoLogoProps> = ({
   const sizeMap = {
     xs: {
       mark: 'w-5 h-5',
-      text: 'text-sm font-bold tracking-tight',
-      gap: 'gap-1.5',
+      text: 'text-sm font-semibold tracking-tight',
+      gap: 'gap-2',
       tag: 'text-[8px] tracking-[1.5px]',
     },
     sm: {
       mark: 'w-6 h-6',
-      text: 'text-base font-bold tracking-tight',
-      gap: 'gap-2',
+      text: 'text-base font-semibold tracking-tight',
+      gap: 'gap-2.5',
       tag: 'text-[9px] tracking-[2px]',
     },
     md: {
       mark: 'w-8 h-8',
       text: 'text-lg font-bold tracking-tight',
-      gap: 'gap-2.5',
+      gap: 'gap-3',
       tag: 'text-[10px] tracking-[2.5px]',
     },
     lg: {
-      mark: 'w-12 h-12',
-      text: 'text-2xl font-extrabold tracking-tight',
+      mark: 'w-11 h-11',
+      text: 'text-2xl font-bold tracking-tight',
       gap: 'gap-3.5',
       tag: 'text-[11px] tracking-[3px]',
     },
@@ -144,22 +146,25 @@ export const LeoLogo: React.FC<LeoLogoProps> = ({
       aria-label="Leo AI"
     >
       <LeoLogoMark
-        className={`${currentSize.mark} drop-shadow-[0_8px_16px_rgba(126,70,235,0.22)] ${iconClassName}`}
+        className={`${currentSize.mark} drop-shadow-[0_0_12px_rgba(168,85,247,0.25)] ${iconClassName}`}
       />
       <div className="flex flex-col justify-center">
-        <span
-          className={`font-display bg-gradient-to-r from-[#6d20d8] via-[#a855f7] to-[#c084fc] bg-clip-text text-transparent leading-none ${currentSize.text} ${textClassName}`}
-        >
-          Leo AI
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`font-sans font-bold text-white tracking-tight ${currentSize.text} ${textClassName}`}
+          >
+            Leo <span className="text-purple-400 font-medium">AI</span>
+          </span>
+        </div>
         {showTagline && (
           <span
-            className={`font-bold uppercase text-[#8b8792] mt-1 leading-none ${currentSize.tag} ${taglineClassName}`}
+            className={`font-sans font-medium uppercase text-neutral-400 mt-0.5 leading-none ${currentSize.tag} ${taglineClassName}`}
           >
-            Intelligent • Simple • Powerful
+            Intelligence & Coding Assistant
           </span>
         )}
       </div>
     </div>
   );
 };
+
