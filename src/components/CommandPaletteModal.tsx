@@ -75,7 +75,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             }}
             className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-[#e3e3e3] hover:bg-[#28292c] hover:text-white rounded-xl transition text-left cursor-pointer"
           >
-            <Plus className="w-4 h-4 text-purple-400" />
+            <Plus className="w-4 h-4 text-white" />
             <span>Create New Chat</span>
           </button>
 
@@ -86,7 +86,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
             }}
             className="w-full flex items-center gap-3 px-3 py-2 text-xs font-medium text-[#e3e3e3] hover:bg-[#28292c] hover:text-white rounded-xl transition text-left cursor-pointer"
           >
-            <Sparkles className="w-4 h-4 text-purple-400" />
+            <Sparkles className="w-4 h-4 text-white" />
             <span>Open Saved Prompt Presets</span>
           </button>
 

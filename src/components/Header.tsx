@@ -68,9 +68,9 @@ export const Header: React.FC<HeaderProps> = ({
         {userPlan !== 'pro' && userPlan !== 'ultra' && (
           <button
             onClick={onOpenUpgrade}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#463b78] hover:bg-[#52458c] text-white text-xs font-semibold tracking-wide transition cursor-pointer shadow-xs"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white hover:bg-neutral-200 text-black text-xs font-semibold tracking-wide transition cursor-pointer shadow-xs"
           >
-            <Sparkles className="w-3.5 h-3.5 fill-white" />
+            <Sparkles className="w-3.5 h-3.5 fill-black text-black" />
             <span>Upgrade plan</span>
           </button>
         )}

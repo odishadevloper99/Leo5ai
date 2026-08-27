@@ -44,19 +44,19 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
   const getIcon = (iconName: string) => {
     switch (iconName) {
       case 'clock':
-        return <Clock className="w-4 h-4 text-purple-600" />;
+        return <Clock className="w-4 h-4 text-white" />;
       case 'lightbulb':
-        return <Lightbulb className="w-4 h-4 text-amber-600" />;
+        return <Lightbulb className="w-4 h-4 text-white" />;
       case 'gavel':
-        return <Hammer className="w-4 h-4 text-indigo-600" />;
+        return <Hammer className="w-4 h-4 text-white" />;
       case 'camera':
-        return <Camera className="w-4 h-4 text-emerald-600" />;
+        return <Camera className="w-4 h-4 text-white" />;
       case 'layers':
-        return <Layers className="w-4 h-4 text-blue-600" />;
+        return <Layers className="w-4 h-4 text-white" />;
       case 'mail':
-        return <Mail className="w-4 h-4 text-rose-600" />;
+        return <Mail className="w-4 h-4 text-white" />;
       default:
-        return <Sparkles className="w-4 h-4 text-purple-600" />;
+        return <Sparkles className="w-4 h-4 text-white" />;
     }
   };
 
@@ -66,7 +66,7 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#333538] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-[#28292c] text-purple-400">
+            <div className="p-1.5 rounded-lg bg-[#28292c] text-white">
               <Sparkles className="w-4 h-4" />
             </div>
             <h2 className="font-display font-semibold text-base text-white">
@@ -123,19 +123,19 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
               className="group p-3.5 rounded-2xl border border-[#333538] hover:border-neutral-500 bg-[#131314] hover:bg-[#28292c] hover:shadow-xs transition cursor-pointer flex items-start justify-between gap-3"
             >
               <div className="flex items-start gap-3">
-                <div className="p-2 rounded-xl bg-[#28292c] group-hover:bg-[#333538] transition mt-0.5 text-purple-400">
+                <div className="p-2 rounded-xl bg-[#28292c] group-hover:bg-[#333538] transition mt-0.5 text-white">
                   {getIcon(item.icon)}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-xs font-semibold text-white group-hover:text-purple-300">
+                    <h3 className="text-xs font-semibold text-white group-hover:text-neutral-200">
                       {item.title}
                     </h3>
                     <span className="text-[10px] px-2 py-0.2 rounded-full bg-[#28292c] text-[#c4c7c5] border border-[#333538]">
                       {item.category}
                     </span>
                     {item.isVisionPrompt && (
-                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/60">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[#28292c] text-white border border-neutral-600">
                         Vision
                       </span>
                     )}

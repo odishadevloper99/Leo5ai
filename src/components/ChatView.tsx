@@ -368,7 +368,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#0b0d13]">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-black">
       {/* Hidden File Input */}
       <input
         type="file"
@@ -426,22 +426,22 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </div>
               )}
 
-              {/* User Bubble Layout (Matches HackerAI Terminal Bubble) */}
+              {/* User Bubble Layout */}
               {isUser ? (
                 <div className="flex flex-col items-end gap-1 max-w-[92%] sm:max-w-[85%]">
-                  <div className="inline-block rounded-xl bg-[#131724] text-slate-100 border border-[#1f283d] px-4 py-2.5 text-sm md:text-[15px] leading-relaxed shadow-sm break-words font-mono">
+                  <div className="inline-block rounded-xl bg-[#1e1f20] text-[#f4f4f5] border border-[#333538] px-4 py-2.5 text-sm md:text-[15px] leading-relaxed shadow-sm break-words font-mono">
                     {message.content}
                   </div>
 
                   {/* User Action icons (Copy, Edit) below bubble */}
-                  <div className="flex items-center gap-1.5 px-1 pt-0.5 text-slate-500">
+                  <div className="flex items-center gap-1.5 px-1 pt-0.5 text-[#8e918f]">
                     <button
                       onClick={() => handleCopyText(message.id, message.content)}
                       title="Copy question"
-                      className="p-1 hover:text-emerald-400 hover:bg-[#161a26] rounded transition cursor-pointer"
+                      className="p-1 hover:text-white hover:bg-[#1e1f20] rounded transition cursor-pointer"
                     >
                       {copiedMsgId === message.id ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <Check className="w-3.5 h-3.5 text-white" />
                       ) : (
                         <Copy className="w-3.5 h-3.5" />
                       )}
@@ -449,7 +449,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <button
                       onClick={() => handleEditUserMessage(message.content)}
                       title="Edit question"
-                      className="p-1 hover:text-emerald-400 hover:bg-[#161a26] rounded transition cursor-pointer"
+                      className="p-1 hover:text-white hover:bg-[#1e1f20] rounded transition cursor-pointer"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
@@ -458,12 +458,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
               ) : (
                 /* Assistant Output Flow */
                 <div className="w-full max-w-full flex flex-col items-start space-y-2.5">
-                  {/* Live Dynamic Agent Action Pill (e.g. Searching the web, Planning, Running command) */}
+                  {/* Live Dynamic Agent Action Pill */}
                   {message.currentAgentAction && (
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#141a29] border border-[#232f48] text-emerald-400 text-xs font-mono shadow-sm animate-pulse">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1e1f20] border border-[#333538] text-white text-xs font-mono shadow-sm animate-pulse">
                       <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                       </span>
                       <span>{message.currentAgentAction}</span>
                     </div>
@@ -474,22 +474,22 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <button
                       type="button"
                       onClick={() => toggleReasoning(message.id)}
-                      className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-white transition cursor-pointer active:scale-95 py-0.5"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-[#8e918f] hover:text-white transition cursor-pointer active:scale-95 py-0.5"
                     >
-                      <BrainCircuit className="w-3.5 h-3.5 text-neutral-400" />
+                      <BrainCircuit className="w-3.5 h-3.5 text-[#8e918f]" />
                       <span>Reasoning</span>
-                      <ChevronRight className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${expandedReasoning[message.id] ? 'rotate-90' : ''}`} />
+                      <ChevronRight className={`w-3.5 h-3.5 text-[#8e918f] transition-transform ${expandedReasoning[message.id] ? 'rotate-90' : ''}`} />
                     </button>
                   </div>
 
                   {/* Expanded Reasoning Overview (if clicked) */}
                   {expandedReasoning[message.id] && (
-                    <div className="w-full border border-[#333538] rounded-xl bg-[#1a1b1e] p-3 text-xs text-neutral-300 space-y-1.5 animate-in fade-in duration-150">
+                    <div className="w-full border border-[#333538] rounded-xl bg-[#1e1f20] p-3 text-xs text-[#e3e3e3] space-y-1.5 animate-in fade-in duration-150">
                       <div className="font-semibold text-white text-xs flex items-center gap-1.5">
-                        <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
+                        <BrainCircuit className="w-3.5 h-3.5 text-white" />
                         <span>Execution Reasoning</span>
                       </div>
-                      <p className="text-[12px] text-neutral-400 leading-relaxed">
+                      <p className="text-[12px] text-[#8e918f] leading-relaxed">
                         • Analyzed user query intent, language nuances, and target requirements.
                         <br />
                         • Evaluated online repositories, structured categories, and formatted comparative intelligence.
@@ -497,65 +497,51 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     </div>
                   )}
 
+                  {/* Multiple Search / URL Browsing Step Pills (Matches Video Flow) */}
+                  {message.searchQueries && message.searchQueries.length > 0 ? (
+                    <div className="w-full space-y-1.5">
+                      {message.searchQueries.map((query, qIdx) => {
+                        const isUrlOpen = query.toLowerCase().startsWith('opening ') || query.toLowerCase().includes('http') || query.toLowerCase().includes('url');
+                        return (
+                          <div
+                            key={qIdx}
+                            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] border border-[#333538] text-[#c4c7c5] text-xs font-normal shadow-2xs max-w-full truncate"
+                          >
+                            {isUrlOpen ? (
+                              <ExternalLink className="w-3.5 h-3.5 text-[#8e918f] shrink-0" />
+                            ) : (
+                              <Search className="w-3.5 h-3.5 text-[#8e918f] shrink-0" />
+                            )}
+                            <span className="truncate">{query}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : message.searched ? (
+                    <div className="w-full">
+                      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] border border-[#333538] text-[#c4c7c5] text-xs font-normal shadow-2xs max-w-full">
+                        <Search className="w-3.5 h-3.5 text-[#8e918f] shrink-0" />
+                        <span className="truncate">Searching for available models and pricing data...</span>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {/* 2. Thinking Accordion Header & Thought Process */}
                   {message.thinkingProcess && (
                     <div className="w-full space-y-1">
                       <button
                         type="button"
                         onClick={() => toggleThinking(message.id)}
-                        className="flex items-center gap-1.5 text-xs font-normal text-[#9aa0a6] hover:text-[#e3e3e3] transition cursor-pointer"
+                        className="flex items-center gap-1.5 text-xs font-normal text-[#8e918f] hover:text-[#e3e3e3] transition cursor-pointer"
                       >
-                        <BrainCircuit className="w-3.5 h-3.5 text-[#9aa0a6]" />
+                        <BrainCircuit className="w-3.5 h-3.5 text-[#8e918f]" />
                         <span>Thinking...</span>
-                        <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${(expandedThinking[message.id] ?? true) ? '' : '-rotate-90'}`} />
+                        <ChevronDown className={`w-3.5 h-3.5 text-[#8e918f] transition-transform ${(expandedThinking[message.id] ?? true) ? '' : '-rotate-90'}`} />
                       </button>
 
                       {(expandedThinking[message.id] ?? true) && (
-                        <div className="text-xs md:text-[13px] text-[#9aa0a6] leading-relaxed font-sans pl-1 border-l border-neutral-700/60 my-1 animate-in fade-in duration-150">
+                        <div className="text-xs md:text-[13px] text-[#8e918f] leading-relaxed font-sans pl-2 border-l-2 border-neutral-700/60 my-1 animate-in fade-in duration-150 whitespace-pre-wrap">
                           {message.thinkingProcess}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 3. Web Search Pill (Matches video: Search icon + live query pill) */}
-                  {message.searched && (
-                    <div className="w-full">
-                      <button
-                        type="button"
-                        onClick={() => toggleSources(message.id)}
-                        className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] border border-[#333538] text-[#c4c7c5] hover:text-white hover:border-neutral-500 text-xs font-normal transition cursor-pointer active:scale-[0.99] shadow-2xs max-w-full text-left"
-                      >
-                        <Search className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
-                        <span className="truncate">
-                          {message.searchQueries?.[0]
-                            ? `Searching for ${message.searchQueries[0]} as requested...`
-                            : 'Searching for relevant streaming sites and sources...'}
-                        </span>
-                        {message.searchSources && message.searchSources.length > 0 && (
-                          <span className="text-[10px] bg-[#333538] text-neutral-300 px-1.5 py-0.5 rounded-full shrink-0 ml-1">
-                            {message.searchSources.length}
-                          </span>
-                        )}
-                      </button>
-
-                      {/* Expandable Web Sources List */}
-                      {expandedSources[message.id] && message.searchSources && message.searchSources.length > 0 && (
-                        <div className="mt-2 p-2.5 bg-[#1e1f20] border border-[#333538] rounded-xl flex flex-wrap gap-1.5 animate-in fade-in duration-150">
-                          {message.searchSources.map((source, sIdx) => (
-                            <a
-                              key={sIdx}
-                              href={source.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#212124] border border-[#333538] text-[#c4c7c5] hover:text-white hover:border-neutral-400 text-[11px] transition shadow-2xs truncate max-w-[260px]"
-                              title={source.url}
-                            >
-                              <Globe className="w-3 h-3 text-emerald-400 shrink-0" />
-                              <span className="truncate">{source.title || 'Source'}</span>
-                              <ExternalLink className="w-2.5 h-2.5 text-neutral-500 shrink-0" />
-                            </a>
-                          ))}
                         </div>
                       )}
                     </div>
@@ -567,30 +553,30 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       <button
                         type="button"
                         onClick={() => toggleAgentSteps(message.id)}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#141824] border border-[#1f283d] text-slate-300 hover:text-emerald-400 text-xs font-mono transition cursor-pointer active:scale-[0.99] shadow-2xs"
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1e1f20] border border-[#333538] text-[#e3e3e3] hover:text-white text-xs font-mono transition cursor-pointer active:scale-[0.99] shadow-2xs"
                       >
-                        <Terminal className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <Terminal className="w-3.5 h-3.5 text-white shrink-0" />
                         <span>Agent Execution: {message.agentSteps.length} tool {message.agentSteps.length === 1 ? 'action' : 'actions'}</span>
-                        <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform ${expandedAgentSteps[message.id] ? 'rotate-90' : ''}`} />
+                        <ChevronRight className={`w-3.5 h-3.5 text-[#8e918f] transition-transform ${expandedAgentSteps[message.id] ? 'rotate-90' : ''}`} />
                       </button>
 
                       {expandedAgentSteps[message.id] && (
-                        <div className="w-full border border-[#1f283d] rounded-xl bg-[#0d1017] p-3 space-y-2 text-xs font-mono animate-in fade-in duration-150">
+                        <div className="w-full border border-[#333538] rounded-xl bg-black p-3 space-y-2 text-xs font-mono animate-in fade-in duration-150">
                           {message.agentSteps.map((step, sIdx) => (
-                            <div key={sIdx} className="p-2.5 rounded-lg bg-[#141926] border border-[#1b2234] space-y-1">
-                              <div className="flex items-center justify-between text-emerald-400 font-semibold text-[11px]">
+                            <div key={sIdx} className="p-2.5 rounded-lg bg-[#1e1f20] border border-[#333538] space-y-1">
+                              <div className="flex items-center justify-between text-white font-semibold text-[11px]">
                                 <span className="flex items-center gap-1.5">
-                                  <Terminal className="w-3 h-3 text-emerald-400" />
+                                  <Terminal className="w-3 h-3 text-white" />
                                   <span>Step {sIdx + 1}: {step.tool}</span>
                                 </span>
-                                <span className="text-[10px] text-slate-500">{step.durationMs ? `${step.durationMs}ms` : ''}</span>
+                                <span className="text-[10px] text-[#8e918f]">{step.durationMs ? `${step.durationMs}ms` : ''}</span>
                               </div>
-                              <div className="text-slate-400 text-[11px] truncate">
-                                <span className="text-slate-500">Input: </span>
+                              <div className="text-[#8e918f] text-[11px] truncate">
+                                <span className="text-[#8e918f]">Input: </span>
                                 {JSON.stringify(step.input)}
                               </div>
                               {step.output && (
-                                <pre className="mt-1 p-2 rounded bg-[#090b10] border border-[#181e2e] text-slate-300 text-[11px] max-h-36 overflow-y-auto whitespace-pre-wrap">
+                                <pre className="mt-1 p-2 rounded bg-black border border-[#333538] text-[#e3e3e3] text-[11px] max-h-36 overflow-y-auto whitespace-pre-wrap">
                                   {step.output}
                                 </pre>
                               )}
@@ -601,7 +587,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     </div>
                   )}
 
-                  {/* 4. Markdown Assistant Output (Dark Theme) */}
+                  {/* 4. Markdown Assistant Output (Dark Monochrome Theme) */}
                   <div className="w-full min-w-0 prose-sm max-w-none break-words text-[#e3e3e3] pt-1">
                     {displayContent ? (
                       <ReactMarkdown
@@ -620,9 +606,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
                               const language = match ? match[1] : 'code';
                               const isCopied = copiedCodeBlock === codeString;
                               return (
-                                <div className="relative my-2.5 rounded-xl overflow-hidden bg-[#1e1f20] border border-[#333538] text-neutral-100 shadow-md w-full min-w-0 max-w-full">
-                                  <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#28292c] border-b border-[#333538] text-xs text-neutral-300 w-full min-w-0 select-none">
-                                    <span className="font-mono text-[11px] uppercase tracking-wider text-purple-300 font-bold truncate pr-2 shrink-0">
+                                <div className="relative my-2.5 rounded-xl overflow-hidden bg-[#1e1f20] border border-[#333538] text-[#e3e3e3] shadow-md w-full min-w-0 max-w-full">
+                                  <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#28292c] border-b border-[#333538] text-xs text-[#e3e3e3] w-full min-w-0 select-none">
+                                    <span className="font-mono text-[11px] uppercase tracking-wider text-white font-bold truncate pr-2 shrink-0">
                                       {language}
                                     </span>
                                     <button
@@ -632,22 +618,22 @@ export const ChatView: React.FC<ChatViewProps> = ({
                                         e.stopPropagation();
                                         handleCopyCode(codeString);
                                       }}
-                                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#333538] hover:bg-[#444746] text-neutral-200 hover:text-white transition text-xs font-medium active:scale-95 shadow-2xs shrink-0 cursor-pointer"
+                                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#333538] hover:bg-[#444746] text-white transition text-xs font-medium active:scale-95 shadow-2xs shrink-0 cursor-pointer"
                                     >
                                       {isCopied ? (
                                         <>
-                                          <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                          <span className="text-emerald-400 font-semibold text-[11px]">Copied!</span>
+                                          <Check className="w-3.5 h-3.5 text-white shrink-0" />
+                                          <span className="text-white font-semibold text-[11px]">Copied!</span>
                                         </>
                                       ) : (
                                         <>
-                                          <Copy className="w-3.5 h-3.5 text-neutral-300 shrink-0" />
-                                          <span className="text-neutral-200 text-[11px]">Copy code</span>
+                                          <Copy className="w-3.5 h-3.5 text-[#e3e3e3] shrink-0" />
+                                          <span className="text-white text-[11px]">Copy code</span>
                                         </>
                                       )}
                                     </button>
                                   </div>
-                                  <pre className="p-3.5 overflow-x-auto text-[13px] font-mono leading-relaxed bg-[#1e1f20] max-w-full text-slate-200">
+                                  <pre className="p-3.5 overflow-x-auto text-[13px] font-mono leading-relaxed bg-[#1e1f20] max-w-full text-[#e3e3e3]">
                                     <code>{codeString}</code>
                                   </pre>
                                 </div>
@@ -655,7 +641,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             }
 
                             return (
-                              <code className="px-1.5 py-0.5 rounded bg-[#28292c] text-emerald-300 font-mono text-[13px] border border-[#383a3e]" {...props}>
+                              <code className="px-1.5 py-0.5 rounded bg-[#28292c] text-white font-mono text-[13px] border border-[#383a3e]" {...props}>
                                 {children}
                               </code>
                             );
@@ -676,32 +662,31 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             return <h2 className="text-base md:text-lg font-bold text-white mt-3.5 mb-2">{children}</h2>;
                           },
                           h3({ children }: any) {
-                            return <h3 className="text-sm md:text-base font-semibold text-emerald-400 mt-3 mb-1.5">{children}</h3>;
+                            return <h3 className="text-sm md:text-base font-semibold text-white mt-3 mb-1.5">{children}</h3>;
                           },
                           blockquote({ children }: any) {
-                            return <blockquote className="border-l-2 border-emerald-500 pl-3.5 my-2.5 italic text-[#a8b3cf] text-sm">{children}</blockquote>;
+                            return <blockquote className="border-l-2 border-white pl-3.5 my-2.5 italic text-[#8e918f] text-sm">{children}</blockquote>;
                           },
                           table({ node, children }: any) {
                             const tableId = `tbl-${Math.random().toString(36).substring(2, 7)}`;
                             return (
-                              <div className="my-3 rounded-xl overflow-hidden border border-[#333538] bg-[#1a1b1e] shadow-md w-full max-w-full">
-                                {/* Table Toolbar with Download & Copy buttons (matches video) */}
-                                <div className="flex items-center justify-between px-3 py-1.5 bg-[#24262b] border-b border-[#333538] text-xs text-neutral-300 select-none">
-                                  <span className="text-[11px] font-medium text-neutral-400">Table Data</span>
+                              <div className="my-3 rounded-xl overflow-hidden border border-[#333538] bg-[#1e1f20] shadow-md w-full max-w-full">
+                                {/* Table Toolbar with Download & Copy buttons */}
+                                <div className="flex items-center justify-between px-3 py-1.5 bg-[#28292c] border-b border-[#333538] text-xs text-[#e3e3e3] select-none">
+                                  <span className="text-[11px] font-medium text-[#8e918f]">Table Data</span>
                                   <div className="flex items-center gap-1.5">
                                     <button
                                       type="button"
                                       onClick={(e) => {
                                         e.preventDefault();
-                                        // Extract table text from children or DOM
                                         const text = typeof node?.position === 'object' ? displayContent.slice(node.position.start.offset, node.position.end.offset) : '';
                                         handleDownloadTableCsv(text || displayContent, tableId);
                                       }}
                                       title="Download CSV"
-                                      className="p-1 hover:bg-[#333538] rounded text-neutral-300 hover:text-white transition cursor-pointer"
+                                      className="p-1 hover:bg-[#333538] rounded text-[#e3e3e3] hover:text-white transition cursor-pointer"
                                     >
                                       {downloadedTableId === tableId ? (
-                                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                        <Check className="w-3.5 h-3.5 text-white" />
                                       ) : (
                                         <Download className="w-3.5 h-3.5" />
                                       )}
@@ -714,10 +699,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                                         handleCopyTable(text || displayContent, tableId);
                                       }}
                                       title="Copy Table"
-                                      className="p-1 hover:bg-[#333538] rounded text-neutral-300 hover:text-white transition cursor-pointer"
+                                      className="p-1 hover:bg-[#333538] rounded text-[#e3e3e3] hover:text-white transition cursor-pointer"
                                     >
                                       {copiedTableId === tableId ? (
-                                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                        <Check className="w-3.5 h-3.5 text-white" />
                                       ) : (
                                         <Copy className="w-3.5 h-3.5" />
                                       )}
@@ -731,10 +716,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             );
                           },
                           th({ children }: any) {
-                            return <th className="bg-[#202226] px-3.5 py-2 text-white font-semibold border-b border-[#333538] text-xs md:text-sm">{children}</th>;
+                            return <th className="bg-[#28292c] px-3.5 py-2 text-white font-semibold border-b border-[#333538] text-xs md:text-sm">{children}</th>;
                           },
                           td({ children }: any) {
-                            return <td className="px-3.5 py-2.5 border-b border-[#282a30] text-neutral-200 text-xs md:text-sm">{children}</td>;
+                            return <td className="px-3.5 py-2.5 border-b border-[#333538] text-[#e3e3e3] text-xs md:text-sm">{children}</td>;
                           },
                           a({ href, children }: any) {
                             return (
@@ -742,7 +727,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                                 href={href}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-emerald-400 hover:text-emerald-300 underline underline-offset-2 transition inline-flex items-center gap-0.5"
+                                className="text-white hover:text-neutral-300 underline underline-offset-2 transition inline-flex items-center gap-0.5"
                               >
                                 {children}
                               </a>
@@ -753,13 +738,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         {displayContent}
                       </ReactMarkdown>
                     ) : isCurrentlyStreaming ? (
-                      <div className="flex items-center gap-2 text-xs text-slate-400 py-1">
-                        <span className="inline-block w-2 h-3.5 bg-emerald-400 animate-pulse align-middle" />
+                      <div className="flex items-center gap-2 text-xs text-[#8e918f] py-1">
+                        <span className="inline-block w-2 h-3.5 bg-white animate-pulse align-middle" />
                         <span>Generating response…</span>
                       </div>
                     ) : null}
                     {isCurrentlyStreaming && displayContent && (
-                      <span className="inline-block w-2 h-3.5 ml-1 bg-emerald-400 animate-pulse align-middle" />
+                      <span className="inline-block w-2 h-3.5 ml-1 bg-white animate-pulse align-middle" />
                     )}
                   </div>
 
@@ -770,10 +755,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         <button
                           onClick={() => handleCopyText(message.id, message.content)}
                           title="Copy response"
-                          className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
+                          className="p-1 hover:text-white hover:bg-[#28292c] rounded-md transition cursor-pointer"
                         >
                           {copiedMsgId === message.id ? (
-                            <Check className="w-4 h-4 text-emerald-400" />
+                            <Check className="w-4 h-4 text-white" />
                           ) : (
                             <Copy className="w-4 h-4" />
                           )}
@@ -785,7 +770,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           className={`p-1 rounded-md transition cursor-pointer ${
                             speakingMsgId === message.id
                               ? 'text-white bg-[#28292c]'
-                              : 'hover:text-white hover:bg-[#212124]'
+                              : 'hover:text-white hover:bg-[#28292c]'
                           }`}
                         >
                           <Volume2 className="w-4 h-4" />
@@ -794,42 +779,42 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         <button
                           onClick={onRegenerate}
                           title="Regenerate answer"
-                          className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
+                          className="p-1 hover:text-white hover:bg-[#28292c] rounded-md transition cursor-pointer"
                         >
                           <RotateCcw className="w-4 h-4" />
                         </button>
 
                         <button
                           title="Good response"
-                          className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
+                          className="p-1 hover:text-white hover:bg-[#28292c] rounded-md transition cursor-pointer"
                         >
                           <ThumbsUp className="w-4 h-4" />
                         </button>
                         <button
                           title="Bad response"
-                          className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
+                          className="p-1 hover:text-white hover:bg-[#28292c] rounded-md transition cursor-pointer"
                         >
                           <ThumbsDown className="w-4 h-4" />
                         </button>
                       </div>
 
-                      {/* Right-aligned Sources Pill Button (matches video) */}
+                      {/* Right-aligned Sources Pill Button */}
                       {message.searched && message.searchSources && message.searchSources.length > 0 && (
                         <button
                           type="button"
                           onClick={() => toggleSources(message.id)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1e1f20] hover:bg-[#28292c] border border-[#333538] text-neutral-300 hover:text-white text-xs transition cursor-pointer shadow-2xs"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1e1f20] hover:bg-[#28292c] border border-[#333538] text-white text-xs transition cursor-pointer shadow-2xs"
                         >
                           <div className="flex -space-x-1 items-center">
-                            <span className="w-3.5 h-3.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-[8px] text-emerald-300">
-                              <Globe className="w-2.5 h-2.5 text-emerald-400" />
+                            <span className="w-3.5 h-3.5 rounded-full bg-[#28292c] border border-neutral-700 flex items-center justify-center text-[8px] text-white">
+                              <Globe className="w-2.5 h-2.5 text-white" />
                             </span>
-                            <span className="w-3.5 h-3.5 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center text-[8px] text-red-400">
-                              <Play className="w-2 h-2 text-red-400 fill-red-400" />
+                            <span className="w-3.5 h-3.5 rounded-full bg-[#28292c] border border-neutral-700 flex items-center justify-center text-[8px] text-white">
+                              <Play className="w-2 h-2 text-white fill-white" />
                             </span>
                           </div>
                           <span className="text-[11px] font-medium">Sources</span>
-                          <span className="text-[10px] bg-[#333538] px-1 py-0.2 rounded text-neutral-400">
+                          <span className="text-[10px] bg-[#333538] px-1 py-0.2 rounded text-white">
                             {message.searchSources.length}
                           </span>
                         </button>
@@ -842,19 +827,19 @@ export const ChatView: React.FC<ChatViewProps> = ({
           );
         })}
 
-        {/* Live Reasoning & Progressive Thinking State when loading without active streaming message */}
+        {/* Live Reasoning & Progressive Thinking State when loading */}
         {isLoading && !messages.some((m) => m.status === 'streaming') && (
           <div className="w-full flex flex-col items-start space-y-2.5 animate-in fade-in duration-150">
             {/* 1. Reasoning Badge */}
-            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-[#c4c7c5]">
-              <BrainCircuit className="w-4 h-4 text-[#c4c7c5]" />
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-white">
+              <BrainCircuit className="w-4 h-4 text-white" />
               <span>Reasoning</span>
-              <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />
+              <ChevronRight className="w-3.5 h-3.5 text-[#8e918f]" />
             </div>
 
             {/* 2. Live Web Search Pill */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#212124] border border-[#333538] text-[#c4c7c5] text-xs font-normal shadow-2xs max-w-full animate-pulse">
-              <Search className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] border border-[#333538] text-[#e3e3e3] text-xs font-normal shadow-2xs max-w-full animate-pulse">
+              <Search className="w-3.5 h-3.5 text-[#8e918f] shrink-0" />
               <span className="truncate">
                 {lastUserMessage?.content
                   ? `Searching for ${lastUserMessage.content.slice(0, 55)}...`
@@ -862,15 +847,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
               </span>
             </div>
 
-            {/* 3. Thinking Header (Clean Brain icon, text Thinking...) */}
-            <div className="flex items-center gap-1.5 text-xs font-normal text-[#9aa0a6]">
-              <BrainCircuit className="w-4 h-4 text-[#9aa0a6] animate-pulse" />
+            {/* 3. Thinking Header */}
+            <div className="flex items-center gap-1.5 text-xs font-normal text-[#8e918f]">
+              <BrainCircuit className="w-4 h-4 text-white animate-pulse" />
               <span>Thinking...</span>
-              <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+              <ChevronDown className="w-3.5 h-3.5 text-[#8e918f]" />
             </div>
 
             {/* 4. Subtle Thought Line */}
-            <div className="text-xs md:text-sm text-[#9aa0a6] leading-relaxed font-sans pl-0.5 italic animate-pulse">
+            <div className="text-xs md:text-sm text-[#8e918f] leading-relaxed font-sans pl-0.5 italic animate-pulse">
               Analyzing prompt objectives, evaluating constraints and industry best practices to formulate structured response...
             </div>
           </div>
@@ -879,8 +864,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Floating Bottom Input Bar (Exact match to screenshot) */}
-      <div className="flex-shrink-0 p-3 md:p-6 bg-[#131314] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      {/* Floating Bottom Input Bar */}
+      <div className="flex-shrink-0 p-3 md:p-6 bg-black pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="max-w-3xl mx-auto w-full bg-[#1e1f20] rounded-3xl border border-[#333538] shadow-2xl p-3 md:p-3.5 transition-all duration-200">
           {/* Selected Images Preview */}
           {selectedImages.length > 0 && (
@@ -934,7 +919,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   onClick={() => setShowModeDropdown(!showModeDropdown)}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
                     isDeepResearchMode
-                      ? 'bg-[#2d2f33] text-white border border-[#444746]'
+                      ? 'bg-white text-black border border-white'
                       : 'text-[#c4c7c5] hover:text-white hover:bg-[#28292c]'
                   }`}
                   title="Toggle Chat Mode"
@@ -969,7 +954,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-1.5">
-                        <BrainCircuit className="w-3.5 h-3.5 text-purple-400" />
+                        <BrainCircuit className="w-3.5 h-3.5 text-white" />
                         <span>Deep Research</span>
                       </div>
                       {isDeepResearchMode && <Check className="w-3.5 h-3.5 text-white" />}
@@ -998,7 +983,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 title="Voice input"
                 className={`p-2 rounded-full transition active:scale-95 cursor-pointer ${
                   isRecording
-                    ? 'bg-red-500 text-white animate-pulse'
+                    ? 'bg-white text-black animate-pulse'
                     : 'text-[#c4c7c5] hover:text-white hover:bg-[#28292c]'
                 }`}
               >
@@ -1055,4 +1040,3 @@ export const ChatView: React.FC<ChatViewProps> = ({
     </div>
   );
 };
-

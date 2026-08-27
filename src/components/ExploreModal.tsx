@@ -46,7 +46,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({ isOpen, onClose, onS
       <div className="bg-[#1e1f20] text-[#e3e3e3] rounded-3xl shadow-2xl border border-[#333538] max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         <div className="px-6 py-4 border-b border-[#333538] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-[#28292c] text-purple-400">
+            <div className="p-1.5 rounded-lg bg-[#28292c] text-white">
               <Compass className="w-4 h-4" />
             </div>
             <h2 className="font-display font-semibold text-base text-white">Explore Leo AI Intelligence</h2>
@@ -74,16 +74,16 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({ isOpen, onClose, onS
                   className="p-4 rounded-2xl border border-[#333538] hover:border-neutral-500 bg-[#131314] hover:bg-[#28292c] transition cursor-pointer group flex flex-col justify-between"
                 >
                   <div>
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3 bg-[#28292c] text-purple-400">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3 bg-[#28292c] text-white">
                       <Icon className="w-4 h-4" />
                     </div>
-                    <h3 className="text-xs font-semibold text-white group-hover:text-purple-300">
+                    <h3 className="text-xs font-semibold text-white group-hover:text-white">
                       {wf.title}
                     </h3>
                     <p className="text-[11px] text-[#8e918f] mt-1 leading-relaxed">{wf.desc}</p>
                   </div>
 
-                  <div className="flex items-center gap-1 text-[11px] text-purple-400 font-medium mt-3">
+                  <div className="flex items-center gap-1 text-[11px] text-white font-medium mt-3">
                     <span>Activate workflow</span>
                     <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
                   </div>

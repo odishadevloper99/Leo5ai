@@ -83,26 +83,26 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         id="upgrade-pricing-modal"
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col border border-neutral-200 overflow-hidden"
+        className="bg-[#1e1f20] text-[#e3e3e3] rounded-3xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col border border-[#333538] overflow-hidden"
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100 bg-neutral-50/90">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#333538] bg-[#131314]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
-              <Crown className="w-5 h-5 text-amber-300" />
+            <div className="w-10 h-10 rounded-xl bg-white text-black flex items-center justify-center shadow-xs">
+              <Crown className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-neutral-900">Leo AI Upgrade & Limits</h2>
-                <span className="bg-purple-100 text-purple-800 text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 border border-purple-200">
-                  <Sparkles className="w-3 h-3 text-purple-600" />
+                <h2 className="text-base font-bold text-white">Leo AI Upgrade & Limits</h2>
+                <span className="bg-[#28292c] text-white text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 border border-neutral-700">
+                  <Sparkles className="w-3 h-3 text-white" />
                   VIP Access
                 </span>
               </div>
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-[#8e918f]">
                 Upgrade your daily chat limits and unlock premium intelligence tiers.
               </p>
             </div>
@@ -111,29 +111,29 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
           <button
             id="close-upgrade-modal-btn"
             onClick={onClose}
-            className="p-2 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200/60 rounded-xl transition"
+            className="p-2 text-[#8e918f] hover:text-white hover:bg-[#28292c] rounded-xl transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Current Plan Summary Banner */}
-        <div className="bg-gradient-to-r from-purple-900 to-indigo-950 text-white px-6 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="bg-[#131314] border-b border-[#333538] text-white px-6 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5">
-            <Zap className="w-4 h-4 text-amber-300 animate-pulse" />
+            <Zap className="w-4 h-4 text-white animate-pulse" />
             <span>
               Current Account Status:{' '}
-              <strong className="font-semibold uppercase tracking-wider text-purple-200">
+              <strong className="font-semibold uppercase tracking-wider text-white">
                 {user.plan || 'Free'}
               </strong>
             </span>
-            <span className="text-purple-300">•</span>
+            <span className="text-neutral-500">•</span>
             <span>
-              Daily Limit: <strong className="text-amber-300 font-bold">{user.dailyChatLimit && user.dailyChatLimit >= 90000 ? 'Unlimited' : (user.dailyChatLimit || 50)} chats/day</strong>
+              Daily Limit: <strong className="text-white font-bold">{user.dailyChatLimit && user.dailyChatLimit >= 90000 ? 'Unlimited' : (user.dailyChatLimit || 50)} chats/day</strong>
             </span>
           </div>
 
-          <div className="text-[11px] text-purple-200 flex items-center gap-1.5 font-mono">
+          <div className="text-[11px] text-neutral-400 flex items-center gap-1.5 font-mono">
             <span>Used today: {user.dailyChatsUsed || 0}</span>
           </div>
         </div>
@@ -141,36 +141,36 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Main Direct Upgrade Telegram Card */}
-          <div className="p-5 bg-gradient-to-br from-purple-50 via-indigo-50/50 to-blue-50 border-2 border-purple-300/80 rounded-2xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="p-5 bg-[#131314] border border-[#333538] rounded-2xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start sm:items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-md font-bold text-xl">
+              <div className="w-12 h-12 rounded-2xl bg-[#28292c] border border-neutral-700 flex items-center justify-center text-white shrink-0 shadow-md font-bold text-xl">
                 ✈️
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-neutral-900">
+                  <h3 className="text-sm font-bold text-white">
                     Get Custom Limits & Instant VIP Upgrade
                   </h3>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                  <span className="text-[10px] bg-[#28292c] text-white font-bold px-2 py-0.5 rounded-full border border-neutral-700">
                     Active
                   </span>
                 </div>
-                <p className="text-xs text-neutral-600 leading-relaxed">
+                <p className="text-xs text-[#8e918f] leading-relaxed">
                   For unlimited daily chats, VIP status, or account limit increases, message the administrator directly on Telegram:
                 </p>
                 <div className="flex items-center gap-2 pt-1">
-                  <span className="px-2.5 py-1 bg-white border border-purple-200 rounded-lg font-mono text-xs font-bold text-purple-900 shadow-2xs">
+                  <span className="px-2.5 py-1 bg-black border border-neutral-700 rounded-lg font-mono text-xs font-bold text-white shadow-2xs">
                     @Unknownboy1525
                   </span>
                   <button
                     type="button"
                     onClick={copyTelegramHandle}
-                    className="p-1.5 text-neutral-500 hover:text-neutral-800 bg-white border border-neutral-200 rounded-lg text-[11px] font-medium flex items-center gap-1 hover:border-neutral-300 transition"
+                    className="p-1.5 text-neutral-300 hover:text-white bg-[#28292c] border border-neutral-700 rounded-lg text-[11px] font-medium flex items-center gap-1 hover:border-neutral-500 transition cursor-pointer"
                   >
                     {copiedHandle ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700">Copied</span>
+                        <Check className="w-3.5 h-3.5 text-white" />
+                        <span className="text-white">Copied</span>
                       </>
                     ) : (
                       <>
@@ -187,7 +187,7 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
               href="https://t.me/Unknownboy1525"
               target="_blank"
               rel="noreferrer"
-              className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 shrink-0 shadow-md hover:shadow-lg"
+              className="w-full sm:w-auto px-5 py-2.5 bg-white hover:bg-neutral-200 active:scale-[0.99] text-black rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 shrink-0 shadow-md cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
               <span>Message on Telegram</span>
@@ -197,7 +197,7 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
 
           {/* Plan Comparison Grid */}
           <div>
-            <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-3">
+            <h4 className="text-xs font-bold text-[#8e918f] uppercase tracking-wider mb-3">
               Membership Tiers & Features
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -206,45 +206,45 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
                   key={idx}
                   className={`rounded-2xl p-4 flex flex-col justify-between transition border ${
                     plan.highlight
-                      ? 'border-purple-500 bg-purple-50/30 shadow-md ring-1 ring-purple-300'
-                      : 'border-neutral-200 bg-white hover:border-neutral-300 shadow-xs'
+                      ? 'border-white/40 bg-[#131314] shadow-md ring-1 ring-white/20'
+                      : 'border-[#333538] bg-[#131314] hover:border-neutral-600 shadow-xs'
                   }`}
                 >
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-neutral-900">{plan.name}</span>
+                      <span className="text-xs font-bold text-white">{plan.name}</span>
                       <span
                         className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                           plan.highlight
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-neutral-100 text-neutral-600'
+                            ? 'bg-white text-black'
+                            : 'bg-[#28292c] text-[#c4c7c5]'
                         }`}
                       >
                         {plan.badge}
                       </span>
                     </div>
-                    <p className="text-[11px] text-neutral-500 mb-3 min-h-[30px] leading-tight">
+                    <p className="text-[11px] text-[#8e918f] mb-3 min-h-[30px] leading-tight">
                       {plan.tagline}
                     </p>
 
-                    <div className="p-2.5 bg-neutral-50 rounded-xl border border-neutral-100 mb-3 text-center">
-                      <span className="text-[10px] text-neutral-400 uppercase font-semibold block">Daily Allowance</span>
-                      <span className="text-sm font-extrabold text-neutral-900">{plan.limit}</span>
+                    <div className="p-2.5 bg-[#1e1f20] rounded-xl border border-[#333538] mb-3 text-center">
+                      <span className="text-[10px] text-[#8e918f] uppercase font-semibold block">Daily Allowance</span>
+                      <span className="text-sm font-extrabold text-white">{plan.limit}</span>
                     </div>
 
-                    <div className="space-y-2 border-t border-neutral-100 pt-3 text-xs text-neutral-600">
+                    <div className="space-y-2 border-t border-[#333538] pt-3 text-xs text-[#c4c7c5]">
                       {plan.features.map((feature, fIdx) => (
                         <div key={fIdx} className="flex items-start gap-1.5">
-                          <Check className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-0.5" />
-                          <span className="text-[11px] leading-tight text-neutral-700">{feature}</span>
+                          <Check className="w-3.5 h-3.5 text-white shrink-0 mt-0.5" />
+                          <span className="text-[11px] leading-tight text-[#e3e3e3]">{feature}</span>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-neutral-100">
+                  <div className="mt-4 pt-3 border-t border-[#333538]">
                     {plan.isCurrent ? (
-                      <div className="w-full py-2 text-center text-xs font-semibold text-neutral-500 bg-neutral-100 rounded-xl">
+                      <div className="w-full py-2 text-center text-xs font-semibold text-[#8e918f] bg-[#28292c] rounded-xl">
                         Active Tier
                       </div>
                     ) : (
@@ -252,7 +252,7 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
                         href="https://t.me/Unknownboy1525"
                         target="_blank"
                         rel="noreferrer"
-                        className="w-full py-2 px-3 bg-neutral-900 hover:bg-black text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition text-center"
+                        className="w-full py-2 px-3 bg-white hover:bg-neutral-200 text-black text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition text-center cursor-pointer"
                       >
                         <MessageCircle className="w-3.5 h-3.5" />
                         <span>Request via Telegram</span>
@@ -265,9 +265,9 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
           </div>
 
           {/* Quick Notice Card */}
-          <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 text-xs flex items-center justify-between gap-3 text-neutral-600">
+          <div className="p-4 bg-[#131314] rounded-2xl border border-[#333538] text-xs flex items-center justify-between gap-3 text-[#c4c7c5]">
             <div className="flex items-center gap-2.5">
-              <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+              <ShieldCheck className="w-5 h-5 text-white shrink-0" />
               <span>
                 Daily chat limits automatically reset at midnight. For team licensing or custom model parameters, please contact the administrator.
               </span>
@@ -276,15 +276,15 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-3.5 border-t border-neutral-100 bg-neutral-50 flex items-center justify-between text-xs text-neutral-500">
+        <div className="px-6 py-3.5 border-t border-[#333538] bg-[#131314] flex items-center justify-between text-xs text-[#8e918f]">
           <span className="flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5 text-neutral-400" />
+            <Users className="w-3.5 h-3.5 text-[#8e918f]" />
             Support: Telegram @Unknownboy1525
           </span>
 
           <button
             onClick={onClose}
-            className="px-4 py-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/60 rounded-xl transition font-medium"
+            className="px-4 py-1.5 text-white hover:bg-[#28292c] rounded-xl transition font-medium cursor-pointer"
           >
             Close
           </button>

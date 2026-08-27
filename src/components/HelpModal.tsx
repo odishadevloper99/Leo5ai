@@ -1,5 +1,5 @@
 import React from 'react';
-import { HelpCircle, X, Shield, Cpu, Sparkles, Database, ExternalLink } from 'lucide-react';
+import { HelpCircle, X, Sparkles } from 'lucide-react';
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -10,11 +10,11 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-[#1e1f20] text-[#e3e3e3] rounded-3xl shadow-2xl border border-[#333538] max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-[#28292c] text-purple-400">
+            <div className="p-1.5 rounded-lg bg-[#28292c] text-white">
               <HelpCircle className="w-4 h-4" />
             </div>
             <h3 className="font-display font-semibold text-base text-white">
@@ -32,8 +32,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
           </p>
 
           <div className="p-3.5 rounded-2xl bg-[#131314] border border-[#333538] space-y-2">
-            <div className="font-semibold text-purple-300 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <div className="font-semibold text-white flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-white" />
               <span>Key Capabilities</span>
             </div>
             <ul className="list-disc pl-4 space-y-1.5 text-[#c4c7c5] text-[11px]">
@@ -46,7 +46,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
 
           <div className="p-3 rounded-2xl bg-[#131314] border border-[#333538] text-[11px] text-[#8e918f] flex items-center justify-between">
             <span>Have questions or suggestions?</span>
-            <span className="font-medium text-purple-400">Leo AI Help & Support</span>
+            <span className="font-medium text-white">Leo AI Help & Support</span>
           </div>
         </div>
       </div>

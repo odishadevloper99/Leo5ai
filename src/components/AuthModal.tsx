@@ -400,7 +400,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Header bar with close button */}
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-1.5 text-xs text-[#8e918f] font-medium">
-            <ShieldCheck className="w-4 h-4 text-purple-400" />
+            <ShieldCheck className="w-4 h-4 text-neutral-300" />
             <span>Secure Authentication</span>
           </div>
           <button
@@ -614,7 +614,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     setAuthMode('otp_login');
                     setErrorMessage('');
                   }}
-                  className="text-xs text-purple-400 hover:text-purple-300 font-medium inline-flex items-center gap-1.5 transition cursor-pointer"
+                  className="text-xs text-neutral-300 hover:text-white font-medium inline-flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <KeyRound className="w-3.5 h-3.5" />
                   <span>Login with Email OTP instead (No password needed)</span>
@@ -626,7 +626,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     setAuthMode('login');
                     setErrorMessage('');
                   }}
-                  className="text-xs text-purple-400 hover:text-purple-300 font-medium inline-flex items-center gap-1.5 transition cursor-pointer"
+                  className="text-xs text-neutral-300 hover:text-white font-medium inline-flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <Lock className="w-3.5 h-3.5" />
                   <span>Back to Password Login</span>
@@ -640,7 +640,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="w-full py-2 px-3 text-[#8e918f] hover:text-red-400 text-xs font-medium flex items-center justify-center gap-1.5 transition rounded-lg hover:bg-[#28292c] cursor-pointer"
+                  className="w-full py-2 px-3 text-[#8e918f] hover:text-white text-xs font-medium flex items-center justify-center gap-1.5 transition rounded-lg hover:bg-[#28292c] cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Sign out current account ({user.email})</span>
@@ -655,7 +655,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* ---------------------------------------------------- */}
         {step === 'otp' && (
           <div className="space-y-4 pt-2">
-            <div className="w-16 h-16 rounded-2xl bg-[#131314] border border-[#333538] mx-auto flex items-center justify-center text-purple-400">
+            <div className="w-16 h-16 rounded-2xl bg-[#131314] border border-[#333538] mx-auto flex items-center justify-center text-white">
               <KeyRound className="w-8 h-8" />
             </div>
 
@@ -672,25 +672,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
 
             {/* Spam folder notice banner */}
-            <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-800/60 text-amber-300 text-xs flex items-start gap-2.5 text-left">
-              <Mail className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="p-3 rounded-2xl bg-[#131314] border border-[#333538] text-neutral-300 text-xs flex items-start gap-2.5 text-left">
+              <Mail className="w-4 h-4 text-neutral-400 flex-shrink-0 mt-0.5" />
               <div className="space-y-0.5 leading-relaxed">
-                <p className="font-semibold text-amber-200">
+                <p className="font-semibold text-white">
                   Check your Spam / Junk folder
                 </p>
-                <p className="text-[11px] text-amber-300/90">
-                  Verification OTP email may arrive in your <strong className="font-bold text-amber-200">Spam or Junk folder</strong>. Please check your Spam folder if not found in Inbox.
+                <p className="text-[11px] text-neutral-400">
+                  Verification OTP email may arrive in your <strong className="font-bold text-white">Spam or Junk folder</strong>. Please check your Spam folder if not found in Inbox.
                 </p>
               </div>
             </div>
 
             {/* Instant proceed fallback banner */}
             {isTakingLonger && (
-              <div className="p-3 rounded-xl bg-blue-950/50 border border-blue-800/60 text-blue-200 text-xs flex items-start gap-2.5 text-left animate-in fade-in">
-                <Sparkles className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+              <div className="p-3 rounded-xl bg-[#131314] border border-neutral-700 text-neutral-200 text-xs flex items-start gap-2.5 text-left animate-in fade-in">
+                <Sparkles className="w-4 h-4 text-neutral-300 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 space-y-1.5">
-                  <p className="font-semibold text-blue-100">Fast-Track Entry</p>
-                  <p className="text-[11px] text-blue-300 leading-relaxed">
+                  <p className="font-semibold text-white">Fast-Track Entry</p>
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
                     You can proceed directly into the app now while background verification synchronizes.
                   </p>
                   <button
@@ -710,7 +710,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       };
                       completeConfirmedSession(immediateUser);
                     }}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold text-[11px] flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                    className="px-3 py-1.5 bg-white hover:bg-neutral-200 text-black rounded-lg font-semibold text-[11px] flex items-center gap-1.5 shadow-xs transition cursor-pointer"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Proceed into App Immediately</span>
@@ -720,11 +720,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             )}
 
             {deliveryWarning && (
-              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-800/60 text-amber-200 text-xs flex items-start gap-2 text-left">
-                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="p-3 rounded-xl bg-[#131314] border border-[#333538] text-neutral-300 text-xs flex items-start gap-2 text-left">
+                <AlertCircle className="w-4 h-4 text-neutral-400 flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="font-semibold text-amber-100">Email Transport Notice:</p>
-                  <p className="text-[11px] text-amber-300/90 leading-relaxed">{deliveryWarning}</p>
+                  <p className="font-semibold text-white">Email Transport Notice:</p>
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">{deliveryWarning}</p>
                   {devOtp && (
                     <button
                       type="button"
@@ -734,7 +734,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         setOtpDigits(digits);
                         processOtpVerification(devOtp);
                       }}
-                      className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-900/80 hover:bg-amber-800 border border-amber-700 disabled:opacity-50 text-amber-200 font-mono font-bold text-[11px] rounded-lg transition cursor-pointer"
+                      className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 border border-neutral-600 disabled:opacity-50 text-white font-mono font-bold text-[11px] rounded-lg transition cursor-pointer"
                     >
                       <span>⚡ Auto-fill Test Code: <strong>{devOtp}</strong></span>
                     </button>
@@ -744,8 +744,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             )}
 
             {errorMessage && (
-              <div className="p-3 rounded-xl bg-red-950/60 border border-red-800 text-red-300 text-xs flex items-center gap-2 text-left">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <div className="p-3 rounded-xl bg-[#28292c] border border-neutral-600 text-neutral-200 text-xs flex items-center gap-2 text-left">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 text-white" />
                 <div className="flex-1 text-left">
                   <span>{errorMessage}</span>
                 </div>
@@ -770,8 +770,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     onKeyDown={(e) => handleKeyDown(idx, e)}
                     className={`w-11 h-13 text-center text-xl font-black font-mono text-white rounded-xl border outline-none transition-all duration-200 shadow-inner ${
                       loading
-                        ? 'bg-black border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.35)] opacity-80 cursor-wait'
-                        : 'bg-black border-neutral-800 hover:border-neutral-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 focus:shadow-[0_0_20px_rgba(168,85,247,0.4)]'
+                        ? 'bg-black border-white shadow-[0_0_15px_rgba(255,255,255,0.2)] opacity-80 cursor-wait'
+                        : 'bg-black border-neutral-700 hover:border-neutral-500 focus:border-white focus:ring-2 focus:ring-white/20 focus:shadow-[0_0_15px_rgba(255,255,255,0.25)]'
                     }`}
                   />
                 ))}
@@ -814,7 +814,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="button"
                 onClick={handleResendOtp}
                 disabled={resendCooldown > 0 || loading}
-                className="text-purple-400 hover:text-purple-300 disabled:text-[#8e918f] font-medium flex items-center gap-1 transition cursor-pointer"
+                className="text-white hover:text-neutral-300 disabled:text-[#8e918f] font-medium flex items-center gap-1 transition cursor-pointer"
               >
                 <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
                 <span>
@@ -832,7 +832,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* ---------------------------------------------------- */}
         {step === 'success' && (
           <div className="space-y-4 py-4 animate-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 rounded-full bg-emerald-950/80 border border-emerald-600/50 text-emerald-400 mx-auto flex items-center justify-center shadow-inner">
+            <div className="w-16 h-16 rounded-full bg-neutral-900 border border-neutral-700 text-white mx-auto flex items-center justify-center shadow-inner">
               <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
             </div>
 
@@ -853,7 +853,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
                 }
                 alt="User"
-                className="w-10 h-10 rounded-full object-cover ring-2 ring-emerald-400"
+                className="w-10 h-10 rounded-full object-cover ring-2 ring-white"
               />
               <div className="text-left min-w-0">
                 <p className="text-xs font-semibold text-white truncate">

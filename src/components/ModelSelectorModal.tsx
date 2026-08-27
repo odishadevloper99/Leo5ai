@@ -4,14 +4,7 @@ import {
   Search,
   Check,
   Info,
-  Sparkles,
-  Zap,
-  Coins,
   ChevronRight,
-  ShieldCheck,
-  Tag,
-  DollarSign,
-  Layers
 } from 'lucide-react';
 import { AIModelDefinition } from '../types';
 import { AI_MODELS } from '../data/models';
@@ -67,11 +60,11 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
 
   const categories: { id: 'all' | 'cheap' | 'quality' | 'reasoning' | 'coding' | 'vision'; label: string }[] = [
     { id: 'all', label: 'All Models' },
-    { id: 'cheap', label: '⚡ Cheap / Default' },
-    { id: 'quality', label: '✨ Better Quality' },
-    { id: 'reasoning', label: '🧠 Reasoning' },
-    { id: 'coding', label: '💻 Code' },
-    { id: 'vision', label: '👁️ Vision' },
+    { id: 'cheap', label: 'Cheap / Default' },
+    { id: 'quality', label: 'Better Quality' },
+    { id: 'reasoning', label: 'Reasoning' },
+    { id: 'coding', label: 'Code' },
+    { id: 'vision', label: 'Vision' },
   ];
 
   const filteredModels = useMemo(() => {
@@ -101,21 +94,21 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
   return (
     <div
       id="model-selector-modal-backdrop"
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
         id="model-selector-modal"
-        className="w-full max-w-lg bg-[#0b0f19] border border-neutral-800/80 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] overflow-hidden text-neutral-100 animate-in zoom-in-95 duration-150"
+        className="w-full max-w-lg bg-[#141416] border border-neutral-800 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] overflow-hidden text-neutral-100 animate-in zoom-in-95 duration-150"
       >
         {/* Modal Top Bar */}
-        <div className="px-5 py-4 flex items-center justify-between border-b border-neutral-800/60 bg-[#0e1424]/90">
+        <div className="px-5 py-4 flex items-center justify-between border-b border-neutral-800 bg-[#18181b]">
           <button
             id="close-model-selector-btn"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 flex items-center justify-center transition"
+            className="w-8 h-8 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 flex items-center justify-center transition cursor-pointer"
             title="Close"
           >
             <X className="w-4 h-4" />
@@ -126,7 +119,7 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
           </h2>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-purple-950/60 border border-purple-700/40 text-purple-300">
+            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-neutral-800 border border-neutral-700 text-neutral-200">
               AICredits Hub
             </span>
           </div>
@@ -141,12 +134,12 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
               placeholder="Search by model name or provider..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-[#141b2d] border border-neutral-800 focus:border-purple-500 rounded-xl text-xs text-neutral-100 placeholder-neutral-500 outline-none transition focus:ring-2 focus:ring-purple-500/20"
+              className="w-full pl-9 pr-4 py-2.5 bg-[#1c1c20] border border-neutral-800 focus:border-white rounded-xl text-xs text-neutral-100 placeholder-neutral-500 outline-none transition focus:ring-1 focus:ring-white/20"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white text-xs"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white text-xs cursor-pointer"
               >
                 Clear
               </button>
@@ -162,10 +155,10 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
               <button
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
                   isActive
-                    ? 'bg-neutral-100 text-neutral-950 shadow-sm'
-                    : 'bg-[#141b2d] text-neutral-400 hover:text-neutral-200 hover:bg-[#1a233a] border border-neutral-800/60'
+                    ? 'bg-white text-black shadow-sm'
+                    : 'bg-[#1c1c20] text-neutral-400 hover:text-neutral-200 hover:bg-[#25252a] border border-neutral-800'
                 }`}
               >
                 {cat.label}
@@ -195,8 +188,8 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
                   }}
                   className={`pt-2.5 pb-2.5 px-3 rounded-2xl flex items-center justify-between gap-3 cursor-pointer transition group ${
                     isSelected
-                      ? 'bg-purple-950/40 border border-purple-600/40 text-white'
-                      : 'hover:bg-[#141b2d]/80 border border-transparent'
+                      ? 'bg-white/10 border border-white/30 text-white'
+                      : 'hover:bg-[#1c1c20] border border-transparent'
                   }`}
                 >
                   {/* Left Logo + Name + Company */}
@@ -204,12 +197,12 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
                     <ModelLogo iconKey={model.iconKey} modelId={model.id} size="lg" isNew={model.isNew} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm text-neutral-100 group-hover:text-purple-200 transition">
+                        <span className="font-semibold text-sm text-neutral-100 group-hover:text-white transition">
                           {model.name}
                         </span>
                         {isCheapestDefault && (
-                          <span className="text-[9px] px-1.5 py-0.5 bg-emerald-950/80 border border-emerald-600/40 text-emerald-400 font-bold rounded-full uppercase tracking-wider">
-                            Cheapest Default
+                          <span className="text-[9px] px-1.5 py-0.5 bg-neutral-800 border border-neutral-700 text-white font-bold rounded-full uppercase tracking-wider">
+                            Default
                           </span>
                         )}
                         <button
@@ -230,14 +223,14 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
                           {model.id}
                         </span>
                         {model.totalCostPer1M !== undefined && (
-                          <span className="text-[10px] text-amber-400/90 font-medium">
+                          <span className="text-[10px] text-neutral-400 font-medium font-mono">
                             ~${model.totalCostPer1M.toFixed(2)}/1M tokens
                           </span>
                         )}
                       </div>
 
                       {isHovered && (
-                        <div className="text-[10px] text-purple-300 mt-1 leading-relaxed bg-[#1b233a] p-2 rounded-lg border border-neutral-700/60 space-y-1">
+                        <div className="text-[10px] text-neutral-300 mt-1 leading-relaxed bg-[#25252a] p-2 rounded-lg border border-neutral-700 space-y-1">
                           <p>{model.description}</p>
                           {model.inputCostPer1M !== undefined && (
                             <div className="flex items-center gap-3 text-neutral-300 pt-1 border-t border-neutral-700/40 font-mono">
@@ -255,20 +248,14 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
                     {model.badges.slice(0, 2).map((badge, idx) => (
                       <span
                         key={idx}
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border hidden sm:inline-block ${
-                          badge.includes('Cheapest') || badge.includes('Cheap')
-                            ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/50'
-                            : badge.includes('Quality') || badge.includes('Flagship')
-                            ? 'bg-amber-950/60 text-amber-300 border-amber-700/50'
-                            : 'bg-purple-950/60 text-purple-300 border-purple-800/40'
-                        }`}
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded-full border hidden sm:inline-block bg-[#1c1c20] text-neutral-300 border-neutral-700"
                       >
                         {badge}
                       </span>
                     ))}
 
                     {isSelected ? (
-                      <div className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-sm ml-1">
+                      <div className="w-5 h-5 rounded-full bg-white text-black flex items-center justify-center shadow-sm ml-1">
                         <Check className="w-3 h-3 stroke-[3]" />
                       </div>
                     ) : (
@@ -284,9 +271,9 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
         </div>
 
         {/* Bottom Bar info */}
-        <div className="px-5 py-3 border-t border-neutral-800/60 bg-[#0c111e] flex items-center justify-between text-xs text-neutral-400">
+        <div className="px-5 py-3 border-t border-neutral-800 bg-[#121214] flex items-center justify-between text-xs text-neutral-400">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
             <span>Fallback Chain: Top 3 Auto-Recovery Active</span>
           </div>
           <span className="text-[11px] text-neutral-500 font-medium">
@@ -297,4 +284,3 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
     </div>
   );
 };
-

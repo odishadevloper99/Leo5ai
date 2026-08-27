@@ -109,13 +109,13 @@
 }
 
 .markdown-chat-body a {
-  color: #a855f7;
+  color: #ffffff;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .markdown-chat-body a:hover {
-  color: #c084fc;
+  color: #d4d4d8;
 }
 
 .markdown-chat-body ul, .markdown-chat-body ol {

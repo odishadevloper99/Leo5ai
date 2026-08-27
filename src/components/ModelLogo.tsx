@@ -13,7 +13,7 @@ export interface ModelBrandInfo {
 
 /**
  * Local Bundled and CDN AI Model Logos
- * Provides reliable local assets with CDN fallback
+ * Clean monochrome styling for pure black & white design
  */
 export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
   openai: {
@@ -24,10 +24,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/openai.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/openai.svg'
     ],
-    bgClass: 'bg-[#10a37f]/15 dark:bg-[#10a37f]/20',
-    borderClass: 'border-emerald-500/40 ring-1 ring-emerald-400/20',
-    textClass: 'text-emerald-400',
-    glowClass: 'shadow-emerald-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   claude: {
     key: 'claude',
@@ -38,10 +38,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/claude-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/claude.svg'
     ],
-    bgClass: 'bg-[#d97706]/15 dark:bg-[#d97706]/20',
-    borderClass: 'border-amber-600/50 ring-1 ring-amber-400/20',
-    textClass: 'text-amber-400',
-    glowClass: 'shadow-amber-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   gemini: {
     key: 'gemini',
@@ -52,10 +52,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/gemini-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/gemini.svg'
     ],
-    bgClass: 'bg-[#4f46e5]/15 dark:bg-[#4f46e5]/20',
-    borderClass: 'border-indigo-500/40 ring-1 ring-indigo-400/20',
-    textClass: 'text-indigo-300',
-    glowClass: 'shadow-indigo-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   gemma: {
     key: 'gemma',
@@ -66,10 +66,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/gemma-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/gemma.svg'
     ],
-    bgClass: 'bg-[#2563eb]/15 dark:bg-[#2563eb]/20',
-    borderClass: 'border-blue-500/40 ring-1 ring-blue-400/20',
-    textClass: 'text-blue-400',
-    glowClass: 'shadow-blue-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   deepseek: {
     key: 'deepseek',
@@ -80,10 +80,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/deepseek-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/deepseek.svg'
     ],
-    bgClass: 'bg-[#0284c7]/15 dark:bg-[#0284c7]/20',
-    borderClass: 'border-sky-500/40 ring-1 ring-sky-400/20',
-    textClass: 'text-sky-400',
-    glowClass: 'shadow-sky-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   grok: {
     key: 'grok',
@@ -93,10 +93,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/grok.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/grok.svg'
     ],
-    bgClass: 'bg-neutral-800/80 dark:bg-neutral-900/80',
-    borderClass: 'border-neutral-700 ring-1 ring-white/10',
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
     textClass: 'text-white',
-    glowClass: 'shadow-neutral-950/70'
+    glowClass: 'shadow-black'
   },
   meta: {
     key: 'meta',
@@ -107,10 +107,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/meta-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/meta.svg'
     ],
-    bgClass: 'bg-[#0081fb]/15 dark:bg-[#0081fb]/20',
-    borderClass: 'border-sky-500/40 ring-1 ring-sky-400/20',
-    textClass: 'text-sky-400',
-    glowClass: 'shadow-sky-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   qwen: {
     key: 'qwen',
@@ -121,10 +121,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/qwen-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/qwen.svg'
     ],
-    bgClass: 'bg-[#0891b2]/15 dark:bg-[#0891b2]/20',
-    borderClass: 'border-cyan-500/40 ring-1 ring-cyan-400/20',
-    textClass: 'text-cyan-400',
-    glowClass: 'shadow-cyan-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   mistral: {
     key: 'mistral',
@@ -135,10 +135,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/mistral-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/mistral.svg'
     ],
-    bgClass: 'bg-[#ea580c]/15 dark:bg-[#ea580c]/20',
-    borderClass: 'border-amber-500/40 ring-1 ring-amber-400/20',
-    textClass: 'text-amber-400',
-    glowClass: 'shadow-amber-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   kimi: {
     key: 'kimi',
@@ -149,10 +149,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/kimi-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/kimi.svg'
     ],
-    bgClass: 'bg-[#9333ea]/15 dark:bg-[#9333ea]/20',
-    borderClass: 'border-purple-500/40 ring-1 ring-purple-400/20',
-    textClass: 'text-purple-400',
-    glowClass: 'shadow-purple-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   perplexity: {
     key: 'perplexity',
@@ -163,10 +163,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/perplexity-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/perplexity.svg'
     ],
-    bgClass: 'bg-[#0d9488]/15 dark:bg-[#0d9488]/20',
-    borderClass: 'border-teal-500/40 ring-1 ring-teal-400/20',
-    textClass: 'text-teal-400',
-    glowClass: 'shadow-teal-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   copilot: {
     key: 'copilot',
@@ -177,10 +177,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/githubcopilot.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/github-copilot.svg'
     ],
-    bgClass: 'bg-[#4338ca]/15 dark:bg-[#4338ca]/20',
-    borderClass: 'border-indigo-500/40 ring-1 ring-indigo-400/20',
-    textClass: 'text-indigo-400',
-    glowClass: 'shadow-indigo-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   groq: {
     key: 'groq',
@@ -190,10 +190,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/groq.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/groq.svg'
     ],
-    bgClass: 'bg-[#c2410c]/15 dark:bg-[#c2410c]/20',
-    borderClass: 'border-orange-500/40 ring-1 ring-orange-400/20',
-    textClass: 'text-orange-400',
-    glowClass: 'shadow-orange-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   cohere: {
     key: 'cohere',
@@ -204,10 +204,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/cohere-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/cohere.svg'
     ],
-    bgClass: 'bg-[#059669]/15 dark:bg-[#059669]/20',
-    borderClass: 'border-emerald-600/40 ring-1 ring-emerald-500/20',
-    textClass: 'text-emerald-400',
-    glowClass: 'shadow-emerald-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   sora: {
     key: 'sora',
@@ -218,10 +218,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/sora-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/sora.svg'
     ],
-    bgClass: 'bg-[#0284c7]/15 dark:bg-[#0284c7]/20',
-    borderClass: 'border-sky-500/40 ring-1 ring-sky-400/20',
-    textClass: 'text-sky-400',
-    glowClass: 'shadow-sky-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   dalle: {
     key: 'dalle',
@@ -230,10 +230,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
     fallbackUrls: [
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/openai.svg'
     ],
-    bgClass: 'bg-[#ca8a04]/15 dark:bg-[#ca8a04]/20',
-    borderClass: 'border-yellow-500/40 ring-1 ring-yellow-400/20',
-    textClass: 'text-yellow-400',
-    glowClass: 'shadow-yellow-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   flux: {
     key: 'flux',
@@ -243,10 +243,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/flux.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/flux.svg'
     ],
-    bgClass: 'bg-[#7c3aed]/15 dark:bg-[#7c3aed]/20',
-    borderClass: 'border-violet-500/40 ring-1 ring-violet-400/20',
-    textClass: 'text-violet-400',
-    glowClass: 'shadow-violet-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   huggingface: {
     key: 'huggingface',
@@ -257,10 +257,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/huggingface-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/huggingface.svg'
     ],
-    bgClass: 'bg-[#d97706]/15 dark:bg-[#d97706]/20',
-    borderClass: 'border-amber-500/40 ring-1 ring-amber-400/20',
-    textClass: 'text-amber-400',
-    glowClass: 'shadow-amber-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   ollama: {
     key: 'ollama',
@@ -270,10 +270,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/ollama.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/ollama.svg'
     ],
-    bgClass: 'bg-neutral-800/80 dark:bg-neutral-900/80',
-    borderClass: 'border-neutral-600 ring-1 ring-white/10',
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
     textClass: 'text-white',
-    glowClass: 'shadow-neutral-950/70'
+    glowClass: 'shadow-black'
   },
   midjourney: {
     key: 'midjourney',
@@ -283,10 +283,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/midjourney.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/midjourney.svg'
     ],
-    bgClass: 'bg-[#1d4ed8]/15 dark:bg-[#1d4ed8]/20',
-    borderClass: 'border-blue-500/40 ring-1 ring-blue-400/20',
-    textClass: 'text-blue-400',
-    glowClass: 'shadow-blue-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   kling: {
     key: 'kling',
@@ -297,10 +297,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/kling-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/kling.svg'
     ],
-    bgClass: 'bg-[#9333ea]/15 dark:bg-[#9333ea]/20',
-    borderClass: 'border-purple-500/40 ring-1 ring-purple-400/20',
-    textClass: 'text-purple-400',
-    glowClass: 'shadow-purple-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   minimax: {
     key: 'minimax',
@@ -311,10 +311,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/minimax-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/minimax.svg'
     ],
-    bgClass: 'bg-[#db2777]/15 dark:bg-[#db2777]/20',
-    borderClass: 'border-pink-500/40 ring-1 ring-pink-400/20',
-    textClass: 'text-pink-400',
-    glowClass: 'shadow-pink-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   yi: {
     key: 'yi',
@@ -325,10 +325,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/yi-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/yi.svg'
     ],
-    bgClass: 'bg-[#0284c7]/15 dark:bg-[#0284c7]/20',
-    borderClass: 'border-sky-500/40 ring-1 ring-sky-400/20',
-    textClass: 'text-sky-400',
-    glowClass: 'shadow-sky-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   rwkv: {
     key: 'rwkv',
@@ -339,10 +339,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/rwkv-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/rwkv.svg'
     ],
-    bgClass: 'bg-[#4f46e5]/15 dark:bg-[#4f46e5]/20',
-    borderClass: 'border-indigo-500/40 ring-1 ring-indigo-400/20',
-    textClass: 'text-indigo-400',
-    glowClass: 'shadow-indigo-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   phind: {
     key: 'phind',
@@ -352,10 +352,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/phind.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/phind.svg'
     ],
-    bgClass: 'bg-[#2563eb]/15 dark:bg-[#2563eb]/20',
-    borderClass: 'border-blue-500/40 ring-1 ring-blue-400/20',
-    textClass: 'text-blue-400',
-    glowClass: 'shadow-blue-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   elevenlabs: {
     key: 'elevenlabs',
@@ -365,10 +365,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/elevenlabs.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/elevenlabs.svg'
     ],
-    bgClass: 'bg-neutral-800/80 dark:bg-neutral-900/80',
-    borderClass: 'border-neutral-700 ring-1 ring-white/10',
-    textClass: 'text-neutral-200',
-    glowClass: 'shadow-neutral-950/70'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   glm: {
     key: 'glm',
@@ -382,10 +382,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/chatglm.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/chatglm.svg'
     ],
-    bgClass: 'bg-[#2563eb]/15 dark:bg-[#2563eb]/20',
-    borderClass: 'border-blue-500/40 ring-1 ring-blue-400/20',
-    textClass: 'text-blue-400',
-    glowClass: 'shadow-blue-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   },
   chatglm: {
     key: 'chatglm',
@@ -396,10 +396,10 @@ export const BRAND_LOGOS: Record<string, ModelBrandInfo> = {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/chatglm-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/chatglm.svg'
     ],
-    bgClass: 'bg-[#2563eb]/15 dark:bg-[#2563eb]/20',
-    borderClass: 'border-blue-500/40 ring-1 ring-blue-400/20',
-    textClass: 'text-blue-400',
-    glowClass: 'shadow-blue-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   }
 };
 
@@ -521,10 +521,10 @@ export function resolveModelBrand(iconKey = '', modelId = ''): ModelBrandInfo {
       'https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/gemini-color.svg',
       'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/gemini.svg'
     ],
-    bgClass: 'bg-purple-600/15 dark:bg-purple-600/20',
-    borderClass: 'border-purple-500/40 ring-1 ring-purple-400/20',
-    textClass: 'text-purple-400',
-    glowClass: 'shadow-purple-950/60'
+    bgClass: 'bg-[#1c1c20]',
+    borderClass: 'border-neutral-700',
+    textClass: 'text-white',
+    glowClass: 'shadow-black'
   };
 }
 
@@ -565,8 +565,7 @@ const sizeClasses = {
 };
 
 /**
- * Universal Brand & Model Logo Renderer
- * High resilience with local bundle assets, multi-CDN fallbacks, and CSS color adaptability
+ * Universal Brand & Model Logo Renderer with Monochrome Styling
  */
 export const ModelLogo: React.FC<ModelLogoProps> = ({
   iconKey = '',
@@ -595,7 +594,7 @@ export const ModelLogo: React.FC<ModelLogoProps> = ({
   return (
     <div className={`relative shrink-0 select-none ${className}`}>
       {isNew && (
-        <span className="absolute -top-1.5 -left-1 px-1 py-0.2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[8px] font-black rounded uppercase tracking-wider shadow-sm z-10 scale-90">
+        <span className="absolute -top-1.5 -left-1 px-1 py-0.2 bg-white text-black text-[8px] font-black rounded uppercase tracking-wider shadow-sm z-10 scale-90">
           New
         </span>
       )}
@@ -611,7 +610,7 @@ export const ModelLogo: React.FC<ModelLogoProps> = ({
             loading="lazy"
             referrerPolicy="no-referrer"
             onError={handleError}
-            className={`w-full h-full object-contain ${sizing.img} transition-opacity duration-200`}
+            className={`w-full h-full object-contain ${sizing.img} transition-opacity duration-200 filter grayscale contrast-125`}
           />
         ) : (
           <span className={`font-black uppercase tracking-tighter ${brand.textClass} ${sizing.fallbackText}`}>

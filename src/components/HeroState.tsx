@@ -185,7 +185,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                       }}
                       className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
                     >
-                      <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
+                      <MessageSquare className="w-3.5 h-3.5 text-white" />
                       <span>Standard Chat</span>
                     </button>
                     <button
@@ -195,7 +195,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                       }}
                       className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
                     >
-                      <Search className="w-3.5 h-3.5 text-blue-400" />
+                      <Search className="w-3.5 h-3.5 text-white" />
                       <span>Deep Research</span>
                     </button>
                     <button
@@ -205,7 +205,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                       }}
                       className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      <Sparkles className="w-3.5 h-3.5 text-white" />
                       <span>Prompt Library</span>
                     </button>
                   </div>
@@ -250,7 +250,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                       className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
                     >
                       <span className="font-semibold text-white">Leo-3.7-Pro</span>
-                      <span className="text-[10px] text-purple-400 font-mono">Fast</span>
+                      <span className="text-[10px] text-zinc-400 font-mono">Fast</span>
                     </button>
                     <button
                       onClick={() => {
@@ -260,7 +260,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                       className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
                     >
                       <span className="font-semibold text-white">Leo-Cyber-Sec</span>
-                      <span className="text-[10px] text-emerald-400 font-mono">Payload</span>
+                      <span className="text-[10px] text-zinc-400 font-mono">Payload</span>
                     </button>
                     <button
                       onClick={() => {
@@ -270,7 +270,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                       className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
                     >
                       <span className="font-semibold text-white">Leo-DeepThink</span>
-                      <span className="text-[10px] text-blue-400 font-mono">Reasoning</span>
+                      <span className="text-[10px] text-zinc-400 font-mono">Reasoning</span>
                     </button>
                   </div>
                 )}

@@ -267,8 +267,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   Unlock more features
                 </p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-[#52528c] flex items-center justify-center text-white shrink-0 shadow-sm">
-                <Zap className="w-4 h-4 fill-white" />
+              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-black shrink-0 shadow-sm">
+                <Zap className="w-4 h-4 fill-black text-black" />
               </div>
             </div>
           )}
@@ -342,7 +342,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full bg-[#38bdf8] text-white font-extrabold flex items-center justify-center text-xs">
+                <div className="w-full h-full bg-white text-black font-extrabold flex items-center justify-center text-xs">
                   B
                 </div>
               )}

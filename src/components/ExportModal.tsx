@@ -48,7 +48,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, sessi
       <div className="bg-[#1e1f20] text-[#e3e3e3] rounded-3xl shadow-2xl border border-[#333538] max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-[#28292c] text-purple-400">
+            <div className="p-1.5 rounded-lg bg-[#28292c] text-white">
               <Download className="w-4 h-4" />
             </div>
             <h3 className="font-display font-semibold text-base text-white">Export Chat</h3>
@@ -69,7 +69,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, sessi
           {/* Markdown Option */}
           <div className="p-3.5 rounded-2xl border border-[#333538] bg-[#131314] flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <FileText className="w-5 h-5 text-purple-400" />
+              <FileText className="w-5 h-5 text-white" />
               <div>
                 <p className="text-xs font-semibold text-white">Markdown (.md)</p>
                 <p className="text-[11px] text-[#8e918f]">Formatted with headings and code blocks</p>
@@ -81,7 +81,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, sessi
                 className="p-1.5 text-[#8e918f] hover:text-white rounded-lg hover:bg-[#28292c] transition cursor-pointer"
                 title="Copy Markdown"
               >
-                {copiedFormat === 'md' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copiedFormat === 'md' ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
               </button>
               <button
                 onClick={() => downloadFile(getMarkdown(), `${session.title.slice(0, 20)}.md`, 'text/markdown')}
@@ -95,7 +95,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, sessi
           {/* JSON Option */}
           <div className="p-3.5 rounded-2xl border border-[#333538] bg-[#131314] flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <Code className="w-5 h-5 text-blue-400" />
+              <Code className="w-5 h-5 text-white" />
               <div>
                 <p className="text-xs font-semibold text-white">Raw JSON (.json)</p>
                 <p className="text-[11px] text-[#8e918f]">Full conversation object with timestamps</p>
@@ -107,7 +107,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, sessi
                 className="p-1.5 text-[#8e918f] hover:text-white rounded-lg hover:bg-[#28292c] transition cursor-pointer"
                 title="Copy JSON"
               >
-                {copiedFormat === 'json' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copiedFormat === 'json' ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
               </button>
               <button
                 onClick={() => downloadFile(getJSON(), `${session.title.slice(0, 20)}.json`, 'application/json')}
