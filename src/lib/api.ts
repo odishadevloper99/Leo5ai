@@ -8,7 +8,9 @@ import {
   UserProfile,
   UserUsageStatus,
   AdminUsageAnalytics,
-  DynamicModelsResponse
+  DynamicModelsResponse,
+  AgentLiveEvent,
+  AgentStepItem
 } from '../types';
 
 const API_BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
@@ -81,7 +83,7 @@ export const api = {
     searchQueries?: string[];
     searchSources?: { title: string; url: string }[];
     thinkingProcess?: string;
-    agentSteps?: { tool: string; input: any; output?: string; success?: boolean; durationMs?: number }[];
+    agentSteps?: AgentStepItem[];
     iterations?: number;
   }> {
     // Attempt request with 1 automatic retry on cold-start or HTML fallback
@@ -110,6 +112,113 @@ export const api = {
     // Surface the real provider/connection error so the selected model and
     // Admin system prompt are never falsely presented as having been used.
     throw lastError || new Error('Failed to communicate with Leo AI engine');
+  },
+
+  async sendChatStream(
+    params: {
+      messages: Message[];
+      userId?: string;
+      images?: string[];
+      isDeepResearch?: boolean;
+      systemPromptOverride?: string;
+      model?: string;
+    },
+    onEvent?: (event: AgentLiveEvent) => void,
+    onChunk?: (chunk: string) => void
+  ): Promise<{
+    content: string;
+    model: string;
+    provider: string;
+    fallbackUsed?: boolean;
+    isDeepResearch?: boolean;
+    hasVision?: boolean;
+    searched?: boolean;
+    searchQueries?: string[];
+    searchSources?: { title: string; url: string }[];
+    thinkingProcess?: string;
+    agentSteps?: AgentStepItem[];
+    iterations?: number;
+  }> {
+    try {
+      const res = await fetch(`${API_BASE}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream'
+        },
+        body: JSON.stringify({ ...params, stream: true }),
+      });
+
+      if (!res.ok) {
+        return this.sendChat(params);
+      }
+
+      if (!res.body) {
+        return this.sendChat(params);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let accumulatedContent = '';
+      let completedResult: any = null;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const jsonStr = trimmed.replace(/^data:\s*/, '');
+          if (!jsonStr) continue;
+
+          try {
+            const event: AgentLiveEvent = JSON.parse(jsonStr);
+            if (onEvent) {
+              onEvent(event);
+            }
+
+            if (event.type === 'chunk' && event.chunk) {
+              accumulatedContent += event.chunk;
+              if (onChunk) {
+                onChunk(event.chunk);
+              }
+            } else if (event.type === 'complete' && event.data) {
+              completedResult = event.data;
+            } else if (event.type === 'error') {
+              throw new Error(event.message || 'Agent error');
+            }
+          } catch (e: any) {
+            if (e.message?.includes('Agent error')) {
+              throw e;
+            }
+          }
+        }
+      }
+
+      if (completedResult) {
+        return completedResult;
+      }
+
+      if (accumulatedContent) {
+        return {
+          content: accumulatedContent,
+          model: params.model || 'leo-agent',
+          provider: 'agent',
+        };
+      }
+
+      // If SSE closed without completing, fallback to standard sendChat
+      return this.sendChat(params);
+    } catch (err: any) {
+      console.warn('[SSE STREAM] Streaming encounter, falling back to standard sendChat:', err);
+      return this.sendChat(params);
+    }
   },
 
   async getAvailableModels(): Promise<DynamicModelsResponse> {

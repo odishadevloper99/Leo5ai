@@ -23,7 +23,7 @@ import {
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { api } from './lib/api';
-import { ChatSession, Message, UserProfile } from './types';
+import { ChatSession, Message, UserProfile, AgentStepItem } from './types';
 import { LeoLogo, LeoLogoMark } from './components/LeoLogo';
 
 export default function App() {
@@ -310,12 +310,26 @@ export default function App() {
     };
 
     const updatedMessages = [...currentSession.messages, userMessage];
+    const assistantMsgId = 'msg-' + (Date.now() + 1);
+    const initialAssistantMessage: Message = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      status: 'streaming',
+      isDeepResearch,
+      currentAgentAction: 'Thinking…',
+      agentSteps: [],
+      searchSources: []
+    };
+
+    const messagesWithAssistant = [...updatedMessages, initialAssistantMessage];
 
     // Optimistically update UI
     setSessions((prev) =>
       prev.map((s) =>
         s.id === currentSession!.id
-          ? { ...s, messages: updatedMessages, updatedAt: Date.now() }
+          ? { ...s, messages: messagesWithAssistant, updatedAt: Date.now() }
           : s
       )
     );
@@ -323,31 +337,123 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      // Call backend AI chat endpoint
-      const response = await api.sendChat({
-        messages: updatedMessages,
-        userId: user.uid,
-        images,
-        isDeepResearch,
-        model: selectedModel,
-      });
+      let accumulatedContent = '';
+      let liveSteps: AgentStepItem[] = [];
+      let liveSources: { title: string; url: string }[] = [];
+      let currentAction = 'Thinking…';
 
-      const assistantMessage: Message = {
-        id: 'msg-' + (Date.now() + 1),
+      // Call backend AI chat endpoint with real-time SSE live agent events
+      const response = await api.sendChatStream(
+        {
+          messages: updatedMessages,
+          userId: user.uid,
+          images,
+          isDeepResearch,
+          model: selectedModel,
+        },
+        (event) => {
+          if (event.type === 'agent_start' || event.type === 'thinking') {
+            currentAction = event.message || 'Thinking…';
+          } else if (event.type === 'planning') {
+            currentAction = event.message || 'Planning next steps…';
+          } else if (event.type === 'tool_start') {
+            currentAction = event.message || `Running tool ${event.tool}…`;
+            if (event.tool && event.input) {
+              liveSteps = [
+                ...liveSteps,
+                {
+                  tool: event.tool,
+                  input: event.input,
+                  output: 'Executing…',
+                  success: true
+                }
+              ];
+            }
+          } else if (event.type === 'tool_result') {
+            currentAction = event.message || 'Tool execution completed';
+            if (event.sources && event.sources.length > 0) {
+              for (const src of event.sources) {
+                if (!liveSources.some((s) => s.url === src.url)) {
+                  liveSources.push(src);
+                }
+              }
+            }
+            if (liveSteps.length > 0) {
+              const lastStep = liveSteps[liveSteps.length - 1];
+              lastStep.output = event.outputSummary || (event.success ? 'Completed' : 'Failed');
+              lastStep.durationMs = event.durationMs;
+              lastStep.success = event.success;
+              if (event.sources) lastStep.sources = event.sources;
+              liveSteps = [...liveSteps];
+            }
+          } else if (event.type === 'analyzing') {
+            currentAction = event.message || 'Analyzing results…';
+          } else if (event.type === 'generating') {
+            currentAction = event.message || 'Writing response…';
+          }
+
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === currentSession!.id
+                ? {
+                    ...s,
+                    messages: s.messages.map((m) =>
+                      m.id === assistantMsgId
+                        ? {
+                            ...m,
+                            currentAgentAction: currentAction,
+                            agentSteps: liveSteps.length > 0 ? liveSteps : m.agentSteps,
+                            searchSources: liveSources.length > 0 ? liveSources : m.searchSources,
+                            searched: liveSources.length > 0 || m.searched
+                          }
+                        : m
+                    )
+                  }
+                : s
+            )
+          );
+        },
+        (chunk) => {
+          accumulatedContent += chunk;
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === currentSession!.id
+                ? {
+                    ...s,
+                    messages: s.messages.map((m) =>
+                      m.id === assistantMsgId
+                        ? {
+                            ...m,
+                            content: accumulatedContent,
+                            status: 'streaming'
+                          }
+                        : m
+                    )
+                  }
+                : s
+            )
+          );
+        }
+      );
+
+      const finalAssistantMessage: Message = {
+        id: assistantMsgId,
         role: 'assistant',
-        content: response.content,
+        content: response.content || accumulatedContent,
         timestamp: Date.now(),
         isDeepResearch,
-        searched: response.searched,
+        searched: response.searched || liveSources.length > 0,
         searchQueries: response.searchQueries,
-        searchSources: response.searchSources,
+        searchSources: response.searchSources || liveSources,
         thinkingProcess: response.thinkingProcess,
-        agentSteps: response.agentSteps,
+        agentSteps: response.agentSteps || (liveSteps.length > 0 ? liveSteps : undefined),
         iterations: response.iterations,
         modelUsed: response.model,
+        status: 'completed',
+        currentAgentAction: undefined
       };
 
-      const finalMessages = [...updatedMessages, assistantMessage];
+      const finalMessages = [...updatedMessages, finalAssistantMessage];
 
       setSessions((prev) =>
         prev.map((s) =>
@@ -375,11 +481,12 @@ export default function App() {
 
     } catch (err: any) {
       const errorMessage: Message = {
-        id: 'msg-' + (Date.now() + 1),
+        id: assistantMsgId,
         role: 'assistant',
         content: `⚠️ **Leo AI Communication Error**: ${err.message || 'Unable to connect to AI engine'}. Please try again.`,
         timestamp: Date.now(),
         status: 'error',
+        currentAgentAction: undefined
       };
 
       setSessions((prev) =>

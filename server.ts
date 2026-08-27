@@ -6,7 +6,7 @@ import nodemailer from 'nodemailer';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
 import { memoService } from './backend/services/memoService';
-import { runAgentLoop, AVAILABLE_TOOLS, AgentStep } from './backend/services/agentService';
+import { runAgentLoop, AVAILABLE_TOOLS, AgentStep, AgentEvent } from './backend/services/agentService';
 
 dotenv.config();
 
@@ -3475,42 +3475,39 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
+    const isStream = Boolean(stream) || req.headers.accept === 'text/event-stream' || req.query?.stream === 'true';
+    let clientDisconnected = false;
+    if (isStream) {
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders?.();
+
+      req.on('close', () => {
+        clientDisconnected = true;
+      });
+    }
+
+    const sendEvent = (event: AgentEvent) => {
+      if (isStream && !clientDisconnected && !res.writableEnded) {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+    };
+
     // 1. Prepare Model Provider Adapter for Autonomous Agent Controller
     const aiCreditsDiag = getAiCreditsDiagnostics();
-    const tokeninDiag = getTokeninDiagnostics();
     const providerDiagnostics: any[] = [];
-    let selectedProvider: 'aicredits' | 'tokenin' | null = null;
+    let selectedProvider: 'aicredits' | null = null;
     let fallbackUsed = routeResult.isFallback;
     let finalModelUsed = targetModel;
 
     console.log(
-      `[PROVIDERS] aicredits.configured=${aiCreditsDiag.configured} activeModel="${targetModel}" (${routeResult.inputType}) | ` +
-      `tokenin.configured=${tokeninDiag.configured} model="${tokeninDiag.model}"`
+      `[PROVIDERS] aicredits.configured=${aiCreditsDiag.configured} activeModel="${targetModel}" (${routeResult.inputType})`
     );
 
     const callProvider = async (agentMessages: any[], tools?: any[]): Promise<ProviderResult> => {
-      // 1a. Direct Tokenin execution for Tokenin-specific models
-      if (isTokeninModel(targetModel)) {
-        const tokeninKey = (currentConfig.tokeninApiKey || process.env.TOKENIN_API_KEY || '').trim();
-        if (!tokeninKey) {
-          return { ok: false, error: 'Tokenin provider is not configured on the backend.' };
-        }
-        const res = await callOpenAiCompatibleProvider({
-          label: 'tokenin',
-          baseUrl: currentConfig.tokeninBaseUrl,
-          apiKey: tokeninKey,
-          model: targetModel,
-          messages: agentMessages,
-          tools
-        });
-        if (res.ok) {
-          selectedProvider = 'tokenin';
-          finalModelUsed = targetModel;
-        }
-        return res;
-      }
-
-      // 1b. AICredits Primary Provider
+      // AICredits Primary Provider
       if (aiCreditsDiag.configured) {
         const modelCandidates: string[] = [...routeResult.candidates];
         if (!modelCandidates.includes(targetModel)) {
@@ -3553,29 +3550,7 @@ app.post('/api/chat', async (req, res) => {
         providerDiagnostics.push({ provider: 'aicredits', ok: false, status: null, error: 'AICREDITS_API_KEY is not configured.' });
       }
 
-      // 1c. Tokenin Automatic Fallback
-      if (tokeninDiag.configured) {
-        fallbackUsed = true;
-        const tokeninModel = currentConfig.tokeninModel || targetModel;
-        const result = await callOpenAiCompatibleProvider({
-          label: 'tokenin',
-          baseUrl: currentConfig.tokeninBaseUrl,
-          apiKey: currentConfig.tokeninApiKey,
-          model: tokeninModel,
-          messages: agentMessages,
-          tools
-        });
-        providerDiagnostics.push({ provider: 'tokenin', ok: result.ok, status: result.status ?? null, error: result.error ?? null });
-        if (result.ok && (result.content || result.tool_calls)) {
-          selectedProvider = 'tokenin';
-          finalModelUsed = tokeninModel;
-          return result;
-        }
-      } else {
-        providerDiagnostics.push({ provider: 'tokenin', ok: false, status: null, error: 'TOKENIN_API_KEY is not configured.' });
-      }
-
-      return { ok: false, error: 'All configured AI providers failed.' };
+      return { ok: false, error: 'AICredits provider failed or is not configured. Please check your AICREDITS_API_KEY.' };
     };
 
     // Format initial user and history messages for Agent Loop
@@ -3601,11 +3576,19 @@ app.post('/api/chat', async (req, res) => {
       model: targetModel,
       callProvider,
       maxIterations: 8,
-      userId
+      userId,
+      onEvent: isStream ? sendEvent : undefined
     });
 
     if (!agentResult.content && agentResult.steps.length === 0) {
       console.error('[PROVIDERS] All configured AI providers failed in agent loop:', JSON.stringify(providerDiagnostics));
+      if (isStream) {
+        sendEvent({
+          type: 'error',
+          message: 'All configured AI providers failed to generate a response.'
+        });
+        return res.end();
+      }
       return res.status(502).json({
         error: 'All configured AI providers failed to generate a response.',
         providerDiagnostics,
@@ -3633,10 +3616,34 @@ app.post('/api/chat', async (req, res) => {
     }
 
     const hasSearched = allSearchSources.length > 0 || allSearchQueries.length > 0 || webSearchResult.needed;
+    const finalThinking = agentResult.thinkingProcess || (hasSearched ? `Synthesized web intelligence and autonomous tool observations to deliver an authoritative answer.` : (isDeepResearch ? `Deconstructed request, evaluated parameters, and structured comprehensive multi-step analysis.` : undefined));
+
+    if (isStream) {
+      sendEvent({
+        type: 'complete',
+        message: 'Completed',
+        data: {
+          content: agentResult.content,
+          thinkingProcess: finalThinking,
+          model: finalModelUsed,
+          provider: selectedProvider || 'tokenin',
+          fallbackUsed,
+          isDeepResearch,
+          hasVision: isVisionInput,
+          searched: hasSearched,
+          searchQueries: allSearchQueries,
+          searchSources: allSearchSources,
+          agentSteps: agentResult.steps,
+          iterations: agentResult.iterations
+        }
+      });
+
+      return res.end();
+    }
 
     return res.json({
       content: agentResult.content,
-      thinkingProcess: agentResult.thinkingProcess || (hasSearched ? `Synthesized web intelligence and autonomous tool observations to deliver an authoritative answer.` : (isDeepResearch ? `Deconstructed request, evaluated parameters, and structured comprehensive multi-step analysis.` : undefined)),
+      thinkingProcess: finalThinking,
       model: finalModelUsed,
       provider: selectedProvider || 'tokenin',
       fallbackUsed,
@@ -3652,10 +3659,25 @@ app.post('/api/chat', async (req, res) => {
 
   } catch (err: any) {
     console.error('Chat error:', err);
+    if (res.headersSent) {
+      try {
+        res.write(`data: ${JSON.stringify({ type: 'error', message: 'An error occurred: ' + (err?.message || 'Unknown error') })}\n\n`);
+        res.end();
+      } catch {}
+      return;
+    }
     res.status(500).json({
       error: 'An error occurred while generating response: ' + (err?.message || 'Unknown error')
     });
   }
+});
+
+// Stream endpoint alias for backward compatibility
+app.post('/api/chat/stream', async (req, res, next) => {
+  req.body = req.body || {};
+  req.body.stream = true;
+  // Delegate directly to the /api/chat handler logic
+  (app._router as any).handle(req, res, next);
 });
 
 function generateIntelligentFallback(prompt: string, hasVision: boolean, isDeepResearch: boolean): string {

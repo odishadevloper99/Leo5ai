@@ -23,7 +23,10 @@ import {
   Plus,
   MessageSquare,
   Monitor,
-  Terminal
+  Terminal,
+  Download,
+  Sparkles,
+  Play
 } from 'lucide-react';
 import { Message, UserProfile } from '../types';
 
@@ -53,6 +56,35 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [copiedCodeBlock, setCopiedCodeBlock] = useState<string | null>(null);
   const [expandedReasoning, setExpandedReasoning] = useState<Record<string, boolean>>({});
+  const [copiedTableId, setCopiedTableId] = useState<string | null>(null);
+  const [downloadedTableId, setDownloadedTableId] = useState<string | null>(null);
+
+  const handleCopyTable = (tableRefOrText: string, id: string) => {
+    navigator.clipboard.writeText(tableRefOrText);
+    setCopiedTableId(id);
+    setTimeout(() => setCopiedTableId(null), 2000);
+  };
+
+  const handleDownloadTableCsv = (tableText: string, id: string) => {
+    // Generate CSV blob from Markdown or tab-delimited text
+    const rows = tableText.trim().split('\n').filter(r => !r.includes('---'));
+    const csvContent = rows.map(r => {
+      const cols = r.split('|').map(c => c.trim()).filter(Boolean);
+      return cols.map(c => `"${c.replace(/"/g, '""')}"`).join(',');
+    }).filter(Boolean).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `table-export-${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setDownloadedTableId(id);
+    setTimeout(() => setDownloadedTableId(null), 2000);
+  };
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
   const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
   const [expandedAgentSteps, setExpandedAgentSteps] = useState<Record<string, boolean>>({});
@@ -355,9 +387,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
       >
         {messages.map((message) => {
           const isUser = message.role === 'user';
-          const isCurrentlyStreaming = streamingMsgId === message.id;
+          const isCurrentlyStreaming = streamingMsgId === message.id || message.status === 'streaming';
           
-          const displayContent = isCurrentlyStreaming
+          const displayContent = isCurrentlyStreaming && streamingMsgId === message.id
             ? (message.content || '').slice(0, streamedLength)
             : message.content;
 
@@ -426,48 +458,82 @@ export const ChatView: React.FC<ChatViewProps> = ({
               ) : (
                 /* Assistant Output Flow */
                 <div className="w-full max-w-full flex flex-col items-start space-y-2.5">
+                  {/* Live Dynamic Agent Action Pill (e.g. Searching the web, Planning, Running command) */}
+                  {message.currentAgentAction && (
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#141a29] border border-[#232f48] text-emerald-400 text-xs font-mono shadow-sm animate-pulse">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                      <span>{message.currentAgentAction}</span>
+                    </div>
+                  )}
+
                   {/* 1. Reasoning Pill Header */}
-                  <button
-                    type="button"
-                    onClick={() => toggleReasoning(message.id)}
-                    className="inline-flex items-center gap-1.5 text-xs font-mono font-medium text-slate-400 hover:text-emerald-400 transition cursor-pointer active:scale-95 py-0.5"
-                  >
-                    <BrainCircuit className="w-4 h-4 text-emerald-400" />
-                    <span>Security Reasoning</span>
-                    <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform ${expandedReasoning[message.id] ? 'rotate-90' : ''}`} />
-                  </button>
+                  <div className="w-full flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => toggleReasoning(message.id)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-white transition cursor-pointer active:scale-95 py-0.5"
+                    >
+                      <BrainCircuit className="w-3.5 h-3.5 text-neutral-400" />
+                      <span>Reasoning</span>
+                      <ChevronRight className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${expandedReasoning[message.id] ? 'rotate-90' : ''}`} />
+                    </button>
+                  </div>
 
                   {/* Expanded Reasoning Overview (if clicked) */}
                   {expandedReasoning[message.id] && (
-                    <div className="w-full border border-[#1f273b] rounded-xl bg-[#0f131d] p-3 text-xs text-slate-300 space-y-1.5 font-mono animate-in fade-in duration-150">
-                      <div className="font-semibold text-emerald-400 text-xs flex items-center gap-1.5">
+                    <div className="w-full border border-[#333538] rounded-xl bg-[#1a1b1e] p-3 text-xs text-neutral-300 space-y-1.5 animate-in fade-in duration-150">
+                      <div className="font-semibold text-white text-xs flex items-center gap-1.5">
                         <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Security Execution Strategy</span>
+                        <span>Execution Reasoning</span>
                       </div>
-                      <p className="text-[12px] text-slate-400 leading-relaxed">
-                        • Deconstructed prompt parameters and validated technical penetration testing references.
+                      <p className="text-[12px] text-neutral-400 leading-relaxed">
+                        • Analyzed user query intent, language nuances, and target requirements.
                         <br />
-                        • Structured multi-phase security evaluation, tools analysis, and precision remediation insights.
+                        • Evaluated online repositories, structured categories, and formatted comparative intelligence.
                       </p>
                     </div>
                   )}
 
-                  {/* 2. Web Search Pill (Matches screenshot: Search icon + query pill) */}
+                  {/* 2. Thinking Accordion Header & Thought Process */}
+                  {message.thinkingProcess && (
+                    <div className="w-full space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => toggleThinking(message.id)}
+                        className="flex items-center gap-1.5 text-xs font-normal text-[#9aa0a6] hover:text-[#e3e3e3] transition cursor-pointer"
+                      >
+                        <BrainCircuit className="w-3.5 h-3.5 text-[#9aa0a6]" />
+                        <span>Thinking...</span>
+                        <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${(expandedThinking[message.id] ?? true) ? '' : '-rotate-90'}`} />
+                      </button>
+
+                      {(expandedThinking[message.id] ?? true) && (
+                        <div className="text-xs md:text-[13px] text-[#9aa0a6] leading-relaxed font-sans pl-1 border-l border-neutral-700/60 my-1 animate-in fade-in duration-150">
+                          {message.thinkingProcess}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 3. Web Search Pill (Matches video: Search icon + live query pill) */}
                   {message.searched && (
                     <div className="w-full">
                       <button
                         type="button"
                         onClick={() => toggleSources(message.id)}
-                        className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#212124] border border-[#333538] text-[#c4c7c5] hover:text-white hover:border-neutral-500 text-xs font-normal transition cursor-pointer active:scale-[0.99] shadow-2xs max-w-full text-left"
+                        className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] border border-[#333538] text-[#c4c7c5] hover:text-white hover:border-neutral-500 text-xs font-normal transition cursor-pointer active:scale-[0.99] shadow-2xs max-w-full text-left"
                       >
                         <Search className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
                         <span className="truncate">
                           {message.searchQueries?.[0]
-                            ? `Searching for ${message.searchQueries[0]}`
-                            : 'Searching for relevant web intelligence and sources...'}
+                            ? `Searching for ${message.searchQueries[0]} as requested...`
+                            : 'Searching for relevant streaming sites and sources...'}
                         </span>
                         {message.searchSources && message.searchSources.length > 0 && (
-                          <span className="text-[10px] bg-[#333538] px-1.5 py-0.5 rounded-full shrink-0 ml-1">
+                          <span className="text-[10px] bg-[#333538] text-neutral-300 px-1.5 py-0.5 rounded-full shrink-0 ml-1">
                             {message.searchSources.length}
                           </span>
                         )}
@@ -485,32 +551,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#212124] border border-[#333538] text-[#c4c7c5] hover:text-white hover:border-neutral-400 text-[11px] transition shadow-2xs truncate max-w-[260px]"
                               title={source.url}
                             >
-                              <Globe className="w-3 h-3 text-purple-400 shrink-0" />
+                              <Globe className="w-3 h-3 text-emerald-400 shrink-0" />
                               <span className="truncate">{source.title || 'Source'}</span>
                               <ExternalLink className="w-2.5 h-2.5 text-neutral-500 shrink-0" />
                             </a>
                           ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 3. Thinking Accordion Header & Thought Process (Clean Brain icon, NO star logo!) */}
-                  {message.thinkingProcess && (
-                    <div className="w-full space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => toggleThinking(message.id)}
-                        className="flex items-center gap-1.5 text-xs font-normal text-[#9aa0a6] hover:text-[#e3e3e3] transition cursor-pointer"
-                      >
-                        <BrainCircuit className="w-4 h-4 text-[#9aa0a6]" />
-                        <span>Thinking...</span>
-                        <ChevronDown className={`w-3.5 h-3.5 text-neutral-400 transition-transform ${isThinkingOpen ? '' : '-rotate-90'}`} />
-                      </button>
-
-                      {isThinkingOpen && (
-                        <div className="text-xs md:text-sm text-[#9aa0a6] leading-relaxed font-sans pl-0.5 animate-in fade-in duration-150">
-                          {message.thinkingProcess}
                         </div>
                       )}
                     </div>
@@ -558,157 +603,237 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
                   {/* 4. Markdown Assistant Output (Dark Theme) */}
                   <div className="w-full min-w-0 prose-sm max-w-none break-words text-[#e3e3e3] pt-1">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        pre({ children }: any) {
-                          return <div className="my-3 w-full min-w-0 max-w-full overflow-hidden">{children}</div>;
-                        },
-                        code({ node, inline, className, children, ...props }: any) {
-                          const match = /language-(\w+)/.exec(className || '');
-                          const codeString = String(children).replace(/\n$/, '');
-                          const isMultiLine = codeString.includes('\n');
-                          const isBlock = Boolean(match) || isMultiLine;
+                    {displayContent ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          pre({ children }: any) {
+                            return <div className="my-3 w-full min-w-0 max-w-full overflow-hidden">{children}</div>;
+                          },
+                          code({ node, inline, className, children, ...props }: any) {
+                            const match = /language-(\w+)/.exec(className || '');
+                            const codeString = String(children).replace(/\n$/, '');
+                            const isMultiLine = codeString.includes('\n');
+                            const isBlock = Boolean(match) || isMultiLine;
 
-                          if (isBlock) {
-                            const language = match ? match[1] : 'code';
-                            const isCopied = copiedCodeBlock === codeString;
-                            return (
-                              <div className="relative my-2.5 rounded-xl overflow-hidden bg-[#1e1f20] border border-[#333538] text-neutral-100 shadow-md w-full min-w-0 max-w-full">
-                                <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#28292c] border-b border-[#333538] text-xs text-neutral-300 w-full min-w-0 select-none">
-                                  <span className="font-mono text-[11px] uppercase tracking-wider text-purple-300 font-bold truncate pr-2 shrink-0">
-                                    {language}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      handleCopyCode(codeString);
-                                    }}
-                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#333538] hover:bg-[#444746] text-neutral-200 hover:text-white transition text-xs font-medium active:scale-95 shadow-2xs shrink-0 cursor-pointer"
-                                  >
-                                    {isCopied ? (
-                                      <>
-                                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                        <span className="text-emerald-400 font-semibold text-[11px]">Copied!</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Copy className="w-3.5 h-3.5 text-neutral-300 shrink-0" />
-                                        <span className="text-neutral-200 text-[11px]">Copy code</span>
-                                      </>
-                                    )}
-                                  </button>
-                                </div>
-                                <div className="p-3.5 overflow-x-auto text-xs md:text-sm font-mono leading-relaxed text-neutral-200 w-full max-w-full">
-                                  <pre className="m-0 p-0 font-mono bg-transparent whitespace-pre">
+                            if (isBlock) {
+                              const language = match ? match[1] : 'code';
+                              const isCopied = copiedCodeBlock === codeString;
+                              return (
+                                <div className="relative my-2.5 rounded-xl overflow-hidden bg-[#1e1f20] border border-[#333538] text-neutral-100 shadow-md w-full min-w-0 max-w-full">
+                                  <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#28292c] border-b border-[#333538] text-xs text-neutral-300 w-full min-w-0 select-none">
+                                    <span className="font-mono text-[11px] uppercase tracking-wider text-purple-300 font-bold truncate pr-2 shrink-0">
+                                      {language}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleCopyCode(codeString);
+                                      }}
+                                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#333538] hover:bg-[#444746] text-neutral-200 hover:text-white transition text-xs font-medium active:scale-95 shadow-2xs shrink-0 cursor-pointer"
+                                    >
+                                      {isCopied ? (
+                                        <>
+                                          <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                          <span className="text-emerald-400 font-semibold text-[11px]">Copied!</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy className="w-3.5 h-3.5 text-neutral-300 shrink-0" />
+                                          <span className="text-neutral-200 text-[11px]">Copy code</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                  <pre className="p-3.5 overflow-x-auto text-[13px] font-mono leading-relaxed bg-[#1e1f20] max-w-full text-slate-200">
                                     <code>{codeString}</code>
                                   </pre>
                                 </div>
+                              );
+                            }
+
+                            return (
+                              <code className="px-1.5 py-0.5 rounded bg-[#28292c] text-emerald-300 font-mono text-[13px] border border-[#383a3e]" {...props}>
+                                {children}
+                              </code>
+                            );
+                          },
+                          p({ children }: any) {
+                            return <p className="mb-3 text-sm md:text-[15px] leading-relaxed text-[#e3e3e3] last:mb-0">{children}</p>;
+                          },
+                          ul({ children }: any) {
+                            return <ul className="list-disc list-outside pl-5 mb-3 space-y-1.5 text-sm md:text-[15px] text-[#e3e3e3]">{children}</ul>;
+                          },
+                          ol({ children }: any) {
+                            return <ol className="list-decimal list-outside pl-5 mb-3 space-y-1.5 text-sm md:text-[15px] text-[#e3e3e3]">{children}</ol>;
+                          },
+                          h1({ children }: any) {
+                            return <h1 className="text-lg md:text-xl font-bold text-white mt-4 mb-2 pb-1 border-b border-[#28292c]">{children}</h1>;
+                          },
+                          h2({ children }: any) {
+                            return <h2 className="text-base md:text-lg font-bold text-white mt-3.5 mb-2">{children}</h2>;
+                          },
+                          h3({ children }: any) {
+                            return <h3 className="text-sm md:text-base font-semibold text-emerald-400 mt-3 mb-1.5">{children}</h3>;
+                          },
+                          blockquote({ children }: any) {
+                            return <blockquote className="border-l-2 border-emerald-500 pl-3.5 my-2.5 italic text-[#a8b3cf] text-sm">{children}</blockquote>;
+                          },
+                          table({ node, children }: any) {
+                            const tableId = `tbl-${Math.random().toString(36).substring(2, 7)}`;
+                            return (
+                              <div className="my-3 rounded-xl overflow-hidden border border-[#333538] bg-[#1a1b1e] shadow-md w-full max-w-full">
+                                {/* Table Toolbar with Download & Copy buttons (matches video) */}
+                                <div className="flex items-center justify-between px-3 py-1.5 bg-[#24262b] border-b border-[#333538] text-xs text-neutral-300 select-none">
+                                  <span className="text-[11px] font-medium text-neutral-400">Table Data</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        // Extract table text from children or DOM
+                                        const text = typeof node?.position === 'object' ? displayContent.slice(node.position.start.offset, node.position.end.offset) : '';
+                                        handleDownloadTableCsv(text || displayContent, tableId);
+                                      }}
+                                      title="Download CSV"
+                                      className="p-1 hover:bg-[#333538] rounded text-neutral-300 hover:text-white transition cursor-pointer"
+                                    >
+                                      {downloadedTableId === tableId ? (
+                                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                      ) : (
+                                        <Download className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        const text = typeof node?.position === 'object' ? displayContent.slice(node.position.start.offset, node.position.end.offset) : '';
+                                        handleCopyTable(text || displayContent, tableId);
+                                      }}
+                                      title="Copy Table"
+                                      className="p-1 hover:bg-[#333538] rounded text-neutral-300 hover:text-white transition cursor-pointer"
+                                    >
+                                      {copiedTableId === tableId ? (
+                                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                      ) : (
+                                        <Copy className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-xs md:text-sm border-collapse">{children}</table>
+                                </div>
                               </div>
                             );
+                          },
+                          th({ children }: any) {
+                            return <th className="bg-[#202226] px-3.5 py-2 text-white font-semibold border-b border-[#333538] text-xs md:text-sm">{children}</th>;
+                          },
+                          td({ children }: any) {
+                            return <td className="px-3.5 py-2.5 border-b border-[#282a30] text-neutral-200 text-xs md:text-sm">{children}</td>;
+                          },
+                          a({ href, children }: any) {
+                            return (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-emerald-400 hover:text-emerald-300 underline underline-offset-2 transition inline-flex items-center gap-0.5"
+                              >
+                                {children}
+                              </a>
+                            );
                           }
-
-                          return (
-                            <code
-                              className="px-1.5 py-0.5 mx-0.5 rounded-md font-mono text-[12px] md:text-[13px] bg-[#28292c] text-[#e3e3e3] border border-[#333538]"
-                              {...props}
-                            >
-                              {children}
-                            </code>
-                          );
-                        },
-                        p({ children }: any) {
-                          return (
-                            <p className="mb-3 last:mb-0 leading-relaxed text-sm md:text-[15px] inline-block w-full text-[#e3e3e3]">
-                              {children}
-                              {isCurrentlyStreaming && (
-                                <span
-                                  aria-hidden="true"
-                                  className="inline-block w-1.5 h-3.5 md:h-4 ml-1 -mb-0.5 align-middle bg-white rounded-xs animate-cursor-blink shadow-2xs"
-                                />
-                              )}
-                            </p>
-                          );
-                        },
-                        h1({ children }: any) {
-                          return <h1 className="text-lg md:text-xl font-bold text-white mt-4 mb-2">{children}</h1>;
-                        },
-                        h2({ children }: any) {
-                          return <h2 className="text-base md:text-lg font-bold text-white mt-3.5 mb-2">{children}</h2>;
-                        },
-                        h3({ children }: any) {
-                          return <h3 className="text-sm md:text-base font-semibold text-white mt-3 mb-1.5">{children}</h3>;
-                        },
-                        ul({ children }: any) {
-                          return <ul className="list-disc pl-5 my-2.5 space-y-1.5 text-sm md:text-[15px] text-[#e3e3e3]">{children}</ul>;
-                        },
-                        ol({ children }: any) {
-                          return <ol className="list-decimal pl-5 my-2.5 space-y-1.5 text-sm md:text-[15px] text-[#e3e3e3]">{children}</ol>;
-                        },
-                        li({ children }: any) {
-                          return <li className="leading-relaxed">{children}</li>;
-                        },
-                        blockquote({ children }: any) {
-                          return <blockquote className="border-l-4 border-neutral-600 pl-3 my-2.5 italic text-neutral-400 text-sm">{children}</blockquote>;
-                        },
-                        strong({ children }: any) {
-                          return <strong className="font-semibold text-white">{children}</strong>;
-                        }
-                      }}
-                    >
-                      {displayContent}
-                    </ReactMarkdown>
+                        }}
+                      >
+                        {displayContent}
+                      </ReactMarkdown>
+                    ) : isCurrentlyStreaming ? (
+                      <div className="flex items-center gap-2 text-xs text-slate-400 py-1">
+                        <span className="inline-block w-2 h-3.5 bg-emerald-400 animate-pulse align-middle" />
+                        <span>Generating response…</span>
+                      </div>
+                    ) : null}
+                    {isCurrentlyStreaming && displayContent && (
+                      <span className="inline-block w-2 h-3.5 ml-1 bg-emerald-400 animate-pulse align-middle" />
+                    )}
                   </div>
 
-                  {/* Assistant Actions Bar (Copy, Audio, Thumbs) */}
+                  {/* Assistant Actions Bar (Copy, Audio, Thumbs, Sources) */}
                   {!isCurrentlyStreaming && (
-                    <div className="flex items-center gap-2 pt-2 text-[#8e918f]">
-                      <button
-                        onClick={() => handleCopyText(message.id, message.content)}
-                        title="Copy response"
-                        className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
-                      >
-                        {copiedMsgId === message.id ? (
-                          <Check className="w-4 h-4 text-emerald-400" />
-                        ) : (
-                          <Copy className="w-4 h-4" />
-                        )}
-                      </button>
+                    <div className="w-full flex items-center justify-between pt-2 text-[#8e918f]">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleCopyText(message.id, message.content)}
+                          title="Copy response"
+                          className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
+                        >
+                          {copiedMsgId === message.id ? (
+                            <Check className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </button>
 
-                      <button
-                        onClick={() => handleToggleSpeech(message.id, message.content)}
-                        title="Read aloud"
-                        className={`p-1 rounded-md transition cursor-pointer ${
-                          speakingMsgId === message.id
-                            ? 'text-white bg-[#28292c]'
-                            : 'hover:text-white hover:bg-[#212124]'
-                        }`}
-                      >
-                        <Volume2 className="w-4 h-4" />
-                      </button>
+                        <button
+                          onClick={() => handleToggleSpeech(message.id, message.content)}
+                          title="Read aloud"
+                          className={`p-1 rounded-md transition cursor-pointer ${
+                            speakingMsgId === message.id
+                              ? 'text-white bg-[#28292c]'
+                              : 'hover:text-white hover:bg-[#212124]'
+                          }`}
+                        >
+                          <Volume2 className="w-4 h-4" />
+                        </button>
 
-                      <button
-                        onClick={onRegenerate}
-                        title="Regenerate answer"
-                        className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                      </button>
+                        <button
+                          onClick={onRegenerate}
+                          title="Regenerate answer"
+                          className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
 
-                      <button
-                        title="Good response"
-                        className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
-                      >
-                        <ThumbsUp className="w-4 h-4" />
-                      </button>
-                      <button
-                        title="Bad response"
-                        className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
-                      >
-                        <ThumbsDown className="w-4 h-4" />
-                      </button>
+                        <button
+                          title="Good response"
+                          className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
+                        >
+                          <ThumbsUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          title="Bad response"
+                          className="p-1 hover:text-white hover:bg-[#212124] rounded-md transition cursor-pointer"
+                        >
+                          <ThumbsDown className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Right-aligned Sources Pill Button (matches video) */}
+                      {message.searched && message.searchSources && message.searchSources.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => toggleSources(message.id)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1e1f20] hover:bg-[#28292c] border border-[#333538] text-neutral-300 hover:text-white text-xs transition cursor-pointer shadow-2xs"
+                        >
+                          <div className="flex -space-x-1 items-center">
+                            <span className="w-3.5 h-3.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-[8px] text-emerald-300">
+                              <Globe className="w-2.5 h-2.5 text-emerald-400" />
+                            </span>
+                            <span className="w-3.5 h-3.5 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center text-[8px] text-red-400">
+                              <Play className="w-2 h-2 text-red-400 fill-red-400" />
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-medium">Sources</span>
+                          <span className="text-[10px] bg-[#333538] px-1 py-0.2 rounded text-neutral-400">
+                            {message.searchSources.length}
+                          </span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -717,8 +842,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
           );
         })}
 
-        {/* Live Reasoning & Progressive Thinking State (Matches screenshot while waiting) */}
-        {isLoading && (
+        {/* Live Reasoning & Progressive Thinking State when loading without active streaming message */}
+        {isLoading && !messages.some((m) => m.status === 'streaming') && (
           <div className="w-full flex flex-col items-start space-y-2.5 animate-in fade-in duration-150">
             {/* 1. Reasoning Badge */}
             <div className="inline-flex items-center gap-1.5 text-xs font-medium text-[#c4c7c5]">

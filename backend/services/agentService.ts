@@ -22,6 +22,31 @@ export interface AgentStep {
   sources?: { title: string; url: string }[];
 }
 
+export type AgentEventType =
+  | 'agent_start'
+  | 'thinking'
+  | 'planning'
+  | 'tool_start'
+  | 'tool_result'
+  | 'analyzing'
+  | 'generating'
+  | 'chunk'
+  | 'complete'
+  | 'error';
+
+export interface AgentEvent {
+  type: AgentEventType;
+  message?: string;
+  tool?: string;
+  input?: Record<string, any>;
+  outputSummary?: string;
+  success?: boolean;
+  durationMs?: number;
+  sources?: { title: string; url: string }[];
+  chunk?: string;
+  data?: any;
+}
+
 export interface AgentExecutionResult {
   content: string;
   thinkingProcess?: string;
@@ -519,24 +544,26 @@ export interface AgentRunOptions {
   }>;
   maxIterations?: number;
   userId?: string;
+  onEvent?: (event: AgentEvent) => void | Promise<void>;
 }
 
-export const AGENT_SYSTEM_INSTRUCTION = `You are Leo AI, a world-class production-ready AI agent with direct autonomous tool execution capabilities.
+export const AGENT_SYSTEM_INSTRUCTION = `You are Leo AI, a world-class production-ready AI agent with direct autonomous tool execution and real-time intelligence capabilities.
 
 YOU HAVE ACCESS TO THE FOLLOWING TOOLS:
-1. web_search(query: string): Search the internet for real-time, live, or current information, news, weather, release dates, market data, and documentation.
+1. web_search(query: string): Search the internet for real-time, live, or current information, news, websites, streaming links, release dates, market data, and technical documentation.
 2. run_command(command: string): Safely execute terminal, diagnostic, inspection, file, and system commands inside the allowed project sandbox (e.g., date, uptime, node -v, git status, cat package.json, pwd, ls).
 
 STRICT AGENT RULES:
-- When the user asks for current/real-time info, sports scores, latest news, recent documentation, or temporal facts, use "web_search".
-- When the user asks to inspect the workspace, check file contents, verify dependencies, or run terminal diagnostics, use "run_command".
-- Do not use tools unnecessarily if the user's prompt is a simple greeting, conceptual explanation, or pure logic task.
+- Language & Tone: Always respond naturally in the user's spoken language and tone (Hindi, Hinglish, English, etc.). Match conversational Hindi/Hinglish warmth if the user prompts in Hindi/Hinglish (e.g. "ये रहे कुछ बेहतरीन...").
+- Rich Formatting & Tables: For recommendations, website directories, comparisons, tool comparisons, or lists, provide well-structured sections, Markdown tables with headers (e.g. | साइट / Name | खासियत / Features | साइन-अप? |), emojis (✅, ⚠️, 🍿, 🎬, etc.), safety tips, and proactive helpful suggestions.
+- Real-time & Web Info: When the user asks for websites, latest movies, sports, current events, or recommendations, use "web_search" to gather the latest up-to-date links and domain information.
+- Sandbox & Diagnostics: When the user asks to inspect the workspace, check file contents, or run terminal diagnostics, use "run_command".
 - Multi-Step Execution: You can execute multiple tool calls sequentially or in parallel to gather facts before generating your final answer.
 - Always analyze tool results critically before presenting the final response to the user.
 - NEVER invent or hallucinate tool results.
 - NEVER expose API keys, internal backend credentials, or system secrets.
 - NEVER execute destructive commands (rm, mkfs, sudo, etc.).
-- Deliver a clear, concise, and articulate explanation of what was inspected and the final conclusion.`;
+- Deliver a clear, concise, well-structured, and authoritative final answer.`;
 
 /**
  * Parses tool calls either from native tool_calls structure or from structured JSON in text fallback
@@ -619,13 +646,35 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentExecu
     systemPrompt,
     model,
     callProvider,
-    maxIterations = 8
+    maxIterations = 8,
+    onEvent
   } = options;
+
+  const emitEvent = async (event: AgentEvent) => {
+    if (onEvent) {
+      try {
+        await onEvent(event);
+      } catch (err) {
+        console.warn('[AGENT EVENT EMITTER] Failed to dispatch event:', err);
+      }
+    }
+  };
 
   const agentSteps: AgentStep[] = [];
   const searchQueries: string[] = [];
   const searchSources: { title: string; url: string }[] = [];
   const seenUrls = new Set<string>();
+
+  // 1. Dispatch initial agent thinking status
+  await emitEvent({
+    type: 'agent_start',
+    message: 'Thinking…'
+  });
+
+  await emitEvent({
+    type: 'thinking',
+    message: 'Understanding request…'
+  });
 
   // Build working conversation state
   const workingMessages: any[] = [
@@ -664,6 +713,10 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentExecu
           agentSteps.map(s => `**Tool \`${s.tool}\`**:\n${s.output}`).join('\n\n');
         break;
       }
+      await emitEvent({
+        type: 'error',
+        message: response.error || 'Agent execution failed'
+      });
       throw new Error(response.error || 'Agent loop provider failure');
     }
 
@@ -677,10 +730,33 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentExecu
     if (toolCalls.length === 0) {
       finalContent = response.content || '';
       console.log(`[AGENT LOOP] Final response reached at iteration ${iterations} (Length: ${finalContent.length} chars).`);
+      await emitEvent({
+        type: 'generating',
+        message: 'Writing response…'
+      });
+
+      // Stream the response in real-time chunks to frontend
+      if (finalContent) {
+        // Chunk by words / character blocks for natural fluid token streaming
+        const chunks = finalContent.match(/[\s\S]{1,16}/g) || [finalContent];
+        for (const piece of chunks) {
+          await emitEvent({
+            type: 'chunk',
+            chunk: piece
+          });
+          // Small micro-delay for authentic token cadence
+          await new Promise((r) => setTimeout(r, 8));
+        }
+      }
       break;
     }
 
     console.log(`[AGENT LOOP] Model requested ${toolCalls.length} tool call(s) at iteration ${iterations}:`, toolCalls.map(tc => tc.name));
+
+    await emitEvent({
+      type: 'planning',
+      message: 'Planning next steps…'
+    });
 
     // Append the assistant's request to conversation history
     workingMessages.push({
@@ -706,6 +782,14 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentExecu
       if (toolCall.name === 'web_search') {
         const q = String(toolCall.args.query || toolCall.args.q || '').trim();
         searchQueries.push(q);
+
+        await emitEvent({
+          type: 'tool_start',
+          tool: 'web_search',
+          message: 'Searching the web…',
+          input: { query: q }
+        });
+
         const searchRes = await executeWebSearch(q);
         stepSuccess = searchRes.success;
         toolOutput = searchRes.formattedOutput;
@@ -717,14 +801,49 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentExecu
             searchSources.push(s);
           }
         }
+
+        const durationMs = Date.now() - stepStartTime;
+        await emitEvent({
+          type: 'tool_result',
+          tool: 'web_search',
+          message: 'Search completed',
+          success: stepSuccess,
+          durationMs,
+          sources: toolSources
+        });
+
       } else if (toolCall.name === 'run_command') {
         const cmd = String(toolCall.args.command || toolCall.args.cmd || '').trim();
+
+        await emitEvent({
+          type: 'tool_start',
+          tool: 'run_command',
+          message: 'Running requested command…',
+          input: { command: cmd }
+        });
+
         const cmdRes = await executeSafeCommand(cmd);
         stepSuccess = cmdRes.success;
         toolOutput = `Command: ${cmd}\nExit Code: ${cmdRes.exitCode}\nOutput:\n${cmdRes.output}`;
+
+        const durationMs = Date.now() - stepStartTime;
+        await emitEvent({
+          type: 'tool_result',
+          tool: 'run_command',
+          message: cmdRes.success ? 'Command completed' : 'Command failed',
+          success: stepSuccess,
+          durationMs
+        });
+
       } else {
         toolOutput = `Error: Tool "${toolCall.name}" is not recognized. Available tools: web_search, run_command.`;
         stepSuccess = false;
+        await emitEvent({
+          type: 'tool_result',
+          tool: toolCall.name,
+          message: 'Tool not recognized',
+          success: false
+        });
       }
 
       const durationMs = Date.now() - stepStartTime;
@@ -745,11 +864,22 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentExecu
         content: toolOutput
       });
     }
+
+    // After tool executions in iteration, notify analyzing
+    await emitEvent({
+      type: 'analyzing',
+      message: 'Analyzing results…'
+    });
   }
 
   // If reached max iterations without concluding, do one final synthesis prompt
   if (!finalContent && iterations >= maxIterations) {
     console.warn(`[AGENT LOOP] Max iterations (${maxIterations}) reached. Performing final synthesis...`);
+    await emitEvent({
+      type: 'generating',
+      message: 'Preparing the final answer…'
+    });
+
     workingMessages.push({
       role: 'user',
       content: 'Please summarize your findings from the above tool executions and provide the final answer to my request now.'
@@ -759,6 +889,17 @@ export async function runAgentLoop(options: AgentRunOptions): Promise<AgentExecu
     finalContent = finalRes.content || 'Agent completed multi-step execution. See findings above.';
     if (finalRes.thinkingProcess && !finalThinking) {
       finalThinking = finalRes.thinkingProcess;
+    }
+
+    if (finalContent) {
+      const chunks = finalContent.match(/[\s\S]{1,16}/g) || [finalContent];
+      for (const piece of chunks) {
+        await emitEvent({
+          type: 'chunk',
+          chunk: piece
+        });
+        await new Promise((r) => setTimeout(r, 8));
+      }
     }
   }
 

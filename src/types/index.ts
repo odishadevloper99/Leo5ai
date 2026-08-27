@@ -52,6 +52,20 @@ export interface AgentStepItem {
   output?: string;
   success?: boolean;
   durationMs?: number;
+  sources?: { title: string; url: string }[];
+}
+
+export interface AgentLiveEvent {
+  type: 'agent_start' | 'thinking' | 'planning' | 'tool_start' | 'tool_result' | 'analyzing' | 'generating' | 'chunk' | 'complete' | 'error';
+  message?: string;
+  tool?: string;
+  input?: Record<string, any>;
+  outputSummary?: string;
+  success?: boolean;
+  durationMs?: number;
+  sources?: { title: string; url: string }[];
+  chunk?: string;
+  data?: any;
 }
 
 export interface Message {
@@ -66,6 +80,7 @@ export interface Message {
   searchSources?: { title: string; url: string }[];
   searchPhase?: 'searching' | 'reading' | 'generating' | 'done';
   thinkingProcess?: string;
+  currentAgentAction?: string;
   agentSteps?: AgentStepItem[];
   iterations?: number;
   memoryExtracted?: string[];

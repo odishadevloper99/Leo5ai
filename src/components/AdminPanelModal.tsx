@@ -534,7 +534,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-neutral-700 mb-1">
                           AICredits Base URL
@@ -545,36 +545,6 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                           onChange={(e) => setConfig({ ...config, aiCreditsBaseUrl: e.target.value })}
                           className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono"
                         />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                          Tokenin API Key
-                        </label>
-                        <input
-                          type="password"
-                          placeholder="Configured via TOKENIN_API_KEY on Render"
-                          value=""
-                          disabled
-                          className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-neutral-100 text-neutral-400 outline-none text-xs font-mono cursor-not-allowed"
-                        />
-                        <p className="text-[10px] text-neutral-400 mt-1">
-                          Status: {(config as any).hasTokeninKey ? 'configured ✓' : 'not configured'}.
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                          Tokenin Base URL
-                        </label>
-                        <input type="text" value={(config as any).tokeninBaseUrl || 'https://tokenin.my.id/api/v1'} onChange={(e) => setConfig({ ...config, tokeninBaseUrl: e.target.value } as any)} className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono" />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                          Tokenin Model (fallback)
-                        </label>
-                        <input type="text" placeholder="e.g. gpt-4o-mini" value={(config as any).tokeninModel || ''} onChange={(e) => setConfig({ ...config, tokeninModel: e.target.value } as any)} className="w-full px-3 py-2 rounded-xl border border-neutral-200 focus:border-purple-500 outline-none text-xs font-mono" />
                       </div>
                     </div>
                     <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-100 mb-4 space-y-3">
