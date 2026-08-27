@@ -1796,9 +1796,9 @@ async function sendOtpEmail(
   console.log(`  • SendGrid Key:    ${Boolean(sendgridApiKey)}`);
 
   const digits = code.split('');
-  const digitBoxesHtml = digits.map(d => `
-    <td style="padding: 0 3px; vertical-align: middle;">
-      <div style="width: 42px; height: 54px; line-height: 54px; text-align: center; background: #1f1a3a; background-image: linear-gradient(180deg, #2a2254 0%, #16122c 100%); border: 1.5px solid #8b5cf6; border-radius: 12px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 28px; font-weight: 800; color: #ffffff; text-shadow: 0 2px 8px rgba(139, 92, 246, 0.6); box-shadow: 0 4px 16px rgba(124, 58, 237, 0.3);">
+  const digitBoxesHtml = digits.map((d, index) => `
+    <td style="padding: 0 4px; vertical-align: middle;">
+      <div class="digit-box" style="width: 44px; height: 56px; line-height: 56px; text-align: center; background: #000000; background-image: radial-gradient(circle at 50% 0%, #15102a 0%, #000000 75%); border: 1.5px solid #8b5cf6; border-radius: 14px; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 30px; font-weight: 900; color: #ffffff; text-shadow: 0 0 12px rgba(167, 139, 250, 0.9), 0 2px 4px rgba(0,0,0,0.8); box-shadow: 0 0 16px rgba(139, 92, 246, 0.35), inset 0 1px 1px rgba(255,255,255,0.15); animation-delay: ${index * 0.15}s;">
         ${d}
       </div>
     </td>
@@ -1810,74 +1810,120 @@ async function sendOtpEmail(
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="color-scheme" content="light dark">
-      <meta name="supported-color-schemes" content="light dark">
+      <meta name="color-scheme" content="dark">
+      <meta name="supported-color-schemes" content="dark">
       <title>Leo AI Passkey Verification</title>
+      <style>
+        @keyframes pulseGlow {
+          0%, 100% {
+            box-shadow: 0 0 25px rgba(139, 92, 246, 0.4), 0 0 50px rgba(79, 70, 229, 0.2);
+            border-color: #8b5cf6;
+          }
+          50% {
+            box-shadow: 0 0 35px rgba(167, 139, 250, 0.7), 0 0 70px rgba(139, 92, 246, 0.4);
+            border-color: #a78bfa;
+          }
+        }
+        @keyframes digitPulse {
+          0%, 100% {
+            transform: scale(1);
+            border-color: #8b5cf6;
+            box-shadow: 0 0 14px rgba(139, 92, 246, 0.35);
+          }
+          50% {
+            transform: scale(1.03);
+            border-color: #c084fc;
+            box-shadow: 0 0 22px rgba(192, 132, 252, 0.65), inset 0 0 8px rgba(139, 92, 246, 0.3);
+          }
+        }
+        @keyframes liveDot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.3; transform: scale(0.75); }
+        }
+        @keyframes borderShimmer {
+          0% { border-color: rgba(139, 92, 246, 0.3); }
+          50% { border-color: rgba(167, 139, 250, 0.8); }
+          100% { border-color: rgba(139, 92, 246, 0.3); }
+        }
+        .main-card {
+          animation: borderShimmer 4s infinite ease-in-out;
+        }
+        .logo-icon {
+          animation: pulseGlow 3s infinite ease-in-out;
+        }
+        .digit-box {
+          animation: digitPulse 2.5s infinite ease-in-out;
+        }
+        .live-dot {
+          animation: liveDot 1.5s infinite ease-in-out;
+        }
+      </style>
     </head>
-    <body style="margin: 0; padding: 24px 12px; background-color: #090d16; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+    <body style="margin: 0; padding: 24px 12px; background-color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #ffffff;">
       
       <!-- Preview Preheader Text -->
-      <div style="display: none; font-size: 1px; color: #090d16; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
+      <div style="display: none; font-size: 1px; color: #000000; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
         Your Leo AI 6-digit verification passkey is ${code}. Valid for 5 minutes.
       </div>
 
-      <!-- Main Container Card -->
-      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 520px; margin: 0 auto; background-color: #111726; border: 1px solid #2a3449; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);">
+      <!-- Main Container Card (OLED Deep Pitch Black) -->
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" class="main-card" style="max-width: 500px; margin: 0 auto; background-color: #050505; border: 1px solid #1f1a33; border-radius: 26px; overflow: hidden; box-shadow: 0 0 50px rgba(0, 0, 0, 0.95), 0 0 30px rgba(124, 58, 237, 0.15);">
         
-        <!-- Header Banner -->
+        <!-- Header Banner (Jet Black with Neon Spark) -->
         <tr>
-          <td style="padding: 36px 24px 28px 24px; text-align: center; background: linear-gradient(135deg, #1e1145 0%, #0f172a 100%); border-bottom: 1px solid #232d42;">
+          <td style="padding: 38px 24px 26px 24px; text-align: center; background: radial-gradient(circle at 50% 0%, #160f2e 0%, #050505 85%); border-bottom: 1px solid #181426;">
             <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
               <tr>
                 <td align="center">
-                  <div style="display: inline-block; width: 54px; height: 54px; line-height: 54px; border-radius: 16px; background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); box-shadow: 0 8px 24px rgba(124, 58, 237, 0.45); font-size: 26px; color: #ffffff; font-weight: 800; margin-bottom: 14px;">
+                  <div class="logo-icon" style="display: inline-block; width: 56px; height: 56px; line-height: 56px; border-radius: 18px; background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%); box-shadow: 0 0 25px rgba(139, 92, 246, 0.55); font-size: 26px; color: #ffffff; font-weight: 800; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.2);">
                     ✦
                   </div>
                 </td>
               </tr>
             </table>
-            <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">
-              LEO <span style="color: #a78bfa;">AI</span>
+            <h1 style="margin: 0; font-size: 25px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px;">
+              LEO <span style="color: #a78bfa; text-shadow: 0 0 15px rgba(167, 139, 250, 0.6);">AI</span>
             </h1>
-            <div style="display: inline-block; margin-top: 8px; padding: 4px 12px; background-color: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.35); border-radius: 20px; font-size: 11px; font-weight: 700; color: #c4b5fd; text-transform: uppercase; letter-spacing: 1px;">
+            <div style="display: inline-block; margin-top: 10px; padding: 5px 14px; background-color: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.4); border-radius: 20px; font-size: 10.5px; font-weight: 800; color: #c4b5fd; text-transform: uppercase; letter-spacing: 1.2px; box-shadow: 0 0 10px rgba(139, 92, 246, 0.15);">
               Two-Factor Authentication Passkey
             </div>
           </td>
         </tr>
 
-        <!-- Content Body -->
+        <!-- Content Body (Pure Deep Black) -->
         <tr>
-          <td style="padding: 32px 28px 24px 28px;">
-            <p style="margin: 0 0 10px 0; font-size: 15px; color: #f1f5f9; font-weight: 600;">
-              Hello <span style="color: #a78bfa;">${displayName || 'Explorer'}</span>,
+          <td style="padding: 30px 26px 24px 26px; background-color: #050505;">
+            <p style="margin: 0 0 8px 0; font-size: 15px; color: #f8fafc; font-weight: 600;">
+              Hello <span style="color: #c084fc; font-weight: 700;">${displayName || 'Explorer'}</span>,
             </p>
             <p style="margin: 0 0 24px 0; font-size: 13px; color: #94a3b8; line-height: 1.6;">
-              We received a request to access your <strong style="color: #e2e8f0;">Leo AI</strong> account. Use the high-security verification code below to authorize your session:
+              We received a request to access your <strong style="color: #ffffff;">Leo AI</strong> account. Use the high-security verification code below to authorize your session:
             </p>
 
-            <!-- 6-Digit Interactive Display Card -->
-            <div style="background-color: #0b0f19; border: 1px solid #1e293b; border-radius: 18px; padding: 22px 14px; text-align: center; margin-bottom: 24px; box-shadow: inset 0 2px 6px rgba(0,0,0,0.4);">
+            <!-- 6-Digit Display Card (Pitch Black OLED with Neon Borders) -->
+            <div style="background-color: #000000; border: 1px solid #201a38; border-radius: 20px; padding: 22px 12px; text-align: center; margin-bottom: 24px; box-shadow: inset 0 0 20px rgba(0,0,0,0.9), 0 0 25px rgba(124, 58, 237, 0.08);">
               <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
                 <tr>
                   ${digitBoxesHtml}
                 </tr>
               </table>
-              <div style="margin-top: 16px;">
-                <span style="display: inline-block; padding: 4px 10px; background-color: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 12px; font-size: 11px; font-weight: 600; color: #fbbf24;">
-                  ⏱ Valid for 5 minutes only
+              <div style="margin-top: 18px;">
+                <span style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; background-color: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 14px; font-size: 11px; font-weight: 700; color: #fbbf24; box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);">
+                  <span class="live-dot" style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: #fbbf24; margin-right: 4px;"></span>
+                  Valid for 5 minutes only
                 </span>
               </div>
             </div>
 
             <!-- Security Advisory Banner -->
-            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid #1e293b; border-left: 4px solid #8b5cf6; border-radius: 12px; padding: 14px 16px; margin-bottom: 24px;">
+            <div style="background: #08080c; border: 1px solid #1e1933; border-left: 4px solid #8b5cf6; border-radius: 14px; padding: 14px 16px; margin-bottom: 24px; box-shadow: 0 0 15px rgba(0,0,0,0.5);">
               <table border="0" cellpadding="0" cellspacing="0" width="100%">
                 <tr>
                   <td style="vertical-align: top; width: 22px; padding-top: 2px;">
                     <span style="font-size: 14px;">🛡️</span>
                   </td>
                   <td style="padding-left: 8px;">
-                    <p style="margin: 0; font-size: 12px; color: #cbd5e1; line-height: 1.5;">
+                    <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
                       <strong style="color: #f8fafc;">Security Notice:</strong> Never share this 6-digit passkey with anyone. Leo AI staff will never ask for your code.
                     </p>
                   </td>
@@ -1886,14 +1932,14 @@ async function sendOtpEmail(
             </div>
 
             <!-- Account Metadata -->
-            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #1e293b; padding-top: 16px;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #141220; padding-top: 16px;">
               <tr>
                 <td style="font-size: 11px; color: #64748b; line-height: 1.6;">
-                  Recipient: <span style="color: #94a3b8; font-family: monospace;">${normalizedEmail}</span><br>
+                  Recipient: <span style="color: #cbd5e1; font-family: monospace;">${normalizedEmail}</span><br>
                   Protocol: <span style="color: #94a3b8;">SHA-256 OTP Authentication</span>
                 </td>
                 <td align="right" style="font-size: 11px; color: #64748b; vertical-align: bottom;">
-                  Status: <span style="color: #34d399; font-weight: 700;">● Active</span>
+                  Status: <span style="color: #10b981; font-weight: 700; text-shadow: 0 0 8px rgba(16, 185, 129, 0.4);">● Active</span>
                 </td>
               </tr>
             </table>
@@ -1901,17 +1947,17 @@ async function sendOtpEmail(
           </td>
         </tr>
 
-        <!-- Footer & Developer Credits -->
+        <!-- Footer & Developer Credits (Jet Black OLED) -->
         <tr>
-          <td style="background-color: #0b0f19; padding: 22px 24px; text-align: center; border-top: 1px solid #1e293b;">
-            <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: 700; color: #cbd5e1; letter-spacing: 0.5px;">
+          <td style="background-color: #000000; padding: 22px 24px; text-align: center; border-top: 1px solid #141220;">
+            <p style="margin: 0 0 6px 0; font-size: 11.5px; font-weight: 800; color: #cbd5e1; letter-spacing: 0.8px;">
               LEO AI COGNITIVE PLATFORM
             </p>
             <p style="margin: 0 0 8px 0; font-size: 11px; color: #64748b;">
-              Engineered by <strong style="color: #94a3b8;">Bikash Bindhani</strong>
+              Engineered by <strong style="color: #a78bfa;">Bikash Bindhani</strong>
             </p>
             <p style="margin: 0; font-size: 11px;">
-              <a href="https://www.instagram.com/vixyiu._?igsh=czZsZjdrNHBrc2l2&igsi=czZsZjdrNHBrc2l2" style="color: #8b5cf6; text-decoration: none; font-weight: 600;">
+              <a href="https://www.instagram.com/vixyiu._?igsh=czZsZjdrNHBrc2l2&igsi=czZsZjdrNHBrc2l2" style="color: #c084fc; text-decoration: none; font-weight: 600; text-shadow: 0 0 10px rgba(192, 132, 252, 0.4);">
                 Instagram: @vixyiu._ ↗
               </a>
             </p>
@@ -1921,7 +1967,7 @@ async function sendOtpEmail(
       </table>
 
       <!-- Subtext -->
-      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 520px; margin: 16px auto 0 auto;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 500px; margin: 16px auto 0 auto;">
         <tr>
           <td align="center" style="font-size: 10px; color: #475569;">
             This is an automated security transmission. If you did not request this OTP, you may safely ignore it.

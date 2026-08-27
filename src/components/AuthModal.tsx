@@ -768,10 +768,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     value={digit}
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(idx, e)}
-                    className={`w-11 h-13 text-center text-lg font-bold font-mono text-white rounded-xl border outline-none transition ${
+                    className={`w-11 h-13 text-center text-xl font-black font-mono text-white rounded-xl border outline-none transition-all duration-200 shadow-inner ${
                       loading
-                        ? 'bg-[#131314] border-purple-400 opacity-80 cursor-wait'
-                        : 'bg-[#131314] border-[#333538] focus:border-white focus:ring-2 focus:ring-white/20'
+                        ? 'bg-black border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.35)] opacity-80 cursor-wait'
+                        : 'bg-black border-neutral-800 hover:border-neutral-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 focus:shadow-[0_0_20px_rgba(168,85,247,0.4)]'
                     }`}
                   />
                 ))}
