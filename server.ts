@@ -3372,14 +3372,28 @@ async function callOpenAiCompatibleProvider(opts: {
       payload.tool_choice = 'auto';
     }
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey.trim()}`
-      },
-      body: JSON.stringify(payload)
-    });
+    // Guard against slow/free-tier models that hang indefinitely with no
+    // response, which previously left the SSE stream stuck on "Generating
+    // response..." forever on the frontend. 30s is generous for a single
+    // completion call while still failing fast enough for the agent loop's
+    // catch block (which already emits a proper `error` SSE event) to run.
+    const providerTimeoutController = new AbortController();
+    const providerTimeoutTimer = setTimeout(() => providerTimeoutController.abort(), 30000);
+
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey.trim()}`
+        },
+        body: JSON.stringify(payload),
+        signal: providerTimeoutController.signal
+      });
+    } finally {
+      clearTimeout(providerTimeoutTimer);
+    }
 
     const raw = await response.text();
     if (!response.ok) {

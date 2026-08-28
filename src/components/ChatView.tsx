@@ -647,22 +647,28 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             );
                           },
                           p({ children }: any) {
-                            return <p className="mb-3 text-sm md:text-[15px] leading-relaxed text-[#e3e3e3] last:mb-0">{children}</p>;
+                            return <p className="mb-3 text-[15px] md:text-base leading-relaxed text-[#e3e3e3] last:mb-0">{children}</p>;
                           },
                           ul({ children }: any) {
-                            return <ul className="list-disc list-outside pl-5 mb-3 space-y-1.5 text-sm md:text-[15px] text-[#e3e3e3]">{children}</ul>;
+                            return <ul className="list-disc list-outside pl-5 mb-3 space-y-1.5 text-[15px] md:text-base text-[#e3e3e3]">{children}</ul>;
                           },
                           ol({ children }: any) {
-                            return <ol className="list-decimal list-outside pl-5 mb-3 space-y-1.5 text-sm md:text-[15px] text-[#e3e3e3]">{children}</ol>;
+                            return <ol className="list-decimal list-outside pl-5 mb-3 space-y-1.5 text-[15px] md:text-base text-[#e3e3e3]">{children}</ol>;
                           },
                           h1({ children }: any) {
-                            return <h1 className="text-lg md:text-xl font-bold text-white mt-4 mb-2 pb-1 border-b border-[#28292c]">{children}</h1>;
+                            return <h1 className="text-2xl md:text-[28px] font-bold text-white leading-tight mt-6 mb-3">{children}</h1>;
                           },
                           h2({ children }: any) {
-                            return <h2 className="text-base md:text-lg font-bold text-white mt-3.5 mb-2">{children}</h2>;
+                            return <h2 className="text-xl md:text-2xl font-bold text-white leading-tight mt-6 mb-3">{children}</h2>;
                           },
                           h3({ children }: any) {
-                            return <h3 className="text-sm md:text-base font-semibold text-white mt-3 mb-1.5">{children}</h3>;
+                            return <h3 className="text-lg md:text-xl font-semibold text-white leading-snug mt-5 mb-2">{children}</h3>;
+                          },
+                          strong({ children }: any) {
+                            return <strong className="font-semibold text-white">{children}</strong>;
+                          },
+                          li({ children }: any) {
+                            return <li className="text-[15px] md:text-base text-[#e3e3e3] leading-relaxed">{children}</li>;
                           },
                           blockquote({ children }: any) {
                             return <blockquote className="border-l-2 border-white pl-3.5 my-2.5 italic text-[#8e918f] text-sm">{children}</blockquote>;
