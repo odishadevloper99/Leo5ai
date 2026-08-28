@@ -318,7 +318,7 @@ export default function App() {
       timestamp: Date.now(),
       status: 'streaming',
       isDeepResearch,
-      currentAgentAction: 'Thinking…',
+      currentAgentAction: undefined,
       agentSteps: [],
       searchSources: []
     };
@@ -338,9 +338,11 @@ export default function App() {
 
     try {
       let accumulatedContent = '';
+      let liveThinking = '';
+      let liveQueries: string[] = [];
       let liveSteps: AgentStepItem[] = [];
       let liveSources: { title: string; url: string }[] = [];
-      let currentAction = 'Thinking…';
+      let currentAction: string | undefined = undefined;
 
       // Call backend AI chat endpoint with real-time SSE live agent events
       const response = await api.sendChatStream(
@@ -352,12 +354,30 @@ export default function App() {
           model: selectedModel,
         },
         (event) => {
-          if (event.type === 'agent_start' || event.type === 'thinking') {
+          if (event.type === 'agent_start') {
             currentAction = event.message || 'Thinking…';
+          } else if (event.type === 'thinking') {
+            currentAction = event.message || 'Thinking…';
+            if (typeof event.data === 'string' && event.data) {
+              liveThinking = event.data;
+            } else if (event.chunk) {
+              liveThinking += event.chunk;
+            }
           } else if (event.type === 'planning') {
             currentAction = event.message || 'Planning next steps…';
           } else if (event.type === 'tool_start') {
             currentAction = event.message || `Running tool ${event.tool}…`;
+            if (event.input?.query && typeof event.input.query === 'string') {
+              const q = event.input.query.trim();
+              if (q && !liveQueries.includes(q)) {
+                liveQueries.push(q);
+              }
+            } else if (event.input?.command && typeof event.input.command === 'string') {
+              const c = `Command: ${event.input.command.trim()}`;
+              if (!liveQueries.includes(c)) {
+                liveQueries.push(c);
+              }
+            }
             if (event.tool && event.input) {
               liveSteps = [
                 ...liveSteps,
@@ -402,9 +422,11 @@ export default function App() {
                         ? {
                             ...m,
                             currentAgentAction: currentAction,
+                            thinkingProcess: liveThinking || m.thinkingProcess,
+                            searchQueries: liveQueries.length > 0 ? liveQueries : m.searchQueries,
                             agentSteps: liveSteps.length > 0 ? liveSteps : m.agentSteps,
                             searchSources: liveSources.length > 0 ? liveSources : m.searchSources,
-                            searched: liveSources.length > 0 || m.searched
+                            searched: liveSources.length > 0 || liveQueries.length > 0 || m.searched
                           }
                         : m
                     )

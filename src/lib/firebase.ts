@@ -55,7 +55,7 @@ const firebaseConfig = {
   appId,
 };
 
-let app: FirebaseApp;
+export let app: FirebaseApp;
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
 } else {
@@ -65,14 +65,25 @@ if (!getApps().length) {
 export const auth: Auth = getAuth(app);
 export const db: Firestore = getFirestore(app, firestoreDatabaseId);
 
-// Test Firestore Connection
+// Test Firestore Connection (non-blocking validation per Firebase guidelines)
 async function testFirestoreConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase Firestore test connection note: client appears offline.');
+    if (typeof window !== 'undefined') {
+      // Delay test slightly to allow browser network & auth state to initialize
+      setTimeout(async () => {
+        try {
+          await getDocFromServer(doc(db, 'test', 'connection'));
+        } catch (error: any) {
+          if (error instanceof Error && error.message.includes('the client is offline')) {
+            console.info('[Firebase] Firestore operating in offline/client mode.');
+          } else if (error?.code === 'unavailable') {
+            console.info('[Firebase] Firestore initial connection deferred; cache active.');
+          }
+        }
+      }, 1000);
     }
+  } catch (e) {
+    // Non-blocking
   }
 }
 testFirestoreConnection();

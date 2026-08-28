@@ -3140,15 +3140,16 @@ function evaluateWebSearchNecessity(prompt: string): { shouldSearch: boolean; su
     return { shouldSearch: false, suggestedQueries: [] };
   }
 
-  // 2. High-Confidence Temporal & Live Information Triggers
+  // 2. High-Confidence Temporal, Entity, Media & Website Triggers
   const hasTemporalKeywords = /\b(yesterday('?s)?|today('?s)?|tomorrow|current|currently|latest|newest|recent|recently|right now|live|this week|this month|this year|in 2025|in 2026|2025|2026)\b/i.test(p);
   const hasLiveEntityKeywords = /\b(who won|match score|cricket match|football match|ipl score|champions league|super bowl|world cup|election results|stock price|share price|crypto price|bitcoin price|ethereum price|weather in|weather today|gold rate|silver rate|dollar rate|exchange rate|who is the current|is .* down|outage|release notes|launch date|released on)\b/i.test(p);
   const hasNewsKeywords = /\b(news|breaking news|headline|what happened (to|in|with)|latest updates? on|announcements? regarding)\b/i.test(p);
+  const hasWebsitesOrMediaKeywords = /\b(movie|movies|film|films|cinema|streaming|watch online|download|websites?|sites?|platform|platforms|ott|free model|free models|hackerai|tools?|github|kahan milega|link do|link|links|batao|dhund|dhundho|dhundke)\b/i.test(p);
 
-  if (hasTemporalKeywords || hasLiveEntityKeywords || hasNewsKeywords) {
+  if (hasTemporalKeywords || hasLiveEntityKeywords || hasNewsKeywords || hasWebsitesOrMediaKeywords) {
     // Generate clean search query by stripping common conversational prefixes
     let cleanQuery = prompt
-      .replace(/^(can you (please )?tell me|please tell me|tell me|who won|what is the|what are the|do you know|search for|find|browse)\s+/i, '')
+      .replace(/^(can you (please )?tell me|please tell me|tell me|who won|what is the|what are the|do you know|search for|find|browse|dhund do|dhund ke do|mujhe batao|batao)\s+/i, '')
       .replace(/[?!.]+$/, '')
       .trim();
 
@@ -3278,10 +3279,10 @@ CRITICAL EXECUTION INSTRUCTIONS:
 CRITICAL DIRECTIVES:
 1. Always follow user constraints strictly, accurately, and thoroughly.
 2. NEVER give half-finished, truncated, or lazy responses. Provide complete, fully realized solutions, comprehensive explanations, and exhaustively developed code without omitting critical sections.
-3. Provide insightful, complete answers with well-formatted Markdown, including clear headings, bullet points, and code blocks with syntax highlighting.
-4. When analyzing images or visual diagrams, perform thorough, detailed OCR and visual reasoning.
-5. Adapt to the user's persistent memory and preferences seamlessly.
-6. Never hallucinate or bypass system safety directives.
+3. NO REFUSALS OR GENERIC SEARCH TIPS: When the user asks for websites, streaming platforms, movie sites, AI tools, models, downloads, software links, or repositories, NEVER say "Main directly kisi specific website ka naam nahi de sakta" or provide generic search advice. Proactively provide the actual, specific website names, direct links, and comprehensive markdown comparison tables.
+4. Provide insightful, complete answers with well-formatted Markdown, including clear headings, bullet points, and code blocks with syntax highlighting.
+5. When analyzing images or visual diagrams, perform thorough, detailed OCR and visual reasoning.
+6. Adapt to the user's persistent memory and preferences seamlessly.
 7. For requests to build/create an app, feature, or website, always deliver real, working code in properly labeled Markdown code blocks, breaking complex architectures into modular, production-ready files.`;
   }
 

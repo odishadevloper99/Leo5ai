@@ -1,6 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
   Copy,
   Check,
@@ -8,6 +6,7 @@ import {
   Volume2,
   ThumbsUp,
   ThumbsDown,
+  Brain,
   BrainCircuit,
   Mic,
   ArrowUp,
@@ -25,10 +24,31 @@ import {
   Monitor,
   Terminal,
   Download,
+  Share2,
   Sparkles,
-  Play
+  Play,
+  Loader2
 } from 'lucide-react';
 import { Message, UserProfile } from '../types';
+import {
+  AgentMessage,
+  ReasoningBox,
+  ToolCallPill,
+  MarkdownLite,
+  ActionBar,
+  StreamingCursor,
+  markdownComponents
+} from './AgentMessage';
+
+export {
+  AgentMessage,
+  ReasoningBox,
+  ToolCallPill,
+  MarkdownLite,
+  ActionBar,
+  StreamingCursor,
+  markdownComponents
+};
 
 interface ChatViewProps {
   messages: Message[];
@@ -383,7 +403,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden px-3 sm:px-6 md:px-8 py-5 md:py-8 space-y-6 max-w-4xl mx-auto w-full font-mono"
+        className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden px-3 sm:px-6 py-5 md:py-6 space-y-5 max-w-[700px] mx-auto w-full font-sans"
       >
         {messages.map((message) => {
           const isUser = message.role === 'user';
@@ -392,11 +412,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
           const displayContent = isCurrentlyStreaming && streamingMsgId === message.id
             ? (message.content || '').slice(0, streamedLength)
             : message.content;
-
-          // Thinking state default is open for first viewing
-          const isThinkingOpen = expandedThinking[message.id] !== undefined 
-            ? expandedThinking[message.id] 
-            : true;
 
           return (
             <div
@@ -410,7 +425,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <div
                       key={i}
                       onClick={() => setInspectImage(img)}
-                      className="relative group rounded-xl overflow-hidden border border-[#333538] shadow-xs cursor-pointer"
+                      className="relative group rounded-xl overflow-hidden border border-zinc-800 shadow-xs cursor-pointer"
                     >
                       <img
                         src={img}
@@ -428,442 +443,61 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
               {/* User Bubble Layout */}
               {isUser ? (
-                <div className="flex flex-col items-end gap-1 max-w-[92%] sm:max-w-[85%]">
-                  <div className="inline-block rounded-xl bg-[#1e1f20] text-[#f4f4f5] border border-[#333538] px-4 py-2.5 text-sm md:text-[15px] leading-relaxed shadow-sm break-words font-mono">
+                <div className="flex flex-col items-end gap-1 max-w-[85%]">
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-[15px] text-zinc-100 leading-relaxed break-words">
                     {message.content}
                   </div>
 
                   {/* User Action icons (Copy, Edit) below bubble */}
-                  <div className="flex items-center gap-1.5 px-1 pt-0.5 text-[#8e918f]">
+                  <div className="flex items-center gap-1.5 px-1 pt-0.5 text-zinc-500">
                     <button
                       onClick={() => handleCopyText(message.id, message.content)}
                       title="Copy question"
-                      className="p-1 hover:text-white hover:bg-[#1e1f20] rounded transition cursor-pointer"
+                      className="p-1 hover:text-zinc-200 hover:bg-zinc-800 rounded transition cursor-pointer"
                     >
                       {copiedMsgId === message.id ? (
-                        <Check className="w-3.5 h-3.5 text-white" />
+                        <Check size={14} className="text-emerald-500" />
                       ) : (
-                        <Copy className="w-3.5 h-3.5" />
+                        <Copy size={14} />
                       )}
                     </button>
                     <button
                       onClick={() => handleEditUserMessage(message.content)}
                       title="Edit question"
-                      className="p-1 hover:text-white hover:bg-[#1e1f20] rounded transition cursor-pointer"
+                      className="p-1 hover:text-zinc-200 hover:bg-zinc-800 rounded transition cursor-pointer"
                     >
-                      <Pencil className="w-3.5 h-3.5" />
+                      <Pencil size={14} />
                     </button>
                   </div>
                 </div>
               ) : (
-                /* Assistant Output Flow */
-                <div className="w-full max-w-full flex flex-col items-start space-y-2.5">
-                  {/* Live Dynamic Agent Action Pill */}
-                  {message.currentAgentAction && (
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1e1f20] border border-[#333538] text-white text-xs font-mono shadow-sm animate-pulse">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                      </span>
-                      <span>{message.currentAgentAction}</span>
-                    </div>
-                  )}
-
-                  {/* 1. Reasoning Pill Header */}
-                  <div className="w-full flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => toggleReasoning(message.id)}
-                      className="inline-flex items-center gap-1.5 text-xs font-medium text-[#8e918f] hover:text-white transition cursor-pointer active:scale-95 py-0.5"
-                    >
-                      <BrainCircuit className="w-3.5 h-3.5 text-[#8e918f]" />
-                      <span>Reasoning</span>
-                      <ChevronRight className={`w-3.5 h-3.5 text-[#8e918f] transition-transform ${expandedReasoning[message.id] ? 'rotate-90' : ''}`} />
-                    </button>
-                  </div>
-
-                  {/* Expanded Reasoning Overview (if clicked) */}
-                  {expandedReasoning[message.id] && (
-                    <div className="w-full border border-[#333538] rounded-xl bg-[#1e1f20] p-3 text-xs text-[#e3e3e3] space-y-1.5 animate-in fade-in duration-150">
-                      <div className="font-semibold text-white text-xs flex items-center gap-1.5">
-                        <BrainCircuit className="w-3.5 h-3.5 text-white" />
-                        <span>Execution Reasoning</span>
-                      </div>
-                      <p className="text-[12px] text-[#8e918f] leading-relaxed">
-                        • Analyzed user query intent, language nuances, and target requirements.
-                        <br />
-                        • Evaluated online repositories, structured categories, and formatted comparative intelligence.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Multiple Search / URL Browsing Step Pills (Matches Video Flow) */}
-                  {message.searchQueries && message.searchQueries.length > 0 ? (
-                    <div className="w-full space-y-1.5">
-                      {message.searchQueries.map((query, qIdx) => {
-                        const isUrlOpen = query.toLowerCase().startsWith('opening ') || query.toLowerCase().includes('http') || query.toLowerCase().includes('url');
-                        return (
-                          <div
-                            key={qIdx}
-                            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] border border-[#333538] text-[#c4c7c5] text-xs font-normal shadow-2xs max-w-full truncate"
-                          >
-                            {isUrlOpen ? (
-                              <ExternalLink className="w-3.5 h-3.5 text-[#8e918f] shrink-0" />
-                            ) : (
-                              <Search className="w-3.5 h-3.5 text-[#8e918f] shrink-0" />
-                            )}
-                            <span className="truncate">{query}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : message.searched ? (
-                    <div className="w-full">
-                      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] border border-[#333538] text-[#c4c7c5] text-xs font-normal shadow-2xs max-w-full">
-                        <Search className="w-3.5 h-3.5 text-[#8e918f] shrink-0" />
-                        <span className="truncate">Searching for available models and pricing data...</span>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {/* 2. Thinking Accordion Header & Thought Process */}
-                  {message.thinkingProcess && (
-                    <div className="w-full space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => toggleThinking(message.id)}
-                        className="flex items-center gap-1.5 text-xs font-normal text-[#8e918f] hover:text-[#e3e3e3] transition cursor-pointer"
-                      >
-                        <BrainCircuit className="w-3.5 h-3.5 text-[#8e918f]" />
-                        <span>Thinking...</span>
-                        <ChevronDown className={`w-3.5 h-3.5 text-[#8e918f] transition-transform ${(expandedThinking[message.id] ?? true) ? '' : '-rotate-90'}`} />
-                      </button>
-
-                      {(expandedThinking[message.id] ?? true) && (
-                        <div className="text-xs md:text-[13px] text-[#8e918f] leading-relaxed font-sans pl-2 border-l-2 border-neutral-700/60 my-1 animate-in fade-in duration-150 whitespace-pre-wrap">
-                          {message.thinkingProcess}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 4. Autonomous Agent Execution Steps */}
-                  {message.agentSteps && message.agentSteps.length > 0 && (
-                    <div className="w-full space-y-1.5 pt-0.5">
-                      <button
-                        type="button"
-                        onClick={() => toggleAgentSteps(message.id)}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1e1f20] border border-[#333538] text-[#e3e3e3] hover:text-white text-xs font-mono transition cursor-pointer active:scale-[0.99] shadow-2xs"
-                      >
-                        <Terminal className="w-3.5 h-3.5 text-white shrink-0" />
-                        <span>Agent Execution: {message.agentSteps.length} tool {message.agentSteps.length === 1 ? 'action' : 'actions'}</span>
-                        <ChevronRight className={`w-3.5 h-3.5 text-[#8e918f] transition-transform ${expandedAgentSteps[message.id] ? 'rotate-90' : ''}`} />
-                      </button>
-
-                      {expandedAgentSteps[message.id] && (
-                        <div className="w-full border border-[#333538] rounded-xl bg-black p-3 space-y-2 text-xs font-mono animate-in fade-in duration-150">
-                          {message.agentSteps.map((step, sIdx) => (
-                            <div key={sIdx} className="p-2.5 rounded-lg bg-[#1e1f20] border border-[#333538] space-y-1">
-                              <div className="flex items-center justify-between text-white font-semibold text-[11px]">
-                                <span className="flex items-center gap-1.5">
-                                  <Terminal className="w-3 h-3 text-white" />
-                                  <span>Step {sIdx + 1}: {step.tool}</span>
-                                </span>
-                                <span className="text-[10px] text-[#8e918f]">{step.durationMs ? `${step.durationMs}ms` : ''}</span>
-                              </div>
-                              <div className="text-[#8e918f] text-[11px] truncate">
-                                <span className="text-[#8e918f]">Input: </span>
-                                {JSON.stringify(step.input)}
-                              </div>
-                              {step.output && (
-                                <pre className="mt-1 p-2 rounded bg-black border border-[#333538] text-[#e3e3e3] text-[11px] max-h-36 overflow-y-auto whitespace-pre-wrap">
-                                  {step.output}
-                                </pre>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 4. Markdown Assistant Output (Dark Monochrome Theme) */}
-                  <div className="w-full min-w-0 prose-sm max-w-none break-words text-[#e3e3e3] pt-1">
-                    {displayContent ? (
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          pre({ children }: any) {
-                            return <div className="my-3 w-full min-w-0 max-w-full overflow-hidden">{children}</div>;
-                          },
-                          code({ node, inline, className, children, ...props }: any) {
-                            const match = /language-(\w+)/.exec(className || '');
-                            const codeString = String(children).replace(/\n$/, '');
-                            const isMultiLine = codeString.includes('\n');
-                            const isBlock = Boolean(match) || isMultiLine;
-
-                            if (isBlock) {
-                              const language = match ? match[1] : 'code';
-                              const isCopied = copiedCodeBlock === codeString;
-                              return (
-                                <div className="relative my-2.5 rounded-xl overflow-hidden bg-[#1e1f20] border border-[#333538] text-[#e3e3e3] shadow-md w-full min-w-0 max-w-full">
-                                  <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#28292c] border-b border-[#333538] text-xs text-[#e3e3e3] w-full min-w-0 select-none">
-                                    <span className="font-mono text-[11px] uppercase tracking-wider text-white font-bold truncate pr-2 shrink-0">
-                                      {language}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleCopyCode(codeString);
-                                      }}
-                                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#333538] hover:bg-[#444746] text-white transition text-xs font-medium active:scale-95 shadow-2xs shrink-0 cursor-pointer"
-                                    >
-                                      {isCopied ? (
-                                        <>
-                                          <Check className="w-3.5 h-3.5 text-white shrink-0" />
-                                          <span className="text-white font-semibold text-[11px]">Copied!</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Copy className="w-3.5 h-3.5 text-[#e3e3e3] shrink-0" />
-                                          <span className="text-white text-[11px]">Copy code</span>
-                                        </>
-                                      )}
-                                    </button>
-                                  </div>
-                                  <pre className="p-3.5 overflow-x-auto text-[13px] font-mono leading-relaxed bg-[#1e1f20] max-w-full text-[#e3e3e3]">
-                                    <code>{codeString}</code>
-                                  </pre>
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <code className="px-1.5 py-0.5 rounded bg-[#28292c] text-white font-mono text-[13px] border border-[#383a3e]" {...props}>
-                                {children}
-                              </code>
-                            );
-                          },
-                          p({ children }: any) {
-                            return <p className="mb-3 text-[15px] md:text-base leading-relaxed text-[#e3e3e3] last:mb-0">{children}</p>;
-                          },
-                          ul({ children }: any) {
-                            return <ul className="list-disc list-outside pl-5 mb-3 space-y-1.5 text-[15px] md:text-base text-[#e3e3e3]">{children}</ul>;
-                          },
-                          ol({ children }: any) {
-                            return <ol className="list-decimal list-outside pl-5 mb-3 space-y-1.5 text-[15px] md:text-base text-[#e3e3e3]">{children}</ol>;
-                          },
-                          h1({ children }: any) {
-                            return <h1 className="text-2xl md:text-[28px] font-bold text-white leading-tight mt-6 mb-3">{children}</h1>;
-                          },
-                          h2({ children }: any) {
-                            return <h2 className="text-xl md:text-2xl font-bold text-white leading-tight mt-6 mb-3">{children}</h2>;
-                          },
-                          h3({ children }: any) {
-                            return <h3 className="text-lg md:text-xl font-semibold text-white leading-snug mt-5 mb-2">{children}</h3>;
-                          },
-                          strong({ children }: any) {
-                            return <strong className="font-semibold text-white">{children}</strong>;
-                          },
-                          li({ children }: any) {
-                            return <li className="text-[15px] md:text-base text-[#e3e3e3] leading-relaxed">{children}</li>;
-                          },
-                          blockquote({ children }: any) {
-                            return <blockquote className="border-l-2 border-white pl-3.5 my-2.5 italic text-[#8e918f] text-sm">{children}</blockquote>;
-                          },
-                          table({ node, children }: any) {
-                            const tableId = `tbl-${Math.random().toString(36).substring(2, 7)}`;
-                            return (
-                              <div className="my-3 rounded-xl overflow-hidden border border-[#333538] bg-[#1e1f20] shadow-md w-full max-w-full">
-                                {/* Table Toolbar with Download & Copy buttons */}
-                                <div className="flex items-center justify-between px-3 py-1.5 bg-[#28292c] border-b border-[#333538] text-xs text-[#e3e3e3] select-none">
-                                  <span className="text-[11px] font-medium text-[#8e918f]">Table Data</span>
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        const text = typeof node?.position === 'object' ? displayContent.slice(node.position.start.offset, node.position.end.offset) : '';
-                                        handleDownloadTableCsv(text || displayContent, tableId);
-                                      }}
-                                      title="Download CSV"
-                                      className="p-1 hover:bg-[#333538] rounded text-[#e3e3e3] hover:text-white transition cursor-pointer"
-                                    >
-                                      {downloadedTableId === tableId ? (
-                                        <Check className="w-3.5 h-3.5 text-white" />
-                                      ) : (
-                                        <Download className="w-3.5 h-3.5" />
-                                      )}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        const text = typeof node?.position === 'object' ? displayContent.slice(node.position.start.offset, node.position.end.offset) : '';
-                                        handleCopyTable(text || displayContent, tableId);
-                                      }}
-                                      title="Copy Table"
-                                      className="p-1 hover:bg-[#333538] rounded text-[#e3e3e3] hover:text-white transition cursor-pointer"
-                                    >
-                                      {copiedTableId === tableId ? (
-                                        <Check className="w-3.5 h-3.5 text-white" />
-                                      ) : (
-                                        <Copy className="w-3.5 h-3.5" />
-                                      )}
-                                    </button>
-                                  </div>
-                                </div>
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-left text-xs md:text-sm border-collapse">{children}</table>
-                                </div>
-                              </div>
-                            );
-                          },
-                          th({ children }: any) {
-                            return <th className="bg-[#28292c] px-3.5 py-2 text-white font-semibold border-b border-[#333538] text-xs md:text-sm">{children}</th>;
-                          },
-                          td({ children }: any) {
-                            return <td className="px-3.5 py-2.5 border-b border-[#333538] text-[#e3e3e3] text-xs md:text-sm">{children}</td>;
-                          },
-                          a({ href, children }: any) {
-                            return (
-                              <a
-                                href={href}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-white hover:text-neutral-300 underline underline-offset-2 transition inline-flex items-center gap-0.5"
-                              >
-                                {children}
-                              </a>
-                            );
-                          }
-                        }}
-                      >
-                        {displayContent}
-                      </ReactMarkdown>
-                    ) : isCurrentlyStreaming ? (
-                      <div className="flex items-center gap-2 text-xs text-[#8e918f] py-1">
-                        <span className="inline-block w-2 h-3.5 bg-white animate-pulse align-middle" />
-                        <span>Generating response…</span>
-                      </div>
-                    ) : null}
-                    {isCurrentlyStreaming && displayContent && (
-                      <span className="inline-block w-2 h-3.5 ml-1 bg-white animate-pulse align-middle" />
-                    )}
-                  </div>
-
-                  {/* Assistant Actions Bar (Copy, Audio, Thumbs, Sources) */}
-                  {!isCurrentlyStreaming && (
-                    <div className="w-full flex items-center justify-between pt-2 text-[#8e918f]">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleCopyText(message.id, message.content)}
-                          title="Copy response"
-                          className="p-1 hover:text-white hover:bg-[#28292c] rounded-md transition cursor-pointer"
-                        >
-                          {copiedMsgId === message.id ? (
-                            <Check className="w-4 h-4 text-white" />
-                          ) : (
-                            <Copy className="w-4 h-4" />
-                          )}
-                        </button>
-
-                        <button
-                          onClick={() => handleToggleSpeech(message.id, message.content)}
-                          title="Read aloud"
-                          className={`p-1 rounded-md transition cursor-pointer ${
-                            speakingMsgId === message.id
-                              ? 'text-white bg-[#28292c]'
-                              : 'hover:text-white hover:bg-[#28292c]'
-                          }`}
-                        >
-                          <Volume2 className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          onClick={onRegenerate}
-                          title="Regenerate answer"
-                          className="p-1 hover:text-white hover:bg-[#28292c] rounded-md transition cursor-pointer"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          title="Good response"
-                          className="p-1 hover:text-white hover:bg-[#28292c] rounded-md transition cursor-pointer"
-                        >
-                          <ThumbsUp className="w-4 h-4" />
-                        </button>
-                        <button
-                          title="Bad response"
-                          className="p-1 hover:text-white hover:bg-[#28292c] rounded-md transition cursor-pointer"
-                        >
-                          <ThumbsDown className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {/* Right-aligned Sources Pill Button */}
-                      {message.searched && message.searchSources && message.searchSources.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => toggleSources(message.id)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1e1f20] hover:bg-[#28292c] border border-[#333538] text-white text-xs transition cursor-pointer shadow-2xs"
-                        >
-                          <div className="flex -space-x-1 items-center">
-                            <span className="w-3.5 h-3.5 rounded-full bg-[#28292c] border border-neutral-700 flex items-center justify-center text-[8px] text-white">
-                              <Globe className="w-2.5 h-2.5 text-white" />
-                            </span>
-                            <span className="w-3.5 h-3.5 rounded-full bg-[#28292c] border border-neutral-700 flex items-center justify-center text-[8px] text-white">
-                              <Play className="w-2 h-2 text-white fill-white" />
-                            </span>
-                          </div>
-                          <span className="text-[11px] font-medium">Sources</span>
-                          <span className="text-[10px] bg-[#333538] px-1 py-0.2 rounded text-white">
-                            {message.searchSources.length}
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+                /* Assistant Output Flow using unified AgentMessage component */
+                <AgentMessage
+                  message={message}
+                  isStreaming={isCurrentlyStreaming}
+                  displayContent={displayContent}
+                  copiedCodeBlock={copiedCodeBlock}
+                  onCopyCode={handleCopyCode}
+                  copiedTableId={copiedTableId}
+                  onCopyTable={handleCopyTable}
+                  downloadedTableId={downloadedTableId}
+                  onDownloadTableCsv={handleDownloadTableCsv}
+                  onRetry={onRegenerate}
+                  onToggleSpeech={handleToggleSpeech}
+                  isSpeaking={speakingMsgId === message.id}
+                  onToggleSources={toggleSources}
+                  showSources={Boolean(expandedSources[message.id])}
+                />
               )}
             </div>
           );
         })}
 
-        {/* Live Reasoning & Progressive Thinking State when loading */}
-        {isLoading && !messages.some((m) => m.status === 'streaming') && (
-          <div className="w-full flex flex-col items-start space-y-2.5 animate-in fade-in duration-150">
-            {/* 1. Reasoning Badge */}
-            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-white">
-              <BrainCircuit className="w-4 h-4 text-white" />
-              <span>Reasoning</span>
-              <ChevronRight className="w-3.5 h-3.5 text-[#8e918f]" />
-            </div>
-
-            {/* 2. Live Web Search Pill */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1e1f20] border border-[#333538] text-[#e3e3e3] text-xs font-normal shadow-2xs max-w-full animate-pulse">
-              <Search className="w-3.5 h-3.5 text-[#8e918f] shrink-0" />
-              <span className="truncate">
-                {lastUserMessage?.content
-                  ? `Searching for ${lastUserMessage.content.slice(0, 55)}...`
-                  : 'Searching for relevant web intelligence and sources...'}
-              </span>
-            </div>
-
-            {/* 3. Thinking Header */}
-            <div className="flex items-center gap-1.5 text-xs font-normal text-[#8e918f]">
-              <BrainCircuit className="w-4 h-4 text-white animate-pulse" />
-              <span>Thinking...</span>
-              <ChevronDown className="w-3.5 h-3.5 text-[#8e918f]" />
-            </div>
-
-            {/* 4. Subtle Thought Line */}
-            <div className="text-xs md:text-sm text-[#8e918f] leading-relaxed font-sans pl-0.5 italic animate-pulse">
-              Analyzing prompt objectives, evaluating constraints and industry best practices to formulate structured response...
-            </div>
+        {/* Elegant typing indicator when loading and no message text yet */}
+        {isLoading && !messages.some((m) => m.status === 'streaming' || m.content) && (
+          <div className="w-full flex items-center gap-2 text-zinc-400 py-2 text-xs font-mono animate-in fade-in duration-150">
+            <Loader2 size={14} className="animate-spin text-zinc-400" />
+            <span>Thinking…</span>
           </div>
         )}
 
@@ -871,22 +505,22 @@ export const ChatView: React.FC<ChatViewProps> = ({
       </div>
 
       {/* Floating Bottom Input Bar */}
-      <div className="flex-shrink-0 p-3 md:p-6 bg-black pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <div className="max-w-3xl mx-auto w-full bg-[#1e1f20] rounded-3xl border border-[#333538] shadow-2xl p-3 md:p-3.5 transition-all duration-200">
+      <div className="flex-shrink-0 p-3 md:p-4 bg-black pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-zinc-900">
+        <div className="max-w-[700px] mx-auto w-full bg-zinc-900 rounded-3xl border border-zinc-800 p-3 md:p-3.5 transition-all duration-200">
           {/* Selected Images Preview */}
           {selectedImages.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2 px-1">
               {selectedImages.map((img, i) => (
                 <div
                   key={i}
-                  className="relative group rounded-xl overflow-hidden border border-[#333538] shadow-xs"
+                  className="relative group rounded-xl overflow-hidden border border-zinc-700 shadow-xs"
                 >
                   <img src={img} alt="Vision upload" className="w-14 h-14 object-cover" />
                   <button
                     onClick={() => removeImage(i)}
                     className="absolute top-1 right-1 p-0.5 bg-black/70 hover:bg-black text-white rounded-full transition cursor-pointer"
                   >
-                    <X className="w-3 h-3" />
+                    <X size={12} />
                   </button>
                 </div>
               ))}
@@ -901,7 +535,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask, learn, brainstorm"
-            className="w-full resize-none bg-transparent text-sm sm:text-base text-[#e3e3e3] placeholder-[#8e918f] focus:outline-none px-1 py-1 leading-relaxed"
+            className="w-full resize-none bg-transparent text-[15px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-1 py-1 leading-relaxed"
           />
 
           {/* Bottom Bar Controls Row */}
@@ -913,9 +547,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 title="Add attachment"
-                className="p-2 text-[#c4c7c5] hover:text-white hover:bg-[#28292c] rounded-xl transition active:scale-95 cursor-pointer"
+                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-xl transition active:scale-95 cursor-pointer"
               >
-                <Plus className="w-5 h-5" />
+                <Plus size={18} />
               </button>
 
               {/* Chat Mode Selector Pill */}
@@ -925,29 +559,29 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   onClick={() => setShowModeDropdown(!showModeDropdown)}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
                     isDeepResearchMode
-                      ? 'bg-white text-black border border-white'
-                      : 'text-[#c4c7c5] hover:text-white hover:bg-[#28292c]'
+                      ? 'bg-zinc-100 text-black border border-zinc-100'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
                   }`}
                   title="Toggle Chat Mode"
                 >
-                  <MessageSquare className="w-4 h-4" />
-                  <ChevronDown className="w-3 h-3 text-neutral-400" />
+                  <MessageSquare size={14} />
+                  <ChevronDown size={12} className="text-zinc-400" />
                 </button>
 
                 {showModeDropdown && (
-                  <div className="absolute left-0 bottom-full mb-2 w-44 bg-[#1e1f20] rounded-2xl shadow-2xl border border-[#333538] py-1.5 z-30 text-xs animate-in fade-in duration-150">
+                  <div className="absolute left-0 bottom-full mb-2 w-44 bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-800 py-1.5 z-30 text-xs animate-in fade-in duration-150">
                     <button
                       type="button"
                       onClick={() => {
                         setIsDeepResearchMode(false);
                         setShowModeDropdown(false);
                       }}
-                      className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-[#28292c] cursor-pointer ${
-                        !isDeepResearchMode ? 'font-semibold text-white' : 'text-[#c4c7c5]'
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-zinc-800 cursor-pointer ${
+                        !isDeepResearchMode ? 'font-semibold text-white' : 'text-zinc-400'
                       }`}
                     >
                       <span>Standard Chat</span>
-                      {!isDeepResearchMode && <Check className="w-3.5 h-3.5 text-white" />}
+                      {!isDeepResearchMode && <Check size={14} className="text-emerald-500" />}
                     </button>
                     <button
                       type="button"
@@ -955,28 +589,28 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         setIsDeepResearchMode(true);
                         setShowModeDropdown(false);
                       }}
-                      className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-[#28292c] cursor-pointer ${
-                        isDeepResearchMode ? 'font-semibold text-white' : 'text-[#c4c7c5]'
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-zinc-800 cursor-pointer ${
+                        isDeepResearchMode ? 'font-semibold text-white' : 'text-zinc-400'
                       }`}
                     >
                       <div className="flex items-center gap-1.5">
-                        <BrainCircuit className="w-3.5 h-3.5 text-white" />
+                        <BrainCircuit size={14} className="text-white" />
                         <span>Deep Research</span>
                       </div>
-                      {isDeepResearchMode && <Check className="w-3.5 h-3.5 text-white" />}
+                      {isDeepResearchMode && <Check size={14} className="text-emerald-500" />}
                     </button>
                   </div>
                 )}
               </div>
 
-              {/* Monitor / Canvas Icon */}
+              {/* Monitor / Workspace */}
               <button
                 type="button"
                 onClick={onOpenSavedPrompts}
                 title="Workspace / Prompts"
-                className="p-2 text-[#c4c7c5] hover:text-white hover:bg-[#28292c] rounded-xl transition active:scale-95 cursor-pointer"
+                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-xl transition active:scale-95 cursor-pointer"
               >
-                <Monitor className="w-4 h-4" />
+                <Monitor size={16} />
               </button>
             </div>
 
@@ -987,13 +621,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 type="button"
                 onClick={handleToggleVoice}
                 title="Voice input"
-                className={`p-2 rounded-full transition active:scale-95 cursor-pointer ${
+                className={`p-1.5 rounded-full transition active:scale-95 cursor-pointer ${
                   isRecording
-                    ? 'bg-white text-black animate-pulse'
-                    : 'text-[#c4c7c5] hover:text-white hover:bg-[#28292c]'
+                    ? 'bg-zinc-100 text-black animate-pulse'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
                 }`}
               >
-                <Mic className="w-4 h-4" />
+                <Mic size={16} />
               </button>
 
               {/* Send / Stop Action Button */}
@@ -1001,20 +635,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <button
                   type="button"
                   disabled
-                  className="w-8 h-8 rounded-full bg-[#333538] text-white flex items-center justify-center shadow-xs transition cursor-wait"
+                  className="w-8 h-8 rounded-full bg-zinc-800 text-white flex items-center justify-center shadow-xs transition cursor-wait"
                   title="Generating response..."
                 >
-                  <Square className="w-3.5 h-3.5 fill-white" />
+                  <Square size={14} className="fill-white" />
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => handleSubmit()}
                   disabled={(!inputText.trim() && selectedImages.length === 0) || Boolean(streamingMsgId)}
-                  className="w-8 h-8 rounded-full bg-white hover:bg-neutral-200 disabled:opacity-30 text-black flex items-center justify-center shadow-xs transition active:scale-95 cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-white disabled:opacity-30 text-black flex items-center justify-center shadow-xs transition active:scale-95 cursor-pointer"
                   title="Send message"
                 >
-                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                  <ArrowUp size={16} />
                 </button>
               )}
             </div>
@@ -1028,12 +662,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
           onClick={() => setInspectImage(null)}
           className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4"
         >
-          <div className="relative max-w-4xl max-h-[90vh] bg-[#1e1f20] rounded-2xl overflow-hidden p-2 border border-[#333538]">
+          <div className="relative max-w-4xl max-h-[90vh] bg-zinc-900 rounded-2xl overflow-hidden p-2 border border-zinc-800">
             <button
               onClick={() => setInspectImage(null)}
               className="absolute top-4 right-4 p-2 bg-black/60 hover:bg-black text-white rounded-full transition z-10 cursor-pointer"
             >
-              <X className="w-5 h-5" />
+              <X size={20} />
             </button>
             <img
               src={inspectImage}
