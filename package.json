@@ -12,6 +12,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@daytona/sdk": "^0.207.0",
     "@google/genai": "^2.4.0",
     "@lobehub/icons-static-svg": "^1.94.0",
     "@tailwindcss/vite": "^4.1.14",

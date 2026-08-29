@@ -104,29 +104,7 @@ export default function App() {
             chatCount: 0,
           };
 
-          // 1. Sync with backend API to preserve credits & chat history
-          try {
-            if (idToken) {
-              const backendRes = await api.loginWithGoogle({
-                idToken,
-                credential: idToken,
-              });
-              if (backendRes.success && backendRes.user) {
-                userProfile = {
-                  ...backendRes.user,
-                  uid: fbUser.uid,
-                  displayName: fbUser.displayName || backendRes.user.displayName,
-                  email: fbUser.email || backendRes.user.email,
-                  photoURL: fbUser.photoURL || backendRes.user.photoURL,
-                };
-                if (backendRes.token) {
-                  localStorage.setItem('leo_auth_token', backendRes.token);
-                }
-              }
-            }
-          } catch (e) {}
-
-          // 2. Sync with Firestore
+          // 1. Sync with Firestore directly
           try {
             const userDocRef = doc(db, 'users', fbUser.uid);
             const snap = await getDoc(userDocRef);
@@ -134,6 +112,9 @@ export default function App() {
               const data = snap.data();
               userProfile = {
                 ...userProfile,
+                ...data,
+                uid: fbUser.uid,
+                email: fbUser.email || data.email || '',
                 credits: typeof data.credits === 'number' ? data.credits : userProfile.credits,
                 createdAt: data.createdAt ? (typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt) || userProfile.createdAt) : userProfile.createdAt,
                 chatCount: typeof data.chatCount === 'number' ? data.chatCount : userProfile.chatCount,

@@ -520,66 +520,14 @@ export const api = {
     }
   },
 
-  async loginWithGoogle(params: {
-    credential?: string;
-    idToken?: string;
-    accessToken?: string;
-    code?: string;
-    redirectUri?: string;
-  }): Promise<{
-    success: boolean;
-    message: string;
-    user: UserProfile;
-    token: string;
-    isNewUser?: boolean;
-  }> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
-
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/google`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      return await safeFetchJson(res, 'Google authentication failed');
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        throw new Error('Backend server is taking longer to respond. Please try again.');
-      }
-      throw err;
-    }
-  },
-
-  async getGoogleAuthUrl(redirectUri?: string, state?: string): Promise<{ success: boolean; url: string }> {
-    const query = new URLSearchParams();
-    if (redirectUri) query.set('redirect_uri', redirectUri);
-    if (state) query.set('state', state);
-
-    const res = await fetch(`${API_BASE}/api/auth/google/url?${query.toString()}`);
-    return safeFetchJson(res, 'Failed to generate Google OAuth URL');
-  },
-
   async getOAuthConfig(): Promise<{
-    googleClientId: string;
-    googleConfigured: boolean;
     defaultCredits: number;
     firebaseConfigured: boolean;
   }> {
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/oauth-config`);
-      return await safeFetchJson(res);
-    } catch {
-      return {
-        googleClientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
-        googleConfigured: Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID),
-        defaultCredits: 50,
-        firebaseConfigured: true,
-      };
-    }
+    return {
+      defaultCredits: 50,
+      firebaseConfigured: true,
+    };
   },
 
   async getSessionUser(uid?: string): Promise<{ success: boolean; user: UserProfile }> {

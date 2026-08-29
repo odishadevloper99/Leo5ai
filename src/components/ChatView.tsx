@@ -444,16 +444,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
               {/* User Bubble Layout */}
               {isUser ? (
                 <div className="flex flex-col items-end gap-1 max-w-[85%]">
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-[15px] text-zinc-100 leading-relaxed break-words">
+                  <div className="rounded-2xl border border-[#333538] bg-[#1e1f20] px-4 py-2.5 text-[15px] text-[#e3e3e3] leading-relaxed break-words">
                     {message.content}
                   </div>
 
                   {/* User Action icons (Copy, Edit) below bubble */}
-                  <div className="flex items-center gap-1.5 px-1 pt-0.5 text-zinc-500">
+                  <div className="flex items-center gap-1.5 px-1 pt-0.5 text-[#8e918f]">
                     <button
                       onClick={() => handleCopyText(message.id, message.content)}
                       title="Copy question"
-                      className="p-1 hover:text-zinc-200 hover:bg-zinc-800 rounded transition cursor-pointer"
+                      className="p-1 hover:text-white hover:bg-[#28292c] rounded transition cursor-pointer"
                     >
                       {copiedMsgId === message.id ? (
                         <Check size={14} className="text-emerald-500" />
@@ -464,7 +464,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <button
                       onClick={() => handleEditUserMessage(message.content)}
                       title="Edit question"
-                      className="p-1 hover:text-zinc-200 hover:bg-zinc-800 rounded transition cursor-pointer"
+                      className="p-1 hover:text-white hover:bg-[#28292c] rounded transition cursor-pointer"
                     >
                       <Pencil size={14} />
                     </button>
@@ -495,8 +495,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
         {/* Elegant typing indicator when loading and no message text yet */}
         {isLoading && !messages.some((m) => m.status === 'streaming' || m.content) && (
-          <div className="w-full flex items-center gap-2 text-zinc-400 py-2 text-xs font-mono animate-in fade-in duration-150">
-            <Loader2 size={14} className="animate-spin text-zinc-400" />
+          <div className="w-full flex items-center gap-2 text-[#8e918f] py-2 text-xs font-mono animate-in fade-in duration-150">
+            <Loader2 size={14} className="animate-spin text-[#8e918f]" />
             <span>Thinking…</span>
           </div>
         )}
@@ -505,15 +505,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
       </div>
 
       {/* Floating Bottom Input Bar */}
-      <div className="flex-shrink-0 p-3 md:p-4 bg-black pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-zinc-900">
-        <div className="max-w-[700px] mx-auto w-full bg-zinc-900 rounded-3xl border border-zinc-800 p-3 md:p-3.5 transition-all duration-200">
+      <div className="flex-shrink-0 p-3 md:p-4 bg-black pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-[#1e1f20]">
+        <div className="max-w-[700px] mx-auto w-full bg-[#1e1f20] rounded-3xl border border-[#333538] p-3 md:p-3.5 transition-all duration-200">
           {/* Selected Images Preview */}
           {selectedImages.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2 px-1">
               {selectedImages.map((img, i) => (
                 <div
                   key={i}
-                  className="relative group rounded-xl overflow-hidden border border-zinc-700 shadow-xs"
+                  className="relative group rounded-xl overflow-hidden border border-[#333538] shadow-xs"
                 >
                   <img src={img} alt="Vision upload" className="w-14 h-14 object-cover" />
                   <button
@@ -535,7 +535,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask, learn, brainstorm"
-            className="w-full resize-none bg-transparent text-[15px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-1 py-1 leading-relaxed"
+            className="w-full resize-none bg-transparent text-[15px] text-[#e3e3e3] placeholder-[#8e918f] focus:outline-none px-1 py-1 leading-relaxed"
           />
 
           {/* Bottom Bar Controls Row */}
@@ -547,7 +547,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 title="Add attachment"
-                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-xl transition active:scale-95 cursor-pointer"
+                className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#28292c] rounded-xl transition active:scale-95 cursor-pointer"
               >
                 <Plus size={18} />
               </button>
@@ -559,25 +559,25 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   onClick={() => setShowModeDropdown(!showModeDropdown)}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer ${
                     isDeepResearchMode
-                      ? 'bg-zinc-100 text-black border border-zinc-100'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                      ? 'bg-white text-black border border-white'
+                      : 'text-[#8e918f] hover:text-white hover:bg-[#28292c]'
                   }`}
                   title="Toggle Chat Mode"
                 >
                   <MessageSquare size={14} />
-                  <ChevronDown size={12} className="text-zinc-400" />
+                  <ChevronDown size={12} className={isDeepResearchMode ? 'text-black' : 'text-[#8e918f]'} />
                 </button>
 
                 {showModeDropdown && (
-                  <div className="absolute left-0 bottom-full mb-2 w-44 bg-zinc-900 rounded-2xl shadow-2xl border border-zinc-800 py-1.5 z-30 text-xs animate-in fade-in duration-150">
+                  <div className="absolute left-0 bottom-full mb-2 w-44 bg-[#1e1f20] rounded-2xl shadow-2xl border border-[#333538] py-1.5 z-30 text-xs animate-in fade-in duration-150">
                     <button
                       type="button"
                       onClick={() => {
                         setIsDeepResearchMode(false);
                         setShowModeDropdown(false);
                       }}
-                      className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-zinc-800 cursor-pointer ${
-                        !isDeepResearchMode ? 'font-semibold text-white' : 'text-zinc-400'
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-[#28292c] cursor-pointer ${
+                        !isDeepResearchMode ? 'font-semibold text-white' : 'text-[#8e918f]'
                       }`}
                     >
                       <span>Standard Chat</span>
@@ -589,8 +589,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         setIsDeepResearchMode(true);
                         setShowModeDropdown(false);
                       }}
-                      className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-zinc-800 cursor-pointer ${
-                        isDeepResearchMode ? 'font-semibold text-white' : 'text-zinc-400'
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-[#28292c] cursor-pointer ${
+                        isDeepResearchMode ? 'font-semibold text-white' : 'text-[#8e918f]'
                       }`}
                     >
                       <div className="flex items-center gap-1.5">
@@ -608,7 +608,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 type="button"
                 onClick={onOpenSavedPrompts}
                 title="Workspace / Prompts"
-                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-xl transition active:scale-95 cursor-pointer"
+                className="p-1.5 text-[#8e918f] hover:text-white hover:bg-[#28292c] rounded-xl transition active:scale-95 cursor-pointer"
               >
                 <Monitor size={16} />
               </button>
@@ -623,8 +623,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 title="Voice input"
                 className={`p-1.5 rounded-full transition active:scale-95 cursor-pointer ${
                   isRecording
-                    ? 'bg-zinc-100 text-black animate-pulse'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    ? 'bg-white text-black animate-pulse'
+                    : 'text-[#8e918f] hover:text-white hover:bg-[#28292c]'
                 }`}
               >
                 <Mic size={16} />
@@ -635,7 +635,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <button
                   type="button"
                   disabled
-                  className="w-8 h-8 rounded-full bg-zinc-800 text-white flex items-center justify-center shadow-xs transition cursor-wait"
+                  className="w-8 h-8 rounded-full bg-[#28292c] text-white flex items-center justify-center shadow-xs transition cursor-wait"
                   title="Generating response..."
                 >
                   <Square size={14} className="fill-white" />
@@ -645,7 +645,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   type="button"
                   onClick={() => handleSubmit()}
                   disabled={(!inputText.trim() && selectedImages.length === 0) || Boolean(streamingMsgId)}
-                  className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-white disabled:opacity-30 text-black flex items-center justify-center shadow-xs transition active:scale-95 cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-white hover:bg-[#e3e3e3] disabled:opacity-30 text-black flex items-center justify-center shadow-xs transition active:scale-95 cursor-pointer"
                   title="Send message"
                 >
                   <ArrowUp size={16} />

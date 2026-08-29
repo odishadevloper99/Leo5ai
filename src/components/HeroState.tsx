@@ -118,14 +118,14 @@ export const HeroState: React.FC<HeroStateProps> = ({
 
       {/* Bottom Composer Card (Matches Screenshot 5 exactly) */}
       <div className="w-full max-w-2xl mx-auto pb-4 z-20">
-        <div className="bg-[#141416] rounded-3xl border border-[#222225] hover:border-zinc-700 focus-within:border-zinc-600 shadow-2xl p-3 sm:p-3.5 transition duration-200">
+        <div className="bg-[#1e1f20] rounded-3xl border border-[#333538] hover:border-zinc-700 focus-within:border-zinc-600 shadow-2xl p-3 sm:p-3.5 transition duration-200">
           {/* Selected Images Preview */}
           {selectedImages.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-2 px-1">
               {selectedImages.map((img, i) => (
                 <div
                   key={i}
-                  className="relative group rounded-xl overflow-hidden border border-[#27272a] shadow-xs"
+                  className="relative group rounded-xl overflow-hidden border border-[#333538] shadow-xs"
                 >
                   <img src={img} alt="Upload" className="w-14 h-14 object-cover" />
                   <button
@@ -148,7 +148,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask, learn, brainstorm"
-            className="w-full resize-none bg-transparent text-[14px] text-zinc-100 placeholder-zinc-500 focus:outline-none px-2 pt-1 leading-relaxed"
+            className="w-full resize-none bg-transparent text-[15px] text-[#e3e3e3] placeholder-[#8e918f] focus:outline-none px-2 pt-1 leading-relaxed"
           />
 
           {/* Bottom Action Row (Matches Screenshot 5) */}
@@ -160,7 +160,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                 id="hero-vision-upload-btn"
                 onClick={() => fileInputRef.current?.click()}
                 title="Attach file or image"
-                className="w-8 h-8 rounded-full bg-transparent hover:bg-[#1f1f23] text-zinc-300 hover:text-white flex items-center justify-center transition active:scale-95 cursor-pointer"
+                className="w-8 h-8 rounded-full bg-transparent hover:bg-[#28292c] text-[#8e918f] hover:text-white flex items-center justify-center transition active:scale-95 cursor-pointer"
               >
                 <Plus className="w-4 h-4 stroke-[2]" />
               </button>
@@ -169,21 +169,21 @@ export const HeroState: React.FC<HeroStateProps> = ({
               <div className="relative">
                 <button
                   onClick={() => setIsModeDropdownOpen(!isModeDropdownOpen)}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-[#1c1c20] hover:bg-[#25252a] text-zinc-300 hover:text-white text-xs font-medium transition cursor-pointer border border-[#27272a]"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-[#28292c] hover:bg-[#333538] text-[#e3e3e3] hover:text-white text-xs font-medium transition cursor-pointer border border-[#333538]"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
-                  <ChevronDown className="w-3 h-3 text-zinc-400" />
+                  <ChevronDown className="w-3 h-3 text-[#8e918f]" />
                 </button>
 
                 {isModeDropdownOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 w-44 bg-[#18181b] border border-[#27272a] rounded-xl shadow-2xl p-1 z-50 animate-in fade-in zoom-in-95 text-xs text-zinc-200">
+                  <div className="absolute bottom-full left-0 mb-2 w-44 bg-[#1e1f20] border border-[#333538] rounded-xl shadow-2xl p-1 z-50 animate-in fade-in zoom-in-95 text-xs text-[#e3e3e3]">
                     <button
                       onClick={() => {
                         setActiveMode('chat');
                         setIsDeepResearch(false);
                         setIsModeDropdownOpen(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-[#28292c] text-left transition cursor-pointer"
                     >
                       <MessageSquare className="w-3.5 h-3.5 text-white" />
                       <span>Standard Chat</span>
@@ -193,7 +193,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                         setIsDeepResearch(true);
                         setIsModeDropdownOpen(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-[#28292c] text-left transition cursor-pointer"
                     >
                       <Search className="w-3.5 h-3.5 text-white" />
                       <span>Deep Research</span>
@@ -203,7 +203,7 @@ export const HeroState: React.FC<HeroStateProps> = ({
                         onOpenSavedPrompts();
                         setIsModeDropdownOpen(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-[#28292c] text-left transition cursor-pointer"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-white" />
                       <span>Prompt Library</span>
@@ -220,8 +220,8 @@ export const HeroState: React.FC<HeroStateProps> = ({
                 title="Canvas workspace"
                 className={`w-8 h-8 rounded-xl flex items-center justify-center transition active:scale-95 cursor-pointer ${
                   activeMode === 'canvas'
-                    ? 'bg-[#25252a] text-white border border-zinc-600'
-                    : 'bg-transparent hover:bg-[#1c1c20] text-zinc-400 hover:text-zinc-200'
+                    ? 'bg-[#28292c] text-white border border-[#333538]'
+                    : 'bg-transparent hover:bg-[#28292c] text-[#8e918f] hover:text-[#e3e3e3]'
                 }`}
               >
                 <Monitor className="w-4 h-4" />
@@ -234,43 +234,43 @@ export const HeroState: React.FC<HeroStateProps> = ({
               <div className="relative">
                 <button
                   onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-transparent hover:bg-[#1c1c20] text-zinc-300 hover:text-white text-xs font-medium transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-transparent hover:bg-[#28292c] text-[#8e918f] hover:text-white text-xs font-medium transition cursor-pointer"
                 >
                   <span>Model</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                  <ChevronDown className="w-3.5 h-3.5 text-[#8e918f]" />
                 </button>
 
                 {isModelMenuOpen && (
-                  <div className="absolute bottom-full right-0 mb-2 w-48 bg-[#18181b] border border-[#27272a] rounded-xl shadow-2xl p-1 z-50 animate-in fade-in zoom-in-95 text-xs text-zinc-200">
+                  <div className="absolute bottom-full right-0 mb-2 w-48 bg-[#1e1f20] border border-[#333538] rounded-xl shadow-2xl p-1 z-50 animate-in fade-in zoom-in-95 text-xs text-[#e3e3e3]">
                     <button
                       onClick={() => {
                         setCurrentModel('Leo-3.7-Pro');
                         setIsModelMenuOpen(false);
                       }}
-                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
+                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-[#28292c] text-left transition cursor-pointer"
                     >
                       <span className="font-semibold text-white">Leo-3.7-Pro</span>
-                      <span className="text-[10px] text-zinc-400 font-mono">Fast</span>
+                      <span className="text-[10px] text-[#8e918f] font-mono">Fast</span>
                     </button>
                     <button
                       onClick={() => {
                         setCurrentModel('Leo-Cyber-Sec');
                         setIsModelMenuOpen(false);
                       }}
-                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
+                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-[#28292c] text-left transition cursor-pointer"
                     >
                       <span className="font-semibold text-white">Leo-Cyber-Sec</span>
-                      <span className="text-[10px] text-zinc-400 font-mono">Payload</span>
+                      <span className="text-[10px] text-[#8e918f] font-mono">Payload</span>
                     </button>
                     <button
                       onClick={() => {
                         setCurrentModel('Leo-DeepThink');
                         setIsModelMenuOpen(false);
                       }}
-                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 text-left transition"
+                      className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-[#28292c] text-left transition cursor-pointer"
                     >
                       <span className="font-semibold text-white">Leo-DeepThink</span>
-                      <span className="text-[10px] text-zinc-400 font-mono">Reasoning</span>
+                      <span className="text-[10px] text-[#8e918f] font-mono">Reasoning</span>
                     </button>
                   </div>
                 )}
@@ -283,8 +283,8 @@ export const HeroState: React.FC<HeroStateProps> = ({
                 disabled={!inputText.trim() && selectedImages.length === 0}
                 className={`w-9 h-9 rounded-full flex items-center justify-center transition duration-150 active:scale-95 cursor-pointer ${
                   inputText.trim() || selectedImages.length > 0
-                    ? 'bg-[#e4e4e7] text-black hover:bg-white shadow-md'
-                    : 'bg-[#2a2a2e] text-zinc-500 cursor-not-allowed'
+                    ? 'bg-white text-black hover:bg-[#e3e3e3] shadow-md'
+                    : 'bg-[#28292c] text-[#8e918f] cursor-not-allowed opacity-50'
                 }`}
               >
                 <ArrowUp className="w-4 h-4 stroke-[2.5]" />
