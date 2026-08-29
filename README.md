@@ -169,7 +169,7 @@ git push -u origin main
 1. Open [Render Dashboard](https://dashboard.render.com) > click **New + > Web Service**.
 2. Connect your GitHub repository (`leo-ai`).
 3. Set the following build settings:
-   - **Root Directory**: `backend` *(or leave blank if deploying unified root)*
+   - **Root Directory**: `backend`
    - **Environment**: `Node`
    - **Build Command**: `npm install && npm run build`
    - **Start Command**: `npm run start`

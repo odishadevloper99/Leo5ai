@@ -187,3 +187,56 @@
   border-top: 1px solid #27272a;
   margin: 1rem 0;
 }
+
+/* Leo AI — animated hacker face logo mark */
+.leo-facelogo {
+  animation: leoFloat 3.6s ease-in-out infinite, leoGlitch 6s infinite;
+}
+.leo-facelogo-hood,
+.leo-facelogo-head {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.leo-facelogo-visor {
+  fill: #ffffff;
+}
+.leo-facelogo-mouth {
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+}
+.leo-facelogo-scan {
+  fill: rgba(0, 0, 0, 0.6);
+  animation: leoScan 2.6s linear infinite;
+}
+@keyframes leoScan {
+  0% { transform: translateX(-14px); }
+  100% { transform: translateX(14px); }
+}
+@keyframes leoFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+@keyframes leoGlitch {
+  0%, 96%, 100% { filter: none; transform: translateY(0); }
+  96.5% {
+    filter: drop-shadow(1px 0 #5ef2ff) drop-shadow(-1px 0 #ff5e5e);
+    transform: translate(0.5px, -0.5px);
+  }
+  97% { filter: none; transform: translate(-0.5px, 0.5px); }
+  97.5% {
+    filter: drop-shadow(-1px 0 #5ef2ff) drop-shadow(1px 0 #ff5e5e);
+    transform: translate(0.5px, 0);
+  }
+  98% { filter: none; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .leo-facelogo,
+  .leo-facelogo-scan {
+    animation: none;
+  }
+}

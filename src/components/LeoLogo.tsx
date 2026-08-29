@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 
 interface LeoLogoMarkProps {
   className?: string;
@@ -8,7 +8,8 @@ interface LeoLogoMarkProps {
 
 /**
  * Official Leo AI Brand Logo Mark (SVG)
- * Crisp white geometric origami / polyhedral icon matching reference design
+ * Animated white "hacker face" mark — hooded silhouette with a scanning visor,
+ * a subtle idle float, and an occasional glitch flicker.
  */
 export const LeoLogoMark: React.FC<LeoLogoMarkProps> = ({
   className = 'w-7 h-7',
@@ -16,40 +17,45 @@ export const LeoLogoMark: React.FC<LeoLogoMarkProps> = ({
   title = 'Leo AI Logo',
 }) => {
   const styleProps = size !== undefined ? { width: size, height: size } : undefined;
+  const clipId = `leo-visor-clip-${useId()}`;
 
   return (
     <svg
-      viewBox="0 0 100 100"
+      viewBox="0 0 120 120"
       role="img"
       aria-label={title}
       style={styleProps}
-      className={`shrink-0 select-none ${className}`}
+      className={`leo-facelogo shrink-0 select-none ${className}`}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
       <title>{title}</title>
-      {/* Sleek interwoven geometric origami form */}
+      <defs>
+        <clipPath id={clipId}>
+          <rect x="34" y="52" width="52" height="16" rx="6" />
+        </clipPath>
+      </defs>
+
+      {/* hood */}
       <path
-        d="M50 12L78 28V60L50 76L22 60V28L50 12Z"
-        stroke="#ffffff"
-        strokeWidth="6"
-        strokeLinejoin="round"
+        className="leo-facelogo-hood"
+        d="M22,60 C22,28 42,10 60,10 C78,10 98,28 98,60 L98,88 C98,88 84,74 60,74 C36,74 22,88 22,88 Z"
       />
+
+      {/* head base line */}
       <path
-        d="M50 12V44L78 60M50 44L22 60M50 44L50 76"
-        stroke="#ffffff"
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        className="leo-facelogo-head"
+        d="M30,70 C30,92 42,104 60,104 C78,104 90,92 90,70"
       />
-      <path
-        d="M36 20L64 36M64 36V68M36 52L64 68"
-        stroke="#ffffff"
-        strokeWidth="3.5"
-        strokeLinecap="round"
-        opacity="0.85"
-      />
-      <circle cx="50" cy="44" r="4" fill="#ffffff" />
+
+      {/* visor / eyes bar with scanning glint */}
+      <g clipPath={`url(#${clipId})`}>
+        <rect className="leo-facelogo-visor" x="34" y="52" width="52" height="16" rx="6" />
+        <rect className="leo-facelogo-scan" x="34" y="52" width="14" height="16" />
+      </g>
+
+      {/* simple mouth */}
+      <path className="leo-facelogo-mouth" d="M50,86 L70,86" />
     </svg>
   );
 };

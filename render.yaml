@@ -1,0 +1,75 @@
+# Render Blueprint for the Leo AI backend
+#
+# This project is now split: the Express API lives in /backend and deploys
+# to Render; the React/Vite frontend lives at the repo root and deploys to
+# Vercel separately (see README.md Step 4). rootDir below points Render at
+# the backend/ folder so it runs npm install / build / start from there.
+
+services:
+  - type: web
+    name: leo-ai-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    branch: main
+    autoDeploy: true
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # --- AI providers / models ---
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        sync: false
+      - key: DEFAULT_AI_MODEL
+        sync: false
+      - key: VISION_AI_MODEL
+        sync: false
+      - key: CODE_AI_MODEL
+        sync: false
+      - key: AICREDITS_API_KEY
+        sync: false
+      - key: AICREDITS_BASE_URL
+        sync: false
+      - key: AICREDITS_MODEL
+        sync: false
+      # --- Admin / auth ---
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      # --- Firebase (server-side) ---
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_DATABASE_URL
+        sync: false
+      - key: FIREBASE_API_KEY
+        sync: false
+      # --- Email / OTP delivery ---
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      # --- Optional integrations (leave unset if unused) ---
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: MEMO_API_KEY
+        sync: false
+      - key: JINA_API_KEY
+        sync: false
+      - key: DAYTONA_API_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
