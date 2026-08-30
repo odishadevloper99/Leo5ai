@@ -17,7 +17,7 @@ class MemoService {
         headers: { Authorization: `Token ${this.apiKey}` },
       });
       if (!res.ok) return [];
-      const data = await res.json();
+      const data: any = await res.json();
       return Array.isArray(data) ? data : data.memories || [];
     } catch {
       return [];
@@ -36,7 +36,7 @@ class MemoService {
         body: JSON.stringify({ user_id: userId, query, limit }),
       });
       if (!res.ok) return [];
-      const data = await res.json();
+      const data: any = await res.json();
       return Array.isArray(data) ? data : data.memories || [];
     } catch {
       return [];

@@ -130,15 +130,15 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
 
   const handleToggleFreeModel = async (modelId: string) => {
     if (!config) return;
-    const current = config.freeTokeninModels || [];
+    const current = config.freeOpenRouterModels || [];
     const next = current.includes(modelId)
       ? current.filter((id) => id !== modelId)
       : [...current, modelId];
 
     const previous = config;
-    setConfig({ ...config, freeTokeninModels: next });
+    setConfig({ ...config, freeOpenRouterModels: next });
     try {
-      await api.saveAdminConfig({ freeTokeninModels: next });
+      await api.saveAdminConfig({ freeOpenRouterModels: next });
       setSaveSuccessMsg('Free model access updated successfully!');
       setTimeout(() => setSaveSuccessMsg(''), 2500);
     } catch (err: any) {
@@ -158,9 +158,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
     ];
     const next = makeFree ? allIds : [];
     const previous = config;
-    setConfig({ ...config, freeTokeninModels: next });
+    setConfig({ ...config, freeOpenRouterModels: next });
     try {
-      await api.saveAdminConfig({ freeTokeninModels: next });
+      await api.saveAdminConfig({ freeOpenRouterModels: next });
       setSaveSuccessMsg(makeFree ? 'All models unlocked for Free users!' : 'All models set to Premium!');
       setTimeout(() => setSaveSuccessMsg(''), 2500);
     } catch (err: any) {
@@ -460,13 +460,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                       </label>
                       <input
                         type="password"
-                        placeholder="Configured via AICREDITS_API_KEY on Render"
+                        placeholder="Configured via server environment"
                         value=""
                         disabled
                         className="w-full px-3 py-2 rounded-xl border border-[#333538] bg-[#131314] text-[#8e918f] outline-none text-xs font-mono cursor-not-allowed"
                       />
                       <p className="text-[10px] text-[#8e918f] mt-1">
-                        Provider secrets are Render-environment-only and can't be set from the Admin Panel — set <code>AICREDITS_API_KEY</code> in your Render service's environment variables. Status: {config.hasAiCreditsKey ? 'configured ✓' : 'not configured'}.
+                        Provider secrets are environment-only and cannot be set from the Admin Panel. Status: {config.hasAiCreditsKey ? 'configured ✓' : 'not configured'}.
                       </p>
                     </div>
 
@@ -584,7 +584,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                           { id: 'myt/qwen3.8-max-free', name: 'Qwen 3.8 Max' },
                           { id: 'myt/deepseek-v4-pro-free', name: 'DeepSeek V4 Pro' },
                         ].map((model) => {
-                          const isFree = (config.freeTokeninModels || []).includes(model.id);
+                          const isFree = (config.freeOpenRouterModels || []).includes(model.id);
                           return (
                             <div
                               key={model.id}
@@ -703,11 +703,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ isOpen, onClos
                       <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-[#e3e3e3]">
                         <input
                           type="checkbox"
-                          checked={config.fallbackToGemini}
-                          onChange={(e) => setConfig({ ...config, fallbackToGemini: e.target.checked })}
+                          checked={false}
+                          onChange={() => {}}
                           className="rounded accent-white"
                         />
-                        <span>Fallback to Server-Side Gemini API if AICredits key is unset</span>
+                        <span>No automatic provider fallback</span>
                       </label>
                     </div>
 
@@ -944,7 +944,7 @@ CORE DIRECTIVES & QUALITY STANDARDS:
                         </span>
                         <button
                           onClick={() => {
-                            const envString = `NODE_ENV=production\nPORT=3000\nADMIN_PASSWORD=your_super_secret_admin_pass\nAICREDITS_API_KEY=your_aicredits_api_key\nAICREDITS_BASE_URL=https://api.aicredits.in/v1\nAICREDITS_VISION_MODEL=gemini-1.5-flash\nMEMO_API_KEY=your_memo_api_key\nMONGODB_URI=mongodb+srv://...\nGEMINI_API_KEY=your_gemini_key`;
+                            const envString = `Configure backend secrets in Render and frontend URL in Vercel. See backend/.env.example in the repository.`;
                             navigator.clipboard.writeText(envString);
                             setCopiedEnv(true);
                             setTimeout(() => setCopiedEnv(false), 2000);
@@ -958,18 +958,13 @@ CORE DIRECTIVES & QUALITY STANDARDS:
 
                       <pre className="p-3 bg-[#131314] border border-[#333538] rounded-xl text-[11px] font-mono text-[#e3e3e3] overflow-x-auto">
 {`# 1. Render Environment Secrets:
-ADMIN_PASSWORD=your_super_secret_admin_pass
-AICREDITS_API_KEY=your_aicredits_api_key
-AICREDITS_BASE_URL=https://api.aicredits.in/v1
-AICREDITS_VISION_MODEL=gemini-1.5-flash
-MEMO_API_KEY=your_memo_api_key
-MONGODB_URI=mongodb+srv://...
-GEMINI_API_KEY=your_gemini_key
+Configure server-only provider/admin/tool secrets in Render.
+See backend/.env.example in the repository.
 
-# 2. Vercel Frontend Environment Secrets:
+# 2. Vercel Frontend Environment:
 VITE_API_BASE_URL=https://your-render-backend.onrender.com
-VITE_FIREBASE_API_KEY=...
-VITE_FIREBASE_PROJECT_ID=...`}
+VITE_BACKEND_URL=https://your-render-backend.onrender.com
+`}
                       </pre>
                     </div>
 

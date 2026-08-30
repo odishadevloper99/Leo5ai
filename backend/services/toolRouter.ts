@@ -1,6 +1,7 @@
 import { executeTavilySearch } from './tavilyService';
 import { executeJinaReader } from './jinaService';
 import { executeDaytonaCommand, executeDaytonaCode } from './daytonaService';
+import { executeStackHawkScan } from './stackhawkService';
 
 export interface ToolResult {
   success: boolean;
@@ -14,7 +15,7 @@ export interface ToolResult {
 
 // Strict whitelist — the ONLY tool names the backend will ever execute.
 // Anything not in this set is rejected before touching a provider.
-export const ALLOWED_TOOLS = new Set(['web_search', 'read_webpage', 'code_execution']);
+export const ALLOWED_TOOLS = new Set(['web_search', 'read_webpage', 'code_execution', 'security_scan']);
 
 export const CENTRALIZED_TOOLS = [
   {
@@ -59,6 +60,22 @@ export const CENTRALIZED_TOOLS = [
         required: ['code']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'security_scan',
+      description: 'Start an authorized StackHawk security scan for a target the user is permitted to test.',
+      parameters: {
+        type: 'object',
+        properties: {
+          targetUrl: { type: 'string', description: 'Authorized http(s) target URL to scan' },
+          authorizationConfirmed: { type: 'boolean', description: 'Must be true only after the user explicitly confirms authorization' },
+          applicationId: { type: 'string', description: 'Optional StackHawk application id' }
+        },
+        required: ['targetUrl', 'authorizationConfirmed']
+      }
+    }
   }
 ];
 
@@ -68,7 +85,8 @@ export const CENTRALIZED_TOOLS = [
 const TOOL_TIMEOUT_MS: Record<string, number> = {
   web_search: 15000,
   read_webpage: 20000,
-  code_execution: 70000
+  code_execution: 70000,
+  security_scan: 90000
 };
 
 // Hard ceiling on how much text a single tool result is allowed to inject
@@ -77,6 +95,7 @@ const TOOL_TIMEOUT_MS: Record<string, number> = {
 const MAX_RESULT_CHARS = 12000;
 const MAX_QUERY_CHARS = 400;
 const MAX_CODE_CHARS = 20000;
+const MAX_URL_CHARS = 2048;
 
 function truncate(text: string, tool: string): { text: string; truncated: boolean } {
   if (text.length <= MAX_RESULT_CHARS) return { text, truncated: false };
@@ -118,6 +137,15 @@ function validateArgs(cleanName: string, args: any): string | null {
     const url = String(args?.url || args?.link || '').trim();
     if (!url) return 'Missing required argument "url" for read_webpage.';
     if (!/^https?:\/\//i.test(url)) return '"url" must be a valid absolute http(s) URL.';
+    return null;
+  }
+
+  if (cleanName === 'security_scan') {
+    const targetUrl = String(args?.targetUrl || args?.url || '').trim();
+    if (!targetUrl) return 'Missing required argument "targetUrl" for security_scan.';
+    if (targetUrl.length > MAX_URL_CHARS) return '"targetUrl" exceeds maximum length.';
+    if (!/^https?:\/\//i.test(targetUrl)) return '"targetUrl" must be a valid absolute http(s) URL.';
+    if (args?.authorizationConfirmed !== true) return 'Explicit authorization confirmation is required for security_scan.';
     return null;
   }
 
@@ -190,6 +218,14 @@ export async function executeToolRouter(name: string, args: any): Promise<ToolRe
         sources: [{ title: url, url }],
         truncated
       };
+    }
+
+    if (cleanName === 'security_scan') {
+      const targetUrl = String(args?.targetUrl || args?.url || '').trim();
+      const authorizationConfirmed = args?.authorizationConfirmed === true;
+      const applicationId = args?.applicationId ? String(args.applicationId).trim() : undefined;
+      const res = await withTimeout(executeStackHawkScan({ targetUrl, authorizationConfirmed, applicationId }), timeoutMs, 'security_scan');
+      return { success: res.success, tool: 'security_scan', result: res, error: res.error, durationMs: Date.now() - startTime };
     }
 
     if (cleanName === 'code_execution' || cleanName === 'run_command') {

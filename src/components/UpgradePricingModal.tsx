@@ -32,7 +32,7 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
   if (!isOpen) return null;
 
   const copyTelegramHandle = () => {
-    navigator.clipboard.writeText('@Unknownboy1525');
+    navigator.clipboard.writeText('@MrNewton_2');
     setCopiedHandle(true);
     setTimeout(() => setCopiedHandle(false), 2000);
   };
@@ -156,11 +156,11 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-[#8e918f] leading-relaxed">
-                  For unlimited daily chats, VIP status, or account limit increases, message the administrator directly on Telegram:
+                  For unlimited daily chats, Premium ₹299, VIP status, or account limit increases, message the administrator directly on Telegram:
                 </p>
                 <div className="flex items-center gap-2 pt-1">
                   <span className="px-2.5 py-1 bg-black border border-neutral-700 rounded-lg font-mono text-xs font-bold text-white shadow-2xs">
-                    @Unknownboy1525
+                    @MrNewton_2
                   </span>
                   <button
                     type="button"
@@ -184,7 +184,7 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
             </div>
 
             <a
-              href="https://t.me/Unknownboy1525"
+              href="https://t.me/MrNewton_2"
               target="_blank"
               rel="noreferrer"
               className="w-full sm:w-auto px-5 py-2.5 bg-white hover:bg-neutral-200 active:scale-[0.99] text-black rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 shrink-0 shadow-md cursor-pointer"
@@ -249,7 +249,7 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
                       </div>
                     ) : (
                       <a
-                        href="https://t.me/Unknownboy1525"
+                        href="https://t.me/MrNewton_2"
                         target="_blank"
                         rel="noreferrer"
                         className="w-full py-2 px-3 bg-white hover:bg-neutral-200 text-black text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition text-center cursor-pointer"
@@ -279,7 +279,7 @@ export const UpgradePricingModal: React.FC<UpgradePricingModalProps> = ({
         <div className="px-6 py-3.5 border-t border-[#333538] bg-[#131314] flex items-center justify-between text-xs text-[#8e918f]">
           <span className="flex items-center gap-1.5">
             <Users className="w-3.5 h-3.5 text-[#8e918f]" />
-            Support: Telegram @Unknownboy1525
+            Support: Telegram @MrNewton_2
           </span>
 
           <button

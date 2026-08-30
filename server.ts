@@ -6,10 +6,48 @@ import nodemailer from 'nodemailer';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
 import { memoService } from './services/memoService';
-import { runAgentLoop, AVAILABLE_TOOLS, AgentStep, AgentEvent } from './services/agentService';
+import { runAgentLoop, AVAILABLE_TOOLS, AgentStep, AgentEvent, MAX_AGENT_ITERATIONS } from './services/agentService';
 import { executeDaytonaCommand } from './services/daytonaService';
 
 dotenv.config();
+
+// Server-wide override for how many agent tool-call iterations a single
+// chat turn may run before being force-summarized. Falls back to the
+// agentService default if unset or invalid.
+const MAX_AGENT_ITERATIONS_CONFIGURED = (() => {
+  const raw = parseInt(process.env.MAX_AGENT_ITERATIONS || '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : MAX_AGENT_ITERATIONS;
+})();
+
+// ----------------------------------------------------------------------
+// Model capability heuristic (MODE A vs MODE B selection)
+// ----------------------------------------------------------------------
+// This is a soft, best-effort classifier used ONLY to decide whether to
+// include the OpenAI-style `tools` param on the FIRST attempt for a given
+// model. It is never load-bearing for correctness: callOpenAiCompatibleProvider
+// already retries automatically without `tools` if a provider rejects the
+// param (see its 400/422 handling below), and the agent's structured
+// <tool_call> text protocol works identically either way. This heuristic
+// just avoids an unnecessary failed round-trip for models that are known
+// (by name pattern) to lack native function-calling support — e.g. small
+// free/code-focused models frequently used with AICredits.
+const NATIVE_TOOL_CALLING_PATTERNS = [
+  /gpt-4/i, /gpt-3\.5/i, /gpt-5/i, /o1/i, /o3/i, /o4/i,
+  /claude/i, /gemini/i, /grok/i,
+  /mixtral-8x22/i, /command-r/i, /qwen2\.5/i, /qwen3/i, /llama-3\.1/i, /llama-3\.3/i,
+];
+const KNOWN_NO_NATIVE_TOOL_PATTERNS = [
+  /deepseek-chat/i, /deepseek-coder/i, /codellama/i, /starcoder/i,
+  /wizardcoder/i, /phi-/i, /tinyllama/i, /free/i,
+];
+function modelLikelySupportsNativeTools(model: string): boolean {
+  const m = (model || '').toLowerCase();
+  if (KNOWN_NO_NATIVE_TOOL_PATTERNS.some((p) => p.test(m))) return false;
+  if (NATIVE_TOOL_CALLING_PATTERNS.some((p) => p.test(m))) return true;
+  // Unknown model: default to attempting native tools — the automatic
+  // no-tools retry on 400/422 covers the case where this guess is wrong.
+  return true;
+}
 
 // Load Firebase configuration fallback from firebase-applet-config.json
 let appletConfig: any = {};
@@ -43,17 +81,17 @@ app.use((req, res, next) => {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
 
-  // Robust Content Security Policy allowing required assets, Google OAuth, and CDNs
+  // Robust Content Security Policy allowing required assets and CDNs
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.cashfree.com https://accounts.google.com https://apis.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://accounts.google.com https://sdk.cashfree.com https://*.firebaseapp.com; frame-ancestors 'self' https://*.run.app https://ai.studio https://*.google.com;"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.cashfree.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https://sdk.cashfree.com https://*.firebaseapp.com; frame-ancestors 'self' https://*.run.app https://ai.studio https://*.google.com;"
   );
 
   next();
 });
 
 // Cookie Parser Middleware with session secret support
-app.use(cookieParser(process.env.SESSION_SECRET || 'leo_ai_session_cookie_secret_2026'));
+app.use(cookieParser(process.env.ADMIN_SESSION_SECRET || process.env.SESSION_SECRET || 'leo_ai_session_cookie_secret_2026'));
 
 // Enable CORS for Vercel Frontend <-> Render Backend communication
 app.use((req, res, next) => {
@@ -209,6 +247,7 @@ interface UserRecord {
   };
   subscriptionActive?: boolean;
   subscriptionExpiresAt?: number;
+  premiumUntil?: number;
 }
 
 const memoryStore: Map<string, MemoryRecord[]> = new Map();
@@ -261,7 +300,6 @@ let currentConfig = {
     process.env.DEFAULT_AI_MODEL ||
     process.env.AI_MODEL ||
     process.env.MODEL_NAME ||
-    process.env.GEMINI_MODEL ||
     process.env.MODEL_ID ||
     process.env.ACTIVE_MODEL_ID ||
     process.env.AICREDITS_MODEL ||
@@ -292,27 +330,24 @@ let currentConfig = {
     process.env.DEFAULT_AI_MODEL ||
     process.env.AI_MODEL ||
     process.env.MODEL_NAME ||
-    process.env.GEMINI_MODEL ||
     process.env.MODEL_ID ||
     process.env.ACTIVE_MODEL_ID ||
     process.env.AICREDITS_MODEL ||
     ''
   ).replace(/^["']|["']$/g, '').trim(),
+  openRouterApiKey: process.env.OPENROUTER_API_KEY || '',
+  openRouterBaseUrl: 'https://openrouter.ai/api/v1',
   aiCreditsApiKey: process.env.AICREDITS_API_KEY || '',
   aiCreditsBaseUrl: process.env.AICREDITS_BASE_URL || 'https://api.aicredits.in/v1',
   aiCreditsModel: (
     process.env.DEFAULT_AI_MODEL ||
     process.env.AI_MODEL ||
     process.env.MODEL_NAME ||
-    process.env.GEMINI_MODEL ||
     process.env.MODEL_ID ||
     process.env.ACTIVE_MODEL_ID ||
     process.env.AICREDITS_MODEL ||
     ''
   ).replace(/^["']|["']$/g, '').trim(),
-  tokeninApiKey: process.env.TOKENIN_API_KEY || '',
-  tokeninBaseUrl: (process.env.TOKENIN_BASE_URL || 'https://tokenin.my.id/api/v1').trim().replace(/\/+$/, ''),
-  tokeninModel: (process.env.TOKENIN_MODEL || '').replace(/^["']|["']$/g, '').trim(),
   visionModel: (
     process.env.VISION_AI_MODEL ||
     process.env.AICREDITS_VISION_MODEL ||
@@ -339,8 +374,7 @@ CORE DIRECTIVES & QUALITY STANDARDS:
   enableDeepResearch: true,
   enableVision: true,
   enableMemory: true,
-  fallbackToGemini: true,
-  freeTokeninModels: [] as string[],
+  premiumPriceInr: Number(process.env.PREMIUM_PRICE_INR || 299) || 299,
   // Daily Message Limit: max /api/chat messages per user per day. 0 = unlimited.
   dailyMessageLimit: Number(process.env.DAILY_MESSAGE_LIMIT || process.env.DAILY_LIMIT) || 50,
   mongoDbConfigured: Boolean(process.env.MONGODB_URI),
@@ -599,35 +633,87 @@ async function resetAllDailyUsage(): Promise<number> {
   return count;
 }
 
-const TOKENIN_MODELS = [
-  { id: 'myt/grok-4.6-free', name: 'Grok 4.6', premium: true },
-  { id: 'myt/kimi-k3-free', name: 'Kimi K3', premium: true },
-  { id: 'myt/glm-5.3-free', name: 'GLM 5.3', premium: true },
-  { id: 'myt/qwen3.8-max-free', name: 'Qwen 3.8 Max', premium: true },
-  { id: 'myt/deepseek-v4-pro-free', name: 'DeepSeek V4 Pro', premium: true },
-];
-const TOKENIN_MODEL_IDS = new Set<string>(TOKENIN_MODELS.map(m => m.id));
-
-function isTokeninModel(model: string): boolean {
-  return TOKENIN_MODEL_IDS.has(model);
-}
-
 function effectiveDailyLimit(userId: string): number {
   const user = userStore.get(userId);
   if (typeof user?.dailyMessageLimitOverride === 'number') return Math.max(0, user.dailyMessageLimitOverride);
   return dailyUsageSettings.enabled ? dailyUsageSettings.limit : 0;
 }
 
-function userCanUsePremiumModel(userId: string, model?: string): boolean {
-  // Admin-controlled free model list is authoritative for Free users.
-  if (model && currentConfig.freeTokeninModels.includes(model)) return true;
+function userHasActivePremium(userId: string): boolean {
   const user = userStore.get(userId);
-  return Boolean(user && ['admin', 'premium', 'pro', 'ultra'].includes(String(user.plan || '').toLowerCase()) || user?.role === 'admin');
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  const plan = String(user.plan || 'free').toLowerCase();
+  const premiumUntil = Number((user as any).premiumUntil || user.subscriptionExpiresAt || 0);
+  if (premiumUntil && premiumUntil <= Date.now()) return false;
+  return ['admin', 'premium', 'pro', 'ultra'].includes(plan) || user.subscriptionActive === true;
 }
 
-function getTokeninEndpoint(): string {
-  const base = (currentConfig.tokeninBaseUrl || process.env.TOKENIN_BASE_URL || 'https://tokenin.my.id/api/v1').replace(/\/+$/, '');
-  return base.endsWith('/chat/completions') ? base : `${base}/chat/completions`;
+interface OpenRouterRawModel {
+  id: string;
+  name?: string;
+  description?: string;
+  pricing?: { prompt?: string | number; completion?: string | number };
+  context_length?: number;
+}
+
+let openRouterFreeModelCache: { ids: Set<string>; models: EnrichedAIModel[]; lastUpdated: number } | null = null;
+let isFetchingOpenRouterModels = false;
+
+function isZeroPrice(value: any): boolean {
+  if (value === 0) return true;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value) === 0;
+  return false;
+}
+
+async function fetchOpenRouterFreeModels(forceRefresh = false): Promise<{ ids: Set<string>; models: EnrichedAIModel[]; lastUpdated: number }> {
+  const now = Date.now();
+  if (!forceRefresh && openRouterFreeModelCache && now - openRouterFreeModelCache.lastUpdated < 10 * 60 * 1000) return openRouterFreeModelCache;
+  if (isFetchingOpenRouterModels && openRouterFreeModelCache) return openRouterFreeModelCache;
+  isFetchingOpenRouterModels = true;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch('https://openrouter.ai/api/v1/models', { headers: { Accept: 'application/json' }, signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`OpenRouter models API returned HTTP ${res.status}`);
+    const data: any = await res.json();
+    const rawList: OpenRouterRawModel[] = Array.isArray(data) ? data : (data?.data || []);
+    const freeRaw = rawList.filter(m => m?.id && isZeroPrice(m.pricing?.prompt) && isZeroPrice(m.pricing?.completion));
+    const models = freeRaw.map((m) => {
+      const { company, iconKey } = detectCompanyAndIcon(m.id, m.name || m.id);
+      return {
+        id: m.id,
+        name: m.name || m.id,
+        company,
+        category: detectCategory(m.id, m.name || m.id),
+        description: m.description || `Free OpenRouter model from ${company}.`,
+        badges: ['Free'],
+        iconKey,
+        provider: 'openrouter' as const,
+        tier: 'standard' as const,
+        inputCostPer1M: 0,
+        outputCostPer1M: 0,
+        totalCostPer1M: 0,
+        contextLength: m.context_length
+      };
+    });
+    openRouterFreeModelCache = { ids: new Set(models.map(m => m.id)), models, lastUpdated: Date.now() };
+    return openRouterFreeModelCache;
+  } finally {
+    isFetchingOpenRouterModels = false;
+  }
+}
+
+async function validateOpenRouterFreeModel(model: string): Promise<boolean> {
+  if (!model || !model.trim()) return false;
+  try {
+    const data = await fetchOpenRouterFreeModels();
+    return data.ids.has(model.trim());
+  } catch (err: any) {
+    console.warn('[OPENROUTER] Could not validate free model metadata:', err?.message || err);
+    return false;
+  }
 }
 
 // ----------------------------------------------------
@@ -659,7 +745,7 @@ export interface EnrichedAIModel {
   description: string;
   badges: string[];
   iconKey: string;
-  provider: 'aicredits' | 'tokenin' | 'gemini';
+  provider: 'aicredits' | 'openrouter' | 'gemini';
   isNew?: boolean;
   tier: 'cheap' | 'quality' | 'standard';
   inputCostPer1M: number;
@@ -817,7 +903,7 @@ async function fetchDynamicAiCreditsModels(forceRefresh = false): Promise<{
       throw new Error(`AICredits models API returned HTTP ${res.status}`);
     }
 
-    const rawData = await res.json();
+    const rawData: any = await res.json();
     const rawList: AICreditsRawModel[] = Array.isArray(rawData) ? rawData : (rawData?.data || []);
 
     // Filter strictly to models returned by the API that are active
@@ -878,8 +964,7 @@ async function fetchDynamicAiCreditsModels(forceRefresh = false): Promise<{
       process.env.DEFAULT_AI_MODEL ||
       process.env.AI_MODEL ||
       process.env.MODEL_NAME ||
-      process.env.GEMINI_MODEL ||
-      process.env.MODEL_ID ||
+        process.env.MODEL_ID ||
       process.env.ACTIVE_MODEL_ID ||
       process.env.AICREDITS_MODEL ||
       currentConfig.defaultAiModel ||
@@ -923,8 +1008,7 @@ async function fetchDynamicAiCreditsModels(forceRefresh = false): Promise<{
       process.env.DEFAULT_AI_MODEL ||
       process.env.AI_MODEL ||
       process.env.MODEL_NAME ||
-      process.env.GEMINI_MODEL ||
-      process.env.MODEL_ID ||
+        process.env.MODEL_ID ||
       process.env.ACTIVE_MODEL_ID ||
       process.env.AICREDITS_MODEL ||
       currentConfig.defaultAiModel ||
@@ -1095,8 +1179,7 @@ export const AIModelRouter = {
       process.env.DEFAULT_AI_MODEL ||
       process.env.AI_MODEL ||
       process.env.MODEL_NAME ||
-      process.env.GEMINI_MODEL ||
-      process.env.MODEL_ID ||
+        process.env.MODEL_ID ||
       process.env.ACTIVE_MODEL_ID ||
       process.env.AICREDITS_MODEL ||
       (currentConfig.defaultAiModel && currentConfig.defaultAiModel.trim()) ||
@@ -1233,11 +1316,13 @@ function getTargetAiModel(): string {
 app.get('/api/models', async (_req, res) => {
   try {
     const data = await fetchDynamicAiCreditsModels();
+    const openRouterFree = await fetchOpenRouterFreeModels().catch(() => null);
     const defaultModel = AIModelRouter.getDefaultModel();
     const visionModel = AIModelRouter.getVisionModel();
     const codeModel = AIModelRouter.getCodeModel();
     res.json({
       ...data,
+      models: openRouterFree?.models?.length ? openRouterFree.models : data.models,
       activeModelId: defaultModel,
       defaultAiModel: defaultModel,
       visionAiModel: visionModel,
@@ -1251,7 +1336,7 @@ app.get('/api/models', async (_req, res) => {
 
 // Public model-access list. It exposes only model IDs that the Admin has marked free.
 app.get('/api/models/access', (_req, res) => {
-  res.json({ freeTokeninModels: currentConfig.freeTokeninModels || [] });
+  res.json({ freeOpenRouterModels: Array.from(openRouterFreeModelCache?.ids || []) });
 });
 
 // ----------------------------------------------------
@@ -1378,9 +1463,6 @@ async function syncSystemConfigFromDatabase(): Promise<void> {
         visionModel: savedVisionModel || savedConfig.visionModel || currentConfig.visionModel,
         // Always preserve Render's explicit environment variable overrides for secrets if present:
         aiCreditsApiKey: process.env.AICREDITS_API_KEY || currentConfig.aiCreditsApiKey,
-        tokeninApiKey: process.env.TOKENIN_API_KEY || currentConfig.tokeninApiKey,
-        tokeninBaseUrl: process.env.TOKENIN_BASE_URL || savedConfig.tokeninBaseUrl || currentConfig.tokeninBaseUrl,
-        tokeninModel: process.env.TOKENIN_MODEL || savedConfig.tokeninModel || currentConfig.tokeninModel,
       };
       if (typeof savedConfig.dailyMessageLimit === 'number') {
         dailyUsageSettings.limit = savedConfig.dailyMessageLimit;
@@ -1418,7 +1500,7 @@ const activeAdminTokens = new Set<string>();
 function verifyAdminPassword(candidatePassword: string): boolean {
   if (!candidatePassword || typeof candidatePassword !== 'string') return false;
 
-  const expectedPassword = (process.env.ADMIN_PASSWORD || 'leo_admin_secret_pass').trim();
+  const expectedPassword = (process.env.ADMIN_PANEL_PASSWORD || process.env.ADMIN_PASSWORD || 'leo_admin_secret_pass').trim();
   const expectedHash = (process.env.ADMIN_PASSWORD_HASH || '').trim();
 
   // 1. Check bcrypt hash environment variable if configured
@@ -1474,8 +1556,7 @@ app.get('/api/health', (req, res) => {
     uptime: Math.floor((Date.now() - globalStats.serverStartTime) / 1000),
     services: {
       aiCredits: Boolean(currentConfig.aiCreditsApiKey),
-      tokenin: Boolean(currentConfig.tokeninApiKey),
-      geminiFallback: Boolean(process.env.GEMINI_API_KEY),
+      openrouter: Boolean(currentConfig.openRouterApiKey),
       memoApi: Boolean(currentConfig.memoApiKey),
       mongoDb: currentConfig.mongoDbConfigured,
       firebase: currentConfig.firebaseConfigured
@@ -1571,14 +1652,13 @@ app.get('/api/admin/config', (req, res) => {
 
   // Provider secrets (API keys) are never sent back to the client, even to an
   // authenticated admin — only booleans/model/base-url.
-  const { aiCreditsApiKey, tokeninApiKey, ...safeConfig } = currentConfig;
+  const { aiCreditsApiKey, openRouterApiKey, ...safeConfig } = currentConfig;
   res.json({
     ...safeConfig,
     hasAiCreditsKey: Boolean(aiCreditsApiKey),
-    hasTokeninKey: Boolean(tokeninApiKey),
+    hasOpenRouterKey: Boolean(openRouterApiKey),
     hasMemoKey: Boolean(currentConfig.memoApiKey),
-    hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
-    adminPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD)
+    adminPasswordConfigured: Boolean(process.env.ADMIN_PANEL_PASSWORD || process.env.ADMIN_PASSWORD)
   });
 });
 
@@ -1594,9 +1674,6 @@ app.post('/api/admin/config', async (req, res) => {
     activeModelId,
     aiCreditsBaseUrl,
     aiCreditsModel,
-    tokeninBaseUrl,
-    tokeninModel,
-    freeTokeninModels,
     visionModel,
     temperature,
     maxTokens,
@@ -1606,11 +1683,10 @@ app.post('/api/admin/config', async (req, res) => {
     enableDeepResearch,
     enableVision,
     enableMemory,
-    fallbackToGemini,
     dailyMessageLimit
   } = req.body;
 
-  // Provider SECRETS (aiCreditsApiKey / tokeninApiKey) are intentionally NOT
+  // Provider SECRETS (aiCreditsApiKey / openRouterApiKey) are intentionally NOT
   // accepted here — they are Render-environment-only.
   if (defaultAiModel !== undefined) {
     const sanitizedDefault = String(defaultAiModel).trim();
@@ -1645,13 +1721,6 @@ app.post('/api/admin/config', async (req, res) => {
     currentConfig.activeModelId = sanitizedModel;
     console.log('[AI ROUTER] Admin set aiCreditsModel ID:', sanitizedModel);
   }
-  if (tokeninBaseUrl !== undefined) currentConfig.tokeninBaseUrl = String(tokeninBaseUrl).trim().replace(/\/+$/, '');
-  if (tokeninModel !== undefined) currentConfig.tokeninModel = String(tokeninModel).trim();
-  if (freeTokeninModels !== undefined) {
-    currentConfig.freeTokeninModels = Array.isArray(freeTokeninModels)
-      ? freeTokeninModels.filter((id: any) => TOKENIN_MODEL_IDS.has(String(id)))
-      : [];
-  }
   if (visionModel !== undefined) currentConfig.visionModel = visionModel;
   if (temperature !== undefined) currentConfig.temperature = Number(temperature);
   if (maxTokens !== undefined) currentConfig.maxTokens = Number(maxTokens);
@@ -1661,7 +1730,6 @@ app.post('/api/admin/config', async (req, res) => {
   if (enableDeepResearch !== undefined) currentConfig.enableDeepResearch = Boolean(enableDeepResearch);
   if (enableVision !== undefined) currentConfig.enableVision = Boolean(enableVision);
   if (enableMemory !== undefined) currentConfig.enableMemory = Boolean(enableMemory);
-  if (fallbackToGemini !== undefined) currentConfig.fallbackToGemini = Boolean(fallbackToGemini);
   if (dailyMessageLimit !== undefined) currentConfig.dailyMessageLimit = Math.max(0, Number(dailyMessageLimit) || 0);
 
   memoService.updateConfig({
@@ -1672,7 +1740,7 @@ app.post('/api/admin/config', async (req, res) => {
 
   // Persist updated configuration permanently to Firebase Realtime Database —
   // but never the provider secrets themselves.
-  const { aiCreditsApiKey: _omitAiCreditsKey, tokeninApiKey: _omitTokeninKey, ...configToPersist } = currentConfig;
+  const { aiCreditsApiKey: _omitAiCreditsKey, openRouterApiKey: _omitOpenRouterKey, ...configToPersist } = currentConfig;
   await setRtdbData('system/config', configToPersist);
 
   console.log('✓ [ADMIN] Saved and persisted system prompt and AI config to database');
@@ -1734,8 +1802,13 @@ app.post('/api/admin/users/:uid', async (req, res) => {
   const user = userStore.get(uid);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  const { plan, dailyMessageLimitOverride } = req.body || {};
+  const { plan, dailyMessageLimitOverride, premiumUntil } = req.body || {};
   if (plan !== undefined) user.plan = String(plan || 'free').toLowerCase();
+  if (premiumUntil !== undefined) {
+    const ts = Number(premiumUntil) || Date.parse(String(premiumUntil));
+    if (Number.isFinite(ts) && ts > 0) { user.premiumUntil = ts; user.subscriptionExpiresAt = ts; }
+    else { delete user.premiumUntil; delete user.subscriptionExpiresAt; }
+  }
   if (dailyMessageLimitOverride === null || dailyMessageLimitOverride === '' || dailyMessageLimitOverride === undefined) {
     if (Object.prototype.hasOwnProperty.call(req.body || {}, 'dailyMessageLimitOverride')) delete user.dailyMessageLimitOverride;
   } else {
@@ -2001,7 +2074,7 @@ async function sendOtpEmail(
           html: htmlContent
         })
       });
-      const resendData = await resendResponse.json();
+      const resendData: any = await resendResponse.json();
       if (resendResponse.ok && resendData?.id) {
         console.log(`[STEP 5/5: SUCCESS (RESEND API)] ✅ Delivered with ID: ${resendData.id}`);
         console.log(`==================================================================\n`);
@@ -2680,7 +2753,7 @@ async function executeTavilySearch(query: string, maxResults = 5): Promise<{
       success: false,
       query,
       results: [],
-      error: 'TAVILY_API_KEY is not configured.'
+      error: 'Required server-side provider key is not configured.'
     };
   }
 
@@ -2937,21 +3010,13 @@ CRITICAL DIRECTIVES:
 // 5. AI Chat Completion & Vision Reasoning
 // ----------------------------------------------------
 // ----------------------------------------------------
-// 4b. Two-provider AI configuration (AICredits primary, Tokenin fallback)
+// 4b. Provider AI configuration (Free OpenRouter, Premium AICredits)
 // ----------------------------------------------------
 function getAiCreditsDiagnostics() {
   return {
     configured: Boolean(currentConfig.aiCreditsApiKey && currentConfig.aiCreditsApiKey.trim()),
     model: currentConfig.aiCreditsModel || getTargetAiModel(),
     baseUrl: currentConfig.aiCreditsBaseUrl
-  };
-}
-
-function getTokeninDiagnostics() {
-  return {
-    configured: Boolean(currentConfig.tokeninApiKey && currentConfig.tokeninApiKey.trim()),
-    model: currentConfig.tokeninModel || getTargetAiModel(),
-    baseUrl: currentConfig.tokeninBaseUrl
   };
 }
 
@@ -3116,10 +3181,11 @@ app.post('/api/chat', async (req, res) => {
       requestedModel
     });
 
-    const targetModel = routeResult.selectedModel;
+    const isPremiumUser = userHasActivePremium(userId);
+    let targetModel = isPremiumUser ? (process.env.AICREDITS_MODEL || currentConfig.aiCreditsModel || AIModelRouter.getDefaultModel()) : routeResult.selectedModel;
     if (!targetModel || !targetModel.trim()) {
       return res.status(400).json({
-        error: 'No AI model configured. Please set DEFAULT_AI_MODEL or AI_MODEL in Render environment variables.',
+        error: 'No AI model configured. Please set OPENROUTER free model or AICREDITS_MODEL in environment variables.',
         configured: false
       });
     }
@@ -3143,12 +3209,15 @@ app.post('/api/chat', async (req, res) => {
 
     console.log(`[AI CHAT] Routing: ${routeResult.inputType} | Model: "${targetModel}" | AutoWeb: ${webSearchResult.needed} (${webSearchResult.results.length} sources) | Deep Research: ${isDeepResearch}`);
 
-    if (isTokeninModel(targetModel) && !userCanUsePremiumModel(userId, targetModel)) {
-      return res.status(403).json({
-        error: 'Premium access is required for this model. Contact @Unknownboy1525 for premium access.',
-        premiumRequired: true,
-        contact: '@Unknownboy1525'
-      });
+    if (!isPremiumUser) {
+      const freeModelAllowed = await validateOpenRouterFreeModel(targetModel);
+      if (!freeModelAllowed) {
+        return res.status(403).json({
+          error: 'Free users can only use OpenRouter models with zero prompt and completion pricing. Premium ₹' + currentConfig.premiumPriceInr + ' Contact: @MrNewton_2',
+          premiumRequired: true,
+          contact: '@MrNewton_2'
+        });
+      }
     }
 
     const isStream = Boolean(stream) || req.headers.accept === 'text/event-stream' || req.query?.stream === 'true';
@@ -3174,7 +3243,7 @@ app.post('/api/chat', async (req, res) => {
     // 1. Prepare Model Provider Adapter for Autonomous Agent Controller
     const aiCreditsDiag = getAiCreditsDiagnostics();
     const providerDiagnostics: any[] = [];
-    let selectedProvider: 'aicredits' | null = null;
+    let selectedProvider: 'aicredits' | 'openrouter' | null = null;
     let fallbackUsed = routeResult.isFallback;
     let finalModelUsed = targetModel;
 
@@ -3183,22 +3252,41 @@ app.post('/api/chat', async (req, res) => {
     );
 
     const callProvider = async (agentMessages: any[], tools?: any[]): Promise<ProviderResult> => {
-      // AICredits Primary Provider
+      if (!isPremiumUser) {
+        if (!currentConfig.openRouterApiKey) {
+          providerDiagnostics.push({ provider: 'openrouter', ok: false, status: null, error: 'Required server-side provider key is not configured.' });
+          return { ok: false, error: 'OpenRouter provider is not configured.' };
+        }
+        const attachTools = modelLikelySupportsNativeTools(targetModel) ? tools : undefined;
+        const result = await callOpenAiCompatibleProvider({ label: 'openrouter', baseUrl: currentConfig.openRouterBaseUrl, apiKey: currentConfig.openRouterApiKey, model: targetModel, messages: agentMessages, tools: attachTools });
+        providerDiagnostics.push({ provider: 'openrouter', model: targetModel, ok: result.ok, status: result.status ?? null, error: result.error ?? null });
+        if (result.ok && (result.content || result.tool_calls)) { selectedProvider = 'openrouter'; finalModelUsed = targetModel; return result; }
+        return { ok: false, error: result.error || 'OpenRouter provider failed.' };
+      }
+
+      // AICredits Premium Provider
       if (aiCreditsDiag.configured) {
-        const modelCandidates: string[] = [...routeResult.candidates];
+        const modelCandidates: string[] = [targetModel];
         if (!modelCandidates.includes(targetModel)) {
           modelCandidates.unshift(targetModel);
         }
 
         for (let i = 0; i < modelCandidates.length; i++) {
           const candidateModel = modelCandidates[i];
+          // MODE A vs MODE B: only attach native `tools` on the first try if
+          // this model is likely to understand them. Either way the agent's
+          // <tool_call> text protocol (embedded in the system prompt) works
+          // as the guaranteed fallback, and callOpenAiCompatibleProvider will
+          // also auto-retry without `tools` if the provider itself rejects
+          // the param with a 400/422.
+          const attachTools = modelLikelySupportsNativeTools(candidateModel) ? tools : undefined;
           const result = await callOpenAiCompatibleProvider({
             label: 'aicredits',
             baseUrl: currentConfig.aiCreditsBaseUrl,
             apiKey: currentConfig.aiCreditsApiKey,
             model: candidateModel,
             messages: agentMessages,
-            tools
+            tools: attachTools
           });
 
           providerDiagnostics.push({
@@ -3223,10 +3311,10 @@ app.post('/api/chat', async (req, res) => {
           }
         }
       } else {
-        providerDiagnostics.push({ provider: 'aicredits', ok: false, status: null, error: 'AICREDITS_API_KEY is not configured.' });
+        providerDiagnostics.push({ provider: 'aicredits', ok: false, status: null, error: 'Required server-side provider key is not configured.' });
       }
 
-      return { ok: false, error: 'AICredits provider failed or is not configured. Please check your AICREDITS_API_KEY.' };
+      return { ok: false, error: 'AICredits provider failed or is not configured.' };
     };
 
     // Format initial user and history messages for Agent Loop
@@ -3252,9 +3340,13 @@ app.post('/api/chat', async (req, res) => {
       model: targetModel,
       callProvider,
       executeSafeCommand: executeDaytonaCommand,
-      maxIterations: 8,
+      maxIterations: MAX_AGENT_ITERATIONS_CONFIGURED,
       userId,
-      onEvent: isStream ? sendEvent : undefined
+      onEvent: isStream ? sendEvent : undefined,
+      // Ties agent-loop cancellation to the SSE client disconnect listener
+      // registered above, so an abandoned stream stops tool execution
+      // instead of continuing to burn Tavily/Jina/Daytona calls for no one.
+      isCancelled: () => clientDisconnected
     });
 
     if (!agentResult.content && agentResult.steps.length === 0) {
@@ -3303,7 +3395,7 @@ app.post('/api/chat', async (req, res) => {
           content: agentResult.content,
           thinkingProcess: finalThinking,
           model: finalModelUsed,
-          provider: selectedProvider || 'tokenin',
+          provider: selectedProvider || (isPremiumUser ? 'aicredits' : 'openrouter'),
           fallbackUsed,
           isDeepResearch,
           hasVision: isVisionInput,
@@ -3311,7 +3403,9 @@ app.post('/api/chat', async (req, res) => {
           searchQueries: allSearchQueries,
           searchSources: allSearchSources,
           agentSteps: agentResult.steps,
-          iterations: agentResult.iterations
+          iterations: agentResult.iterations,
+          timedOut: Boolean(agentResult.timedOut),
+          cancelled: Boolean(agentResult.cancelled)
         }
       });
 
@@ -3322,7 +3416,7 @@ app.post('/api/chat', async (req, res) => {
       content: agentResult.content,
       thinkingProcess: finalThinking,
       model: finalModelUsed,
-      provider: selectedProvider || 'tokenin',
+      provider: selectedProvider || (isPremiumUser ? 'aicredits' : 'openrouter'),
       fallbackUsed,
       isDeepResearch,
       hasVision: isVisionInput,
@@ -3330,7 +3424,9 @@ app.post('/api/chat', async (req, res) => {
       searchQueries: allSearchQueries,
       searchSources: allSearchSources,
       agentSteps: agentResult.steps,
-      iterations: agentResult.iterations
+      iterations: agentResult.iterations,
+      timedOut: Boolean(agentResult.timedOut),
+      cancelled: Boolean(agentResult.cancelled)
     });
 
 
@@ -3377,7 +3473,7 @@ I have inspected the uploaded image in detail. Here is the structured visual bre
    - Maintain the balanced negative space.
    - Ensure responsive scaling across varying screen densities.
 
-*Note: Add your \`AICREDITS_API_KEY\` from [aicredits.in/dashboard](https://aicredits.in/dashboard) or \`GEMINI_API_KEY\` in your environment settings for real-time model inference.*`;
+*Note: Configure the required server-side provider key in your backend environment for real-time model inference.*`;
   }
 
   if (p.includes('sprint') || p.includes('plan')) {
@@ -3445,7 +3541,9 @@ app.all('/api/*', (req, res) => {
 // 6. Vite Integration & Static Files
 // ----------------------------------------------------
 const isProduction = process.env.NODE_ENV === 'production';
-const PORT = 3000;
+// Render (and most PaaS hosts) assign the port dynamically via process.env.PORT.
+// Fall back to 3000 for local development where no PORT is set.
+const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
 
 async function startServer() {

@@ -213,12 +213,13 @@ export async function runAgentLoop(options: {
 
   const protocolInstructions = `
 You are Leo AI, a powerful, model-agnostic autonomous agent controller.
-You have access to 3 centralized tools:
+You have access to 4 centralized tools:
 1. web_search(query): Search the live web via Tavily.
 2. read_webpage(url): Read and extract clean markdown text from a webpage via Jina.
 3. code_execution(code, language): Execute code or shell commands inside an isolated Daytona sandbox.
+4. security_scan(targetUrl, authorizationConfirmed, applicationId): Run an authorized StackHawk security scan only after explicit user authorization.
 
-When a user request requires external search, webpage reading, or code execution, you MUST output a tool call using this exact structured format:
+When a user request requires external search, webpage reading, code execution, or authorized security scanning, you MUST output a tool call using this exact structured format:
 <tool_call>
 {
   "name": "web_search",
@@ -228,7 +229,7 @@ When a user request requires external search, webpage reading, or code execution
 }
 </tool_call>
 Do not execute tools directly. Output the <tool_call> block, and the backend agent controller will execute it and provide you with <tool_result>.
-Only use the 3 tools listed above — any other tool name will be rejected.
+Only use the 4 tools listed above — any other tool name will be rejected.
 If your previous tool call could not be parsed, re-emit it with STRICT valid JSON inside the <tool_call> tags and nothing else inside them.
 `.trim();
 
@@ -357,6 +358,8 @@ If your previous tool call could not be parsed, re-emit it with STRICT valid JSO
         ? 'Reading webpage content…'
         : cleanName === 'code_execution'
         ? 'Running code in Daytona sandbox…'
+        : cleanName === 'security_scan'
+        ? 'Running authorized StackHawk security scan…'
         : 'Rejecting unrecognized tool call…';
 
       await emitEvent({
