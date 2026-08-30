@@ -20,7 +20,7 @@ export async function executeTavilySearch(query: string, maxResults = 5): Promis
       success: false,
       query,
       results: [],
-      error: 'TAVILY_API_KEY is not configured.'
+      error: 'Required server-side provider key is not configured.'
     };
   }
 

@@ -124,15 +124,15 @@ export const AdminPortalPage: React.FC<AdminPortalPageProps> = ({ onExit }) => {
 
   const handleToggleFreeModel = async (modelId: string) => {
     if (!config) return;
-    const current = config.freeTokeninModels || [];
+    const current = config.freeOpenRouterModels || [];
     const next = current.includes(modelId)
       ? current.filter((id) => id !== modelId)
       : [...current, modelId];
 
     const previous = config;
-    setConfig({ ...config, freeTokeninModels: next });
+    setConfig({ ...config, freeOpenRouterModels: next });
     try {
-      await api.saveAdminConfig({ freeTokeninModels: next });
+      await api.saveAdminConfig({ freeOpenRouterModels: next });
       setSaveSuccessMsg('Free model access updated successfully!');
       setTimeout(() => setSaveSuccessMsg(''), 2500);
     } catch (err: any) {
@@ -174,25 +174,8 @@ export const AdminPortalPage: React.FC<AdminPortalPageProps> = ({ onExit }) => {
   };
 
   const copyEnvFile = () => {
-    const envContent = `# Backend (Render) Environment Variables
-PORT=3000
-NODE_ENV=production
-ADMIN_PASSWORD=your_secure_admin_password_here
-AICREDITS_API_KEY=your_aicredits_api_key_here
-AICREDITS_BASE_URL=https://aicredits.in/api/v1
-MEMO_API_KEY=your_memo_api_key_here
-MEMO_BASE_URL=https://api.memo.dev/v1
-MONGODB_URI=mongodb+srv://admin:pass@cluster.mongodb.net/leoai
-
-# Frontend (Vercel) Environment Variables
-VITE_BACKEND_URL=https://your-render-service.onrender.com
-VITE_FIREBASE_API_KEY=AIzaSy...
-VITE_FIREBASE_AUTH_DOMAIN=leo-ai-production.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=leo-ai-production
-VITE_FIREBASE_STORAGE_BUCKET=leo-ai-production.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=507367657580
-VITE_FIREBASE_APP_ID=1:507367657580:web:abcd1234
-VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com`;
+    const envContent = `Configure backend-only secrets in Render. See backend/.env.example in the repository.
+Configure only the public backend URL in Vercel.`;
 
     navigator.clipboard.writeText(envContent);
     setCopiedEnv(true);
@@ -427,7 +410,7 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                     <div className="p-3.5 sm:p-4 rounded-2xl bg-black border border-[#333538]">
                       <p className="text-[10px] sm:text-[11px] text-[#8e918f]">Active Mode</p>
                       <p className="text-sm sm:text-base font-bold text-white mt-1 truncate">
-                        {config?.hasAiCreditsKey ? 'AICredits.in' : (config?.hasTokeninKey ? 'Tokenin' : 'Not configured')}
+                        {config?.hasAiCreditsKey ? 'AICredits.in' : (config?.hasOpenRouterKey ? 'OpenRouter' : 'Not configured')}
                       </p>
                     </div>
                   </div>
@@ -442,13 +425,13 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                       <div>
                         <h3 className="text-sm font-semibold text-white">Free Model Access</h3>
                         <p className="text-[11px] text-[#8e918f] mt-1">
-                          Turn on a button to allow Free users to use that Tokenin model. Premium access stays unchanged for every model you leave off.
+                          Turn on a button to allow Free users to use that OpenRouter model. Premium access stays unchanged for every model you leave off.
                         </p>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {FREE_MODEL_OPTIONS.map((model) => {
-                        const isFree = (config.freeTokeninModels || []).includes(model.id);
+                        const isFree = (config.freeOpenRouterModels || []).includes(model.id);
                         return (
                           <button
                             key={model.id}
@@ -483,7 +466,7 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                   <div>
                     <h2 className="text-sm sm:text-base font-semibold text-white">AI Engine & Multi-Provider Configuration</h2>
                     <p className="text-xs text-[#8e918f] mt-0.5">
-                      Configure Tokenin (MYT) and AICredits providers with automatic fallback and unified system prompt enforcement.
+                      Configure server-side OpenRouter free-model access and AICredits premium routing with unified system prompt enforcement.
                     </p>
                   </div>
 
@@ -495,25 +478,25 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                         Primary AI Provider
                       </label>
                       <span className="text-[10px] bg-[#28292c] text-white border border-[#333538] px-2.5 py-0.5 rounded-full font-mono">
-                        Active: {config.aiProvider === 'aicredits' ? 'AICredits' : 'Tokenin'}
+                        Active: {config.aiProvider === 'aicredits' ? 'AICredits' : 'OpenRouter'}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
-                        onClick={() => setConfig({ ...config, aiProvider: 'tokenin' })}
+                        onClick={() => setConfig({ ...config, aiProvider: 'openrouter' })}
                         className={`p-3 rounded-xl border text-xs font-medium text-left transition flex items-center justify-between cursor-pointer ${
-                          (config.aiProvider || 'tokenin') === 'tokenin'
+                          (config.aiProvider || 'openrouter') === 'openrouter'
                             ? 'bg-white text-black border-white'
                             : 'bg-[#131314] border-[#333538] text-[#8e918f] hover:text-white'
                         }`}
                       >
                         <div>
-                          <div className="font-bold">Tokenin (MYT)</div>
-                          <div className={`text-[10px] ${(config.aiProvider || 'tokenin') === 'tokenin' ? 'text-neutral-600' : 'text-[#8e918f]'}`}>tokenin.my.id/v1</div>
+                          <div className="font-bold">OpenRouter</div>
+                          <div className={`text-[10px] ${(config.aiProvider || 'openrouter') === 'openrouter' ? 'text-neutral-600' : 'text-[#8e918f]'}`}>openrouter.ai/api/v1</div>
                         </div>
-                        {(config.aiProvider || 'tokenin') === 'tokenin' && <Check className="w-4 h-4 text-black" />}
+                        {(config.aiProvider || 'openrouter') === 'openrouter' && <Check className="w-4 h-4 text-black" />}
                       </button>
 
                       <button
@@ -635,30 +618,30 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                     </div>
                   </div>
 
-                  {/* Tokenin Credentials */}
+                  {/* OpenRouter Credentials */}
                   <div className="p-4 rounded-2xl bg-black border border-[#333538] space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-white">Tokenin API Configuration</span>
-                      <span className="text-[10px] text-white font-mono bg-[#28292c] border border-neutral-700 px-2 py-0.5 rounded">https://tokenin.my.id</span>
+                      <span className="text-xs font-semibold text-white">OpenRouter API Configuration</span>
+                      <span className="text-[10px] text-white font-mono bg-[#28292c] border border-neutral-700 px-2 py-0.5 rounded">https://openrouter.ai</span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[11px] font-medium text-white mb-1">Tokenin API Key</label>
+                        <label className="block text-[11px] font-medium text-white mb-1">OpenRouter API Key</label>
                         <input
                           type="password"
-                          placeholder="tokenin_key_..."
-                          value={config.tokeninApiKey || ''}
-                          onChange={(e) => setConfig({ ...config, tokeninApiKey: e.target.value })}
+                          placeholder="openrouter_key_..."
+                          value={config.openRouterApiKey || ''}
+                          onChange={(e) => setConfig({ ...config, openRouterApiKey: e.target.value })}
                           className="w-full px-3 py-2 rounded-xl bg-[#1e1f20] border border-[#333538] text-xs text-white outline-none focus:border-white font-mono"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-medium text-white mb-1">Tokenin Base URL</label>
+                        <label className="block text-[11px] font-medium text-white mb-1">OpenRouter Base URL</label>
                         <input
                           type="text"
-                          placeholder="https://tokenin.my.id/v1"
-                          value={config.tokeninBaseUrl || 'https://tokenin.my.id/v1'}
-                          onChange={(e) => setConfig({ ...config, tokeninBaseUrl: e.target.value })}
+                          placeholder="https://openrouter.ai/api/v1"
+                          value={config.openRouterBaseUrl || 'https://openrouter.ai/api/v1'}
+                          onChange={(e) => setConfig({ ...config, openRouterBaseUrl: e.target.value })}
                           className="w-full px-3 py-2 rounded-xl bg-[#1e1f20] border border-[#333538] text-xs text-white outline-none focus:border-white font-mono"
                         />
                       </div>
@@ -735,7 +718,7 @@ VITE_FIREBASE_DATABASE_URL=https://leo-ai-production-default-rtdb.firebaseio.com
                         onChange={(e) => setConfig({ ...config, enableProviderFallback: e.target.checked })}
                         className="rounded accent-white"
                       />
-                      <span className="font-semibold text-white">Enable Automatic Provider Fallback (Tokenin ⇄ AICredits)</span>
+                      <span className="font-semibold text-white">Provider routing is backend-enforced (Free → OpenRouter, Premium → AICredits)</span>
                     </label>
                   </div>
 

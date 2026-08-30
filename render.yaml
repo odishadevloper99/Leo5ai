@@ -19,9 +19,7 @@ services:
       - key: NODE_ENV
         value: production
       # --- AI providers / models ---
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GEMINI_MODEL
+      - key: OPENROUTER_API_KEY
         sync: false
       - key: DEFAULT_AI_MODEL
         sync: false
@@ -36,9 +34,9 @@ services:
       - key: AICREDITS_MODEL
         sync: false
       # --- Admin / auth ---
-      - key: ADMIN_PASSWORD
+      - key: ADMIN_PANEL_PASSWORD
         sync: false
-      - key: SESSION_SECRET
+      - key: ADMIN_SESSION_SECRET
         sync: false
       # --- Firebase (server-side) ---
       - key: FIREBASE_PROJECT_ID
@@ -72,4 +70,16 @@ services:
       - key: DAYTONA_API_KEY
         sync: false
       - key: MONGODB_URI
+        sync: false
+      - key: STACKHAWK_API_KEY
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: TRIGGER_PROJECT_ID
+        sync: false
+      - key: TRIGGER_SECRET_KEY
+        sync: false
+      - key: PREMIUM_PRICE_INR
         sync: false

@@ -1,4 +1,4 @@
-import { executeToolRouter, CENTRALIZED_TOOLS } from './toolRouter';
+import { executeToolRouter, CENTRALIZED_TOOLS, ALLOWED_TOOLS } from './toolRouter';
 
 export interface AgentStep {
   tool: string;
@@ -22,12 +22,25 @@ export type AgentEvent =
 
 export const AVAILABLE_TOOLS = CENTRALIZED_TOOLS;
 
+// ----------------------------------------------------------------------
+// Loop safety defaults. All overridable per-call via runAgentLoop options,
+// and in turn overridable server-wide via env vars in server.ts.
+// ----------------------------------------------------------------------
+export const MAX_AGENT_ITERATIONS = 8;
+export const MAX_MALFORMED_RETRIES = 2;
+export const AGENT_WALL_CLOCK_TIMEOUT_MS = 110000; // overall loop ceiling, independent of iteration count
+export const MAX_CONTEXT_MESSAGE_CHARS = 60000; // total chars kept across working messages before we start trimming old tool results
+
 /**
  * Normalizes and extracts tool calls from model output supporting:
- * 1. Native provider tool_calls
- * 2. <tool_call>...</tool_call> XML block
+ * 1. Native provider tool_calls (MODE A)
+ * 2. <tool_call>...</tool_call> XML block (MODE B)
  * 3. ```json fenced code block containing {"name": "...", "arguments": {...}}
  * 4. Raw JSON object matching tool call schema
+ *
+ * Returns the parsed calls. Use `hadMalformedAttempt` (see below) to detect
+ * a tool call that LOOKED like a tool call but failed to parse — that case
+ * must never be silently treated as a final answer.
  */
 export function extractStructuredToolCalls(toolCallsRaw: any, contentRaw: string): any[] {
   // 1. Native tool calls if provided
@@ -36,7 +49,7 @@ export function extractStructuredToolCalls(toolCallsRaw: any, contentRaw: string
       id: tc.id || 'call_' + Math.random().toString(36).substring(2, 9),
       name: tc.function?.name || tc.name,
       args: typeof tc.function?.arguments === 'string'
-        ? JSON.parse(tc.function.arguments || '{}')
+        ? safeJsonParse(tc.function.arguments) ?? {}
         : (tc.function?.arguments || tc.args || {})
     }));
   }
@@ -49,17 +62,13 @@ export function extractStructuredToolCalls(toolCallsRaw: any, contentRaw: string
   const xmlRegex = /<tool_call>([\s\S]*?)<\/tool_call>/g;
   let match;
   while ((match = xmlRegex.exec(contentRaw)) !== null) {
-    try {
-      const parsed = JSON.parse(match[1].trim());
-      if (parsed && (parsed.name || parsed.tool)) {
-        results.push({
-          id: 'call_' + Math.random().toString(36).substring(2, 9),
-          name: parsed.name || parsed.tool,
-          args: parsed.arguments || parsed.args || parsed.input || {}
-        });
-      }
-    } catch (e) {
-      console.warn('[AGENT PARSER] Failed to parse XML tool_call JSON:', e);
+    const parsed = safeJsonParse(match[1].trim());
+    if (parsed && (parsed.name || parsed.tool)) {
+      results.push({
+        id: 'call_' + Math.random().toString(36).substring(2, 9),
+        name: parsed.name || parsed.tool,
+        args: parsed.arguments || parsed.args || parsed.input || {}
+      });
     }
   }
 
@@ -68,36 +77,84 @@ export function extractStructuredToolCalls(toolCallsRaw: any, contentRaw: string
   // 3. Search for JSON code blocks or raw JSON containing tool call structure
   const jsonBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/g;
   while ((match = jsonBlockRegex.exec(contentRaw)) !== null) {
-    try {
-      const parsed = JSON.parse(match[1].trim());
-      if (parsed && (parsed.name || parsed.tool) && (parsed.arguments || parsed.args || parsed.input)) {
-        results.push({
-          id: 'call_' + Math.random().toString(36).substring(2, 9),
-          name: parsed.name || parsed.tool,
-          args: parsed.arguments || parsed.args || parsed.input || {}
-        });
-      }
-    } catch (e) {}
+    const parsed = safeJsonParse(match[1].trim());
+    if (parsed && (parsed.name || parsed.tool) && (parsed.arguments || parsed.args || parsed.input)) {
+      results.push({
+        id: 'call_' + Math.random().toString(36).substring(2, 9),
+        name: parsed.name || parsed.tool,
+        args: parsed.arguments || parsed.args || parsed.input || {}
+      });
+    }
   }
 
   if (results.length > 0) return results;
 
   // 4. Fallback: check if the entire content or partial content is a direct JSON object
-  try {
-    const trimmed = contentRaw.trim();
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-      const parsed = JSON.parse(trimmed);
-      if (parsed && (parsed.name || parsed.tool)) {
-        results.push({
-          id: 'call_' + Math.random().toString(36).substring(2, 9),
-          name: parsed.name || parsed.tool,
-          args: parsed.arguments || parsed.args || parsed.input || {}
-        });
-      }
+  const trimmed = contentRaw.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    const parsed = safeJsonParse(trimmed);
+    if (parsed && (parsed.name || parsed.tool)) {
+      results.push({
+        id: 'call_' + Math.random().toString(36).substring(2, 9),
+        name: parsed.name || parsed.tool,
+        args: parsed.arguments || parsed.args || parsed.input || {}
+      });
     }
-  } catch (e) {}
+  }
 
   return results;
+}
+
+function safeJsonParse(text: string): any | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Detects a tool-call ATTEMPT that failed to parse into a usable call —
+ * e.g. the model opened a <tool_call> tag but emitted invalid JSON inside
+ * it. Used to distinguish "genuinely no tool needed" from "tried and
+ * botched the syntax", so the broken markup is never shown to the user
+ * as a final answer.
+ */
+function looksLikeMalformedToolAttempt(contentRaw: string): boolean {
+  if (!contentRaw) return false;
+  if (/<tool_call>/i.test(contentRaw)) return true;
+  if (/```json/i.test(contentRaw) && /"(name|tool)"\s*:/i.test(contentRaw)) return true;
+  return false;
+}
+
+function estimateMessagesSize(messages: any[]): number {
+  let total = 0;
+  for (const m of messages) {
+    if (typeof m.content === 'string') total += m.content.length;
+    else if (m.content) total += JSON.stringify(m.content).length;
+  }
+  return total;
+}
+
+/**
+ * Keeps the working message list under MAX_CONTEXT_MESSAGE_CHARS by
+ * collapsing the oldest tool result messages (never the system prompt or
+ * the most recent turn) once the running total gets too large. This is a
+ * blunt but safe guard against unbounded context growth across many
+ * agent iterations.
+ */
+function trimContextIfNeeded(messages: any[], maxChars: number): void {
+  let size = estimateMessagesSize(messages);
+  if (size <= maxChars) return;
+
+  for (let i = 1; i < messages.length - 2 && size > maxChars; i++) {
+    const m = messages[i];
+    if (m.role === 'tool' && typeof m.content === 'string' && m.content.length > 500) {
+      const original = m.content.length;
+      m.content = m.content.slice(0, 400) + '\n[...older tool output trimmed to preserve context space...]';
+      size -= (original - m.content.length);
+    }
+  }
 }
 
 export async function runAgentLoop(options: {
@@ -112,6 +169,10 @@ export async function runAgentLoop(options: {
   executeWebSearch?: (query: string) => Promise<{ success: boolean; formattedOutput: string; sources: { title: string; url: string }[] }>;
   executeSafeCommand?: (command: string) => Promise<{ success: boolean; exitCode: number; output: string }>;
   extractToolCalls?: (toolCallsRaw: any, contentRaw: string) => any[];
+  /** Polled between steps; return true to stop the loop early (e.g. client disconnected). */
+  isCancelled?: () => boolean;
+  /** Overall wall-clock ceiling for the whole loop, regardless of iteration count. */
+  wallClockTimeoutMs?: number;
 }): Promise<{
   content: string;
   thinkingProcess: string;
@@ -121,16 +182,23 @@ export async function runAgentLoop(options: {
   searchSources: { title: string; url: string }[];
   model: string;
   iterations: number;
+  cancelled?: boolean;
+  timedOut?: boolean;
 }> {
   const {
     model,
     systemPrompt,
     initialMessages = options.messages || [],
-    maxIterations = 6,
+    maxIterations = MAX_AGENT_ITERATIONS,
     onEvent = async () => {},
     callProvider,
     extractToolCalls = extractStructuredToolCalls,
+    isCancelled = () => false,
+    wallClockTimeoutMs = AGENT_WALL_CLOCK_TIMEOUT_MS,
   } = options;
+
+  const loopStartedAt = Date.now();
+  const deadlineExceeded = () => Date.now() - loopStartedAt > wallClockTimeoutMs;
 
   const agentSteps: AgentStep[] = [];
   const searchQueries: string[] = [];
@@ -145,12 +213,13 @@ export async function runAgentLoop(options: {
 
   const protocolInstructions = `
 You are Leo AI, a powerful, model-agnostic autonomous agent controller.
-You have access to 3 centralized tools:
+You have access to 4 centralized tools:
 1. web_search(query): Search the live web via Tavily.
 2. read_webpage(url): Read and extract clean markdown text from a webpage via Jina.
 3. code_execution(code, language): Execute code or shell commands inside an isolated Daytona sandbox.
+4. security_scan(targetUrl, authorizationConfirmed, applicationId): Run an authorized StackHawk security scan only after explicit user authorization.
 
-When a user request requires external search, webpage reading, or code execution, you MUST output a tool call using this exact structured format:
+When a user request requires external search, webpage reading, code execution, or authorized security scanning, you MUST output a tool call using this exact structured format:
 <tool_call>
 {
   "name": "web_search",
@@ -160,6 +229,8 @@ When a user request requires external search, webpage reading, or code execution
 }
 </tool_call>
 Do not execute tools directly. Output the <tool_call> block, and the backend agent controller will execute it and provide you with <tool_result>.
+Only use the 4 tools listed above — any other tool name will be rejected.
+If your previous tool call could not be parsed, re-emit it with STRICT valid JSON inside the <tool_call> tags and nothing else inside them.
 `.trim();
 
   const workingMessages: any[] = [
@@ -180,9 +251,17 @@ Do not execute tools directly. Output the <tool_call> block, and the backend age
   let finalContent = '';
   let finalThinking = '';
   let iterations = 0;
+  let malformedRetries = 0;
+  let cancelled = false;
+  let timedOut = false;
 
   while (iterations < maxIterations) {
+    if (isCancelled()) { cancelled = true; break; }
+    if (deadlineExceeded()) { timedOut = true; break; }
+
     iterations++;
+    trimContextIfNeeded(workingMessages, MAX_CONTEXT_MESSAGE_CHARS);
+
     const response = await callProvider(workingMessages, AVAILABLE_TOOLS);
 
     if (!response.ok) {
@@ -211,6 +290,19 @@ Do not execute tools directly. Output the <tool_call> block, and the backend age
     const toolCalls = extractToolCalls(response.tool_calls, rawContent);
 
     if (toolCalls.length === 0) {
+      // Guard against a botched tool-call attempt being shown to the user
+      // as if it were a real final answer.
+      if (looksLikeMalformedToolAttempt(rawContent) && malformedRetries < MAX_MALFORMED_RETRIES) {
+        malformedRetries++;
+        workingMessages.push({ role: 'assistant', content: rawContent });
+        workingMessages.push({
+          role: 'user',
+          content: 'Your previous tool call could not be parsed as valid JSON. Re-emit ONLY a corrected <tool_call>{...}</tool_call> block with strictly valid JSON, or answer directly if no tool is actually needed.'
+        });
+        await emitEvent({ type: 'planning', message: 'Recovering from a malformed tool call…' });
+        continue;
+      }
+
       finalContent = rawContent;
       await emitEvent({
         type: 'generating',
@@ -220,6 +312,7 @@ Do not execute tools directly. Output the <tool_call> block, and the backend age
       if (finalContent) {
         const chunks = finalContent.match(/[\s\S]{1,16}/g) || [finalContent];
         for (const piece of chunks) {
+          if (isCancelled()) { cancelled = true; break; }
           await emitEvent({
             type: 'chunk',
             chunk: piece
@@ -249,17 +342,25 @@ Do not execute tools directly. Output the <tool_call> block, and the backend age
     });
 
     for (const toolCall of toolCalls) {
+      if (isCancelled()) { cancelled = true; break; }
+      if (deadlineExceeded()) { timedOut = true; break; }
+
       const stepStartTime = Date.now();
       let toolOutput = '';
       let stepSuccess = false;
       let toolSources: { title: string; url: string }[] | undefined = undefined;
 
-      const toolDisplayName = toolCall.name === 'web_search' ? 'web_search' : toolCall.name === 'read_webpage' ? 'read_webpage' : 'code_execution';
-      const statusMsg = toolCall.name === 'web_search'
+      const cleanName = String(toolCall.name || '').trim().toLowerCase();
+      const toolDisplayName = ALLOWED_TOOLS.has(cleanName) ? cleanName : (toolCall.name || 'unknown_tool');
+      const statusMsg = cleanName === 'web_search'
         ? 'Searching the web…'
-        : toolCall.name === 'read_webpage'
+        : cleanName === 'read_webpage'
         ? 'Reading webpage content…'
-        : 'Running code in Daytona sandbox…';
+        : cleanName === 'code_execution'
+        ? 'Running code in Daytona sandbox…'
+        : cleanName === 'security_scan'
+        ? 'Running authorized StackHawk security scan…'
+        : 'Rejecting unrecognized tool call…';
 
       await emitEvent({
         type: 'tool_start',
@@ -268,6 +369,9 @@ Do not execute tools directly. Output the <tool_call> block, and the backend age
         input: toolCall.args
       });
 
+      // executeToolRouter itself whitelists names, validates arguments, and
+      // enforces per-tool timeouts — the agent loop trusts its verdict
+      // rather than the model's claim about what it called.
       const toolRes = await executeToolRouter(toolCall.name, toolCall.args);
       stepSuccess = toolRes.success;
       toolOutput = typeof toolRes.result === 'string' ? toolRes.result : JSON.stringify(toolRes.result);
@@ -312,13 +416,28 @@ Do not execute tools directly. Output the <tool_call> block, and the backend age
       });
     }
 
+    if (cancelled || timedOut) break;
+
     await emitEvent({
       type: 'analyzing',
       message: 'Analyzing results…'
     });
   }
 
-  if (!finalContent && iterations >= maxIterations) {
+  if (cancelled) {
+    if (agentSteps.length > 0 && !finalContent) {
+      finalContent = `Stopped early (client disconnected) after gathering:\n\n` +
+        agentSteps.map(s => `**Tool \`${s.tool}\`**:\n${s.output}`).join('\n\n');
+    }
+  } else if (timedOut && !finalContent) {
+    await emitEvent({ type: 'generating', message: 'Time limit reached — summarizing findings so far…' });
+    if (agentSteps.length > 0) {
+      finalContent = `I ran out of time for further tool calls, but here is what I found so far:\n\n` +
+        agentSteps.map(s => `**Tool \`${s.tool}\`**:\n${s.output}`).join('\n\n');
+    } else {
+      finalContent = 'The request took too long to process and was stopped for safety. Please try a narrower question.';
+    }
+  } else if (!finalContent && iterations >= maxIterations) {
     await emitEvent({
       type: 'generating',
       message: 'Preparing the final answer…'
@@ -361,6 +480,8 @@ Do not execute tools directly. Output the <tool_call> block, and the backend age
     searchQueries,
     searchSources,
     model,
-    iterations
+    iterations,
+    cancelled,
+    timedOut
   };
 }

@@ -145,12 +145,12 @@ export interface AIConfig {
   aiCreditsBaseUrl: string;
   aiCreditsApiKey?: string;
   aiCreditsModel?: string;
-  freeTokeninModels?: string[];
+  freeOpenRouterModels?: string[];
   hasAiCreditsKey?: boolean;
-  tokeninBaseUrl: string;
-  tokeninApiKey?: string;
-  tokeninModel?: string;
-  hasTokeninKey?: boolean;
+  openRouterBaseUrl: string;
+  openRouterApiKey?: string;
+  openRouterModel?: string;
+  hasOpenRouterKey?: boolean;
   visionModel: string;
   temperature: number;
   maxTokens: number;
@@ -160,10 +160,9 @@ export interface AIConfig {
   enableDeepResearch: boolean;
   enableVision: boolean;
   enableMemory: boolean;
-  fallbackToGemini: boolean;
   dailyMessageLimit: number;
   dailyLimitSettings?: DailyUsageLimitSettings;
-  aiProvider?: 'aicredits' | 'tokenin';
+  aiProvider?: 'aicredits' | 'openrouter';
   enableProviderFallback?: boolean;
   mongoDbConfigured: boolean;
   firebaseConfigured: boolean;
@@ -206,7 +205,7 @@ export interface AIModelDefinition {
   description: string;
   badges: string[];
   iconKey: string;
-  provider: 'aicredits' | 'tokenin' | 'gemini';
+  provider: 'aicredits' | 'openrouter' | 'gemini';
   isNew?: boolean;
   tier?: 'cheap' | 'quality' | 'standard';
   inputCostPer1M?: number;
