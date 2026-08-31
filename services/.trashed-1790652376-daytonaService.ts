@@ -6,7 +6,7 @@ function getDaytonaClient(): Daytona {
   if (!daytonaClient) {
     const apiKey = process.env.DAYTONA_API_KEY;
     if (!apiKey) {
-      throw new Error('DAYTONA_API_KEY environment variable is required for Daytona execution.');
+      throw new Error('Required server-side provider key is required for Daytona execution.');
     }
     daytonaClient = new Daytona({ apiKey });
   }

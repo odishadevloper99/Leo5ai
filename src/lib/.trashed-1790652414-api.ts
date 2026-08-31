@@ -226,7 +226,7 @@ export const api = {
     return safeFetchJson(res, 'Failed to fetch dynamic models from server');
   },
 
-  async getModelAccess(): Promise<{ freeTokeninModels: string[] }> {
+  async getModelAccess(): Promise<{ freeOpenRouterModels: string[] }> {
     const res = await fetch(`${API_BASE}/api/models/access`);
     return safeFetchJson(res, 'Failed to load model access settings');
   },
@@ -256,7 +256,7 @@ export const api = {
     this.setAdminToken('');
   },
 
-  async getAdminConfig(): Promise<AIConfig & { hasAiCreditsKey: boolean; hasMemoKey: boolean; hasGeminiKey: boolean; adminPasswordConfigured: boolean }> {
+  async getAdminConfig(): Promise<AIConfig & { hasAiCreditsKey: boolean; hasMemoKey: boolean; adminPasswordConfigured: boolean }> {
     const res = await fetch(`${API_BASE}/api/admin/config`, {
       headers: {
         Authorization: `Bearer ${adminAuthToken}`,
